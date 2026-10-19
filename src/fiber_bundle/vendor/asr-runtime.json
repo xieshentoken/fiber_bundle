@@ -1,0 +1,15 @@
+{
+  "elapsed_seconds": 14.86485008301679,
+  "external_provider_calls": 0,
+  "image": "sha256:8c2e32cace39c8c68d53ce4e33132c4a36fd9f07fb1efc86f759c91f4f8f6512",
+  "license": "Apache-2.0",
+  "minimum_cpus": 2,
+  "minimum_memory_mib": 6144,
+  "model": "Qwen/Qwen3-ASR-0.6B",
+  "model_lock_sha256": "1cc7225310c3c438e96165b9311aec25b486f61a82b49882e4cc64c54e067b2c",
+  "qualification_scope": "short synthetic CPU sample and enforced limits; accuracy and long-duration performance not certified",
+  "revision": "5eb144179a02acc5e5ba31e748d22b0cf3e303b0",
+  "state": "qualified",
+  "tested_duration_ms": 4260,
+  "weights_sha256": "79d6cbd4c98c7bbffe9db2edac07f56cd6637d0d5944b27f6c2b8353840323ea"
+}

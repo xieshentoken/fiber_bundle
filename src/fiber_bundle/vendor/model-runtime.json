@@ -1,0 +1,23 @@
+{
+  "schema": "fiber-model-runtime/v1",
+  "image": "sha256:472e342c17e7122783b0cd994c342014bc6f1fbb02502a700ea4f8de338051df",
+  "creation_image": "sha256:c8e592983e6b4680578363de18a298da268c74c94f2c93d55fef3dc96f1fcb4f",
+  "architecture": "arm64",
+  "pi_version": "0.87.1",
+  "capabilities": [
+    "pi",
+    "fixed-processing-skills",
+    "registered-model-protocols"
+  ],
+  "base_image": "sha256:7ffb44d1761842e88028eabf58c91a617c5fd19d9d18872d8449dd0e904bce1d",
+  "recipe_sha256": "042ff9ea71e228b7e960c9f70b8546675b9a1b52de3fe6db17ac1cad265dcb90",
+  "sources": {
+    "executor/bridge.mjs": "afa8f2cdb6e3c17882edfb9fa10ec7e24031fee515ca089da66cc1043a674ab5",
+    "executor/provider_bridge.mjs": "8f6ade634f4d0047397384b916ff2cb9dd8c984d4c4390246f1b9b4e758931d1",
+    "creation_executor/registered_bridge.mjs": "564b9ceac829ff67e3b3716c0ccb9083d896ef785779140ccd092b906770b469",
+    "creation_executor/draft_tool.mjs": "8ff68f753a3e01aec82ec8f206b87b4de94d02845667bf5d33a4239bbec3beec"
+  },
+  "creation_revision": "pi-0871-models-v1",
+  "archive_sha256": "70d2b47e4023b8c74204b46fe45466a3a79006b8c17d5bd16e29f759a04ce554",
+  "archive_bytes": 106652512
+}

@@ -1,0 +1,472 @@
+/* Shared card, row, chip and fact-list presentation (home and other pages). */
+/* Cards */
+.ui-card {
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  overflow-wrap: anywhere;
+}
+.ui-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-bottom: 10px;
+}
+.ui-card-head h2 {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: 1.4;
+}
+.ui-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+button.ui-small {
+  padding: 4px 10px;
+  font-size: var(--text-sm);
+}
+button.ui-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 2px;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+button.ui-link:enabled:hover {
+  background: transparent;
+  color: var(--text);
+}
+button.ui-link .icon {
+  width: 14px;
+  height: 14px;
+}
+.ui-note,
+.ui-stamp {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.ui-stamp[data-tone="error"] {
+  color: var(--error-text);
+}
+.ui-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+}
+button.ui-more {
+  padding: 6px 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.ui-details {
+  margin-top: 6px;
+}
+.ui-details > summary {
+  font-size: var(--text-xs);
+}
+.ui-details p {
+  margin: 4px 0;
+  font-size: var(--text-xs);
+}
+.ui-details p.error {
+  color: var(--error-text);
+}
+.ui-empty {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.ui-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+button.ui-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+button.ui-chip b {
+  font-variant-numeric: tabular-nums;
+}
+button.ui-chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.ui-rows {
+  display: grid;
+  gap: 8px;
+}
+button.ui-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 4px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  font-weight: 400;
+}
+button.ui-row:last-child {
+  border-bottom: 0;
+}
+button.ui-row:enabled:hover {
+  background: var(--surface-panel);
+}
+button.ui-row > .icon:first-child {
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  border-radius: var(--radius-control);
+  background: var(--surface-emphasis);
+  color: var(--muted);
+}
+button.ui-row > .icon:last-child {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+.ui-row-text {
+  display: grid;
+  min-width: 0;
+}
+.ui-row-text strong {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.ui-row-text small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+button.ui-row .status-badge {
+  white-space: nowrap;
+}
+.ui-facts {
+  display: grid;
+}
+.ui-fact {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--text-sm);
+}
+.ui-fact:last-child {
+  border-bottom: 0;
+}
+.ui-fact small {
+  grid-column: 1;
+  color: var(--muted);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.ui-fact .status-badge {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+/* 收件箱 */
+.inbox-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  align-items: start;
+  gap: 16px;
+}
+.inbox-pages {
+  position: sticky;
+  top: 12px;
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+.inbox-pages .nav-heading {
+  margin: 4px 8px;
+}
+.inbox-pages button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  font-weight: 500;
+}
+.inbox-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--status-waiting-soft);
+  color: var(--status-waiting);
+  font-size: var(--text-xs);
+  text-align: center;
+}
+.inbox-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+#workspace > #worklist-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+@media (max-width: 900px) {
+  .inbox-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .inbox-pages {
+    position: static;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+  .inbox-pages .nav-heading {
+    grid-column: 1 / -1;
+  }
+}
+/* Task rows with their own actions (review pages, execution). */
+.ui-task {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 12px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.ui-task:last-child {
+  border-bottom: 0;
+}
+.ui-task-main {
+  display: grid;
+  min-width: 0;
+}
+.ui-task-main small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.ui-task-states,
+.ui-task-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ui-task-actions button {
+  padding: 6px 12px;
+  font-size: var(--text-sm);
+}
+@media (max-width: 900px) {
+  .ui-task {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.approval-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px 20px;
+  margin-bottom: 12px;
+}
+.approval-card .permissions select {
+  margin: 0;
+}
+@media (max-width: 900px) {
+  .approval-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Import entry choice */
+.engine-cards {
+  margin-bottom: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+button.engine-card {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  text-align: left;
+  font-weight: 400;
+}
+button.engine-card strong {
+  font-size: var(--text-md);
+}
+button.engine-card small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+body button.engine-card[aria-pressed="true"] {
+  --button-ink: var(--text);
+  border-color: var(--accent);
+  background: var(--surface-raised);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+button.engine-card[aria-pressed="true"]:enabled:hover {
+  background: var(--surface-panel);
+}
+/* Plain labels put their text above an enhanced select, so stacked fields align. */
+label:not([class]):has(> .select-field) {
+  display: grid;
+  gap: 6px;
+  max-width: 440px;
+}
+label:not([class]):has(> .select-field) > .select-field select {
+  margin-bottom: 0;
+}
+/* Scope bars: identity / knowledge base selectors with their action on one row. */
+.scope-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 12px 16px;
+  margin: 8px 0 16px;
+}
+.scope-bar > label {
+  flex: 1 1 220px;
+  margin: 0;
+}
+.call-table {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.call-table th,
+.call-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+/* 知识关联与 MOC: numbered steps and grouped toolbars. */
+.graph-step {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.graph-step > h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: var(--text-lg);
+}
+.graph-step > h2 span {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  line-height: 1;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: inherit;
+}
+.graph-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px 16px;
+  margin-bottom: 12px;
+}
+.graph-toolbar > label {
+  flex: 0 1 260px;
+  margin: 0;
+}
+.graph-search {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+.graph-search label {
+  margin: 0;
+}
+.segmented,
+.button-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.segmented button,
+.button-group button {
+  border-radius: var(--radius-control);
+  margin-left: 0;
+  padding: 8px 14px;
+  font-size: var(--text-sm);
+}
+.segmented button:first-child,
+.button-group button:first-child {
+  border-radius: var(--radius-control);
+  margin-left: 0;
+}
+.segmented button:last-child,
+.button-group button:last-child {
+  border-radius: var(--radius-control);
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+#clients-panel .segmented {
+  margin-bottom: 16px;
+}
+/* 模型与查询: one aligned row for identity, question, search terms and submit. */
+#query-submit {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(0, 2fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+}
+#query-submit > label {
+  margin: 0;
+  max-width: none;
+}
+#query-submit input {
+  margin-top: 6px;
+}
+@media (max-width: 900px) {
+  #query-submit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+#source-selection > button {
+  margin: 0 8px 8px 0;
+}

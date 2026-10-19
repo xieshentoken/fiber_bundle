@@ -1,0 +1,10 @@
+{
+  "upstream_project": "fake-expert",
+  "upstream_path": "scripts/reference_search.py",
+  "source_zip_sha256": "eceb318559e0ba30e023b27fb4d3866e8907b1a5826729ae9532b90408ccd38e",
+  "upstream_sha256": "90a264aed1503bef1c8b80c41ec3069c4be32d3f9c207d4bf583eae7aff0573a",
+  "adapted_sha256": "90a264aed1503bef1c8b80c41ec3069c4be32d3f9c207d4bf583eae7aff0573a",
+  "runtime_version": "reference-search-bm25-v0.3",
+  "catalog_schema": "tkc.runtime-catalog/v0.3",
+  "scope": "Unmodified source; query_package only, no embedding command or package code execution."
+}

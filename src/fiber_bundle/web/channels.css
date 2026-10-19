@@ -1,0 +1,124 @@
+.channel-overview {
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+.channel-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.channel-status-grid dt {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.channel-status-grid dd {
+  margin: 4px 0 0;
+  font-weight: 600;
+}
+.channel-status[data-stale="true"] {
+  color: var(--muted);
+}
+.channel-operation {
+  font-weight: 600;
+}
+.channel-card {
+  overflow-wrap: anywhere;
+}
+.channel-card .panel-actions {
+  flex-wrap: wrap;
+}
+.channel-card input {
+  min-width: 0;
+}
+.channel-configuration {
+  margin-top: 24px;
+}
+.channel-intake {
+  margin: 20px 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.channel-intake .intake-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  max-width: 820px;
+  margin-top: 20px;
+}
+.intake-form > label:not(.check) {
+  display: grid;
+  gap: 8px;
+}
+.intake-form select {
+  max-width: none;
+  margin-bottom: 0;
+}
+.intake-form > button {
+  justify-self: start;
+}
+.intake-form fieldset {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.intake-form fieldset .check {
+  align-items: center;
+}
+.intake-form fieldset .check {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+.intake-review pre {
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.intake-review img {
+  max-width: 100%;
+  max-height: 480px;
+  object-fit: contain;
+}
+.intake-link {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.channel-configuration > summary {
+  cursor: pointer;
+}
+@media (max-width: 760px) {
+  .channel-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 400px) {
+  .channel-status-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.channel-services {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.channel-service-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.channel-service-grid > .record-card {
+  min-width: 0;
+  margin: 0;
+}
+@media (max-width: 760px) {
+  .channel-service-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

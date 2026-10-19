@@ -1,0 +1,8 @@
+{
+  "repository": "upstream-owner/Obsidian-vault-trimmer",
+  "path": "organize-markdown-knowledge-base/scripts/kb_organizer.py",
+  "commit": "af674b8ba2ac88ee523010591db4c9f88f9a31ec",
+  "git_blob_sha": "6b4a14bc2226879d961d3d86bd5babeab0a13d85",
+  "sha256": "d34c5975bcfd8a7dadfc0f7d3dac98247785cda2ba246e5e4704afa3f0033f3f",
+  "adapter": "pure metadata matching and taxonomy only; filesystem/apply functions never called"
+}

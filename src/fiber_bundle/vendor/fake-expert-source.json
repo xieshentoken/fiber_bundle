@@ -1,0 +1,28 @@
+{
+  "upstream_project": "fake-expert",
+  "upstream_path": "skills/fake-expert/scripts/pdf_structure.py",
+  "upstream_sha256": "ff280acf0b2adbda333a87362db14ef07f6c70875707525576c3e94a853b374b",
+  "source_release_identity": "1.2.0",
+  "git_commit": null,
+  "selected_definitions": [
+    "EQUATION_LABEL_PATTERN",
+    "FIGURE_PATTERN",
+    "GLYPH_NAME_PATTERN",
+    "MATH_FONT_PATTERN",
+    "PdfPipelineError",
+    "TABLE_PATTERN",
+    "_edge_lines",
+    "_private_use_present",
+    "dereference",
+    "detect_printed_page_label",
+    "inspect_page",
+    "normalize_text",
+    "page_dimensions",
+    "page_fonts",
+    "page_image_count",
+    "sha256_bytes"
+  ],
+  "adapted_sha256": "d21551bce1ff5fa6aceb6a4813f60cca9ecb2dbc4867e61b6b52cb216947e5f5",
+  "pypdf_version": "6.10.0",
+  "scope": "native-page inspection only; not the compiler or canonical PDF-IR workflow"
+}

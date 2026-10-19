@@ -1,0 +1,74 @@
+/* Backup settings stay scoped; other forms retain their existing density. */
+#backup-automation-content {
+  display: grid;
+  gap: 20px;
+}
+.backup-policy {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+}
+.backup-policy h3 {
+  margin: 0 0 12px;
+}
+.backup-policy p {
+  margin: 12px 0 20px;
+}
+.backup-policy label {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+.backup-policy label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.backup-policy input[type="checkbox"] {
+  flex: 0 0 auto;
+}
+.backup-policy fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 24px;
+  margin: 24px 0;
+}
+.backup-policy fieldset label {
+  margin: 8px 0;
+}
+.backup-policy details {
+  margin: 24px 0;
+}
+#backup-automation-content .record {
+  overflow-wrap: anywhere;
+}
+#backup-automation-content .panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 680px) {
+  .backup-policy {
+    padding: 16px;
+  }
+  .backup-policy fieldset {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.backup-stage {
+  margin: 12px 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+.backup-stage progress {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  accent-color: var(--accent);
+}
+.backup-stage p {
+  margin: 6px 0;
+}
