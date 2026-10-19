@@ -1,0 +1,49 @@
+@font-face {
+  font-family: "DM Sans";
+  src: url("./dm-sans.ttf") format("truetype");
+  font-weight: 100 1000;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Noto Sans SC";
+  src: url("./noto-sans-sc.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+/* Script-specific faces let settings resize Chinese without wrapping or rewriting text. */
+@font-face {
+  font-family: "FiberCJK-noto";
+  src: url("./noto-sans-sc.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+2E80-9FFF, U+F900-FAFF, U+FE10-FE6F, U+FF00-FFEF, U+20000-3134F;
+  size-adjust: 100%;
+}
+@font-face {
+  font-family: "FiberCJK-system";
+  src:
+    local("PingFang SC"),
+    url("./noto-sans-sc.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+2E80-9FFF, U+F900-FAFF, U+FE10-FE6F, U+FF00-FFEF, U+20000-3134F;
+  size-adjust: 100%;
+}
+@font-face {
+  font-family: "FiberCJK-serif";
+  src:
+    local("Songti SC"),
+    url("./noto-sans-sc.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range:
+    U+2E80-9FFF, U+F900-FAFF, U+FE10-FE6F, U+FF00-FFEF, U+20000-3134F;
+  size-adjust: 100%;
+}

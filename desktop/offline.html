@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'self'; script-src 'self'; font-src 'self'; img-src 'self'; base-uri 'none'"
+    />
+    <title data-desktop-text="offlineTitle">Fiber bundle · 后台连接失败</title>
+    <link rel="stylesheet" href="offline.css" />
+  </head>
+  <body>
+    <main>
+      <div class="offline-brand">
+        <svg viewBox="260 250 740 520" aria-hidden="true" focusable="false">
+          <defs>
+            <clipPath id="brand-mark-crop">
+              <rect x="260" y="250" width="740" height="520"></rect>
+            </clipPath>
+          </defs>
+          <image
+            href="logo-original.png"
+            width="1254"
+            height="1254"
+            clip-path="url(#brand-mark-crop)"
+          ></image>
+        </svg>
+        <span>Fiber bundle</span>
+      </div>
+      <h1 data-desktop-text="offlineHeading">无法连接本机后台</h1>
+      <p data-desktop-text="offlineSummary">
+        管理窗口已打开，后台尚未就绪或已停止。
+      </p>
+      <ol class="offline-steps">
+        <li data-desktop-text="offlineStart">
+          在对应发行文件夹中双击“启动后台.command”。
+        </li>
+        <li data-desktop-text="offlineInstance">
+          确认启动器与管理窗口使用相同实例和端口；自定义启动保留原有 --url
+          参数。
+        </li>
+      </ol>
+      <a data-desktop-text="reconnect" href="fiber://reconnect">重新连接后台</a>
+      <p id="offline-retry" class="muted" role="status"></p>
+      <p class="muted" data-desktop-text="offlineNote">
+        关闭此窗口不会启动、停止或重复运行后台任务。
+      </p>
+    </main>
+    <script type="module" src="offline.js"></script>
+  </body>
+</html>

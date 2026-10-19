@@ -1,0 +1,262 @@
+/* Each selector also scopes miniature previews; no duplicated preview palette. */
+[data-theme="cursor"] {
+  color-scheme: light;
+  --surface-base: #f7f7f4;
+  --surface-panel: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-emphasis: #edede7;
+  --surface-hover: #f0f0eb;
+  --surface-highlight: #ffe2d3;
+  --line: #ddddd5;
+  --field-line: #85857b;
+  --text: #26251e;
+  --muted: #656357;
+  --button-text: #26251e;
+  --accent: #c63d00;
+  --accent-hover: #b73a00;
+  --accent-active: #973000;
+  --accent-soft: #fff0e7;
+  --on-accent: #ffffff;
+  --brand-text: #b73a00;
+  --nav-selected: #ffffff;
+  --nav-selected-ink: #26251e;
+  --nav-selected-line: #cecec5;
+  --nav-selected-hover: #f0f0eb;
+  --focus: #b73a00;
+  --focus-ring: #f4d7c5;
+  --radius-control: 8px;
+  --radius-sm: 12px;
+  --radius-panel: 12px;
+  --display-weight: 400;
+  --chart-calls: #657b92;
+  --chart-cost: #a23c09;
+  --graph-explicit: #3d698e;
+  --graph-accepted: #9b3a0c;
+  --graph-group: #526e60;
+  --skeleton-base: #eaeae3;
+  --skeleton-highlight: #f7f7f4;
+}
+[data-theme="oracle"] {
+  color-scheme: light;
+  --surface-base: #fbf9f8;
+  --surface-panel: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-emphasis: #f1efed;
+  --surface-hover: #f5f4f2;
+  --surface-highlight: #e9e0d1;
+  --line: #dedbd7;
+  --field-line: #89827b;
+  --text: #312d2a;
+  --muted: #67615a;
+  --button-text: #312d2a;
+  --accent: #312d2a;
+  --accent-hover: #4a433d;
+  --accent-active: #1f1b18;
+  --accent-soft: #f1efed;
+  --on-accent: #ffffff;
+  --brand-text: #a5382b;
+  --nav-selected: #ede7de;
+  --nav-selected-ink: #312d2a;
+  --nav-selected-line: #d4c8b6;
+  --nav-selected-hover: #e5ddcf;
+  --focus: #775c2c;
+  --focus-ring: #ece1cb;
+  --radius-control: 4px;
+  --radius-sm: 8px;
+  --radius-panel: 8px;
+  --display-weight: 400;
+  --chart-calls: #74695d;
+  --chart-cost: #96702c;
+  --graph-explicit: #4f6c83;
+  --graph-accepted: #775c2c;
+  --graph-group: #67714f;
+  --skeleton-base: #ebe7e1;
+  --skeleton-highlight: #fbf9f8;
+}
+[data-theme="tesla"] {
+  color-scheme: light;
+  --surface-base: #ffffff;
+  --surface-panel: #f4f4f4;
+  --surface-raised: #ffffff;
+  --surface-emphasis: #e8e9eb;
+  --surface-hover: #eceef0;
+  --surface-highlight: #dce6fd;
+  --line: #dcdfe2;
+  --field-line: #7c8289;
+  --text: #171a20;
+  --muted: #5d626b;
+  --button-text: #171a20;
+  --accent: #315dcc;
+  --accent-hover: #2f55c5;
+  --accent-active: #2545a5;
+  --accent-soft: #eaf0ff;
+  --on-accent: #ffffff;
+  --brand-text: #171a20;
+  --nav-selected: #e8edf8;
+  --nav-selected-ink: #20479e;
+  --nav-selected-line: #c7d4f4;
+  --nav-selected-hover: #dce5fa;
+  --focus: #315dcc;
+  --focus-ring: #dce6fd;
+  --radius-control: 4px;
+  --radius-sm: 4px;
+  --radius-panel: 4px;
+  --display-weight: 500;
+  --chart-calls: #5878ba;
+  --chart-cost: #285342;
+  --graph-explicit: #3e6ae1;
+  --graph-accepted: #285342;
+  --graph-group: #5b6484;
+  --skeleton-base: #e4e6e8;
+  --skeleton-highlight: #f4f4f4;
+}
+/* Shared component roles for the five themes. */
+body .brand {
+  padding: 0;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  -webkit-app-region: no-drag;
+}
+body .brand:enabled:hover,
+body .brand:enabled:active {
+  background: transparent;
+  box-shadow: none;
+}
+body .brand .brand-name {
+  color: var(--brand-text);
+}
+.sidebar nav button[aria-current="page"] {
+  background: var(--nav-selected);
+  color: var(--nav-selected-ink);
+  border-color: var(--nav-selected-line);
+}
+.sidebar nav button[aria-current="page"]:enabled:hover {
+  background: var(--nav-selected-hover);
+  color: var(--nav-selected-ink);
+}
+h1,
+h2,
+h3,
+#page-name {
+  font-weight: var(--display-weight);
+}
+[data-theme="oracle"] #home-panel .home-heading h2::after {
+  content: "";
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin-top: 12px;
+  background: #b59251;
+}
+[data-theme="tesla"] .home-card,
+[data-theme="tesla"] .home-flow {
+  border-color: transparent;
+}
+/* Warm clay: hairline alpha borders, soft elevation and quiet accent actions. */
+[data-theme="clay"] {
+  color-scheme: light;
+  --surface-base: #f5f5f3;
+  --surface-panel: #fcfcfb;
+  --surface-raised: #ffffff;
+  --surface-emphasis: #eeedea;
+  --surface-hover: #f1f0ee;
+  --surface-highlight: #f6e0d4;
+  --line: rgba(20, 18, 16, 0.08);
+  --field-line: rgba(20, 18, 16, 0.16);
+  --text: #1f1e1d;
+  --muted: #6d6963;
+  --button-text: #1f1e1d;
+  --accent: #b3502e;
+  --accent-hover: #9e4526;
+  --accent-active: #87391f;
+  --accent-soft: #f9ede6;
+  --on-accent: #ffffff;
+  --brand-text: #b3502e;
+  --nav-selected: #f8ebe2;
+  --nav-selected-ink: #9a4a2b;
+  --nav-selected-line: #eed7c8;
+  --nav-selected-hover: #f3e2d4;
+  --focus: #9e4526;
+  --focus-ring: rgba(179, 80, 46, 0.22);
+  --radius-control: 8px;
+  --radius-sm: 12px;
+  --radius-panel: 12px;
+  --display-weight: 400;
+  --chart-calls: #8a97a8;
+  --chart-cost: #b3502e;
+  --graph-explicit: #3d698e;
+  --graph-accepted: #9b3a0c;
+  --graph-group: #526e60;
+  --skeleton-base: #eceae6;
+  --skeleton-highlight: #f5f5f3;
+  --shadow-sm:
+    0 1px 2px rgba(30, 25, 20, 0.05), 0 2px 8px rgba(30, 25, 20, 0.07);
+  --shadow-md:
+    0 2px 4px rgba(30, 25, 20, 0.05), 0 6px 16px rgba(30, 25, 20, 0.1);
+}
+[data-theme="clay"] .ui-card {
+  box-shadow: var(--shadow-sm);
+}
+/* Cards contain independent controls; keep the container stationary during use. */
+[data-theme="clay"] .ui-card:focus-within {
+  box-shadow: var(--shadow-md);
+  border-color: var(--field-line);
+}
+/* Standalone dark theme: neutral surfaces and readable ice-blue actions. */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-base: #0b0b0a;
+  --surface-panel: #151515;
+  --surface-raised: #1a1a19;
+  --surface-emphasis: #20201e;
+  --surface-hover: #20201e;
+  --surface-highlight: rgba(203, 230, 252, 0.16);
+  --line: rgba(255, 253, 250, 0.09);
+  /* Field boundaries identify interactive controls; hairlines only divide panels. */
+  --field-line: rgba(255, 253, 250, 0.4);
+  --text: #f0ede9;
+  --muted: #9d9a93;
+  --button-text: #f0ede9;
+  --accent: #cbe6fc;
+  --accent-hover: #e2f0fd;
+  --accent-active: #b8d9f5;
+  --accent-soft: rgba(203, 230, 252, 0.14);
+  --on-accent: #16222c;
+  --brand-text: #f0ede9;
+  --nav-selected: rgba(203, 230, 252, 0.16);
+  --nav-selected-ink: #cbe6fc;
+  --nav-selected-line: rgba(203, 230, 252, 0.3);
+  --nav-selected-hover: rgba(203, 230, 252, 0.24);
+  --focus: #cbe6fc;
+  --focus-ring: rgba(203, 230, 252, 0.35);
+  --danger: #e2907f;
+  --error-text: #e2907f;
+  --error-line: #e2907f;
+  --error-soft: rgba(226, 144, 127, 0.14);
+  --status-waiting: #c9b491;
+  --status-waiting-soft: rgba(201, 180, 145, 0.14);
+  --status-connected: #8fbfa2;
+  --status-connected-soft: rgba(143, 191, 162, 0.14);
+  --status-disconnected: #e2907f;
+  --status-info: #b5b2ac;
+  --status-info-soft: rgba(181, 178, 172, 0.08);
+  --chart-calls: #7d8ba0;
+  --chart-cost: #cbe6fc;
+  --graph-explicit: #8ebce8;
+  --graph-suggested: #a9a29a;
+  --graph-accepted: #cbe6fc;
+  --graph-group: #8fbfa2;
+  --graph-node: #f0ede9;
+  --graph-muted: #73716b;
+  --skeleton-base: #20201e;
+  --skeleton-highlight: #262522;
+  --radius-control: 8px;
+  --radius-sm: 12px;
+  --radius-panel: 12px;
+  --display-weight: 400;
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
