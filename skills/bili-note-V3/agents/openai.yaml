@@ -1,0 +1,4 @@
+interface:
+  display_name: "Bili Note V3"
+  short_description: "将B站或YouTube视频生成带证据审计的知识笔记。"
+  default_prompt: "Use $bili-note-v2 to turn this single Bilibili or YouTube video into an evidence-linked Markdown or Obsidian note, with terminology review, publication audit, and safe media cleanup."
