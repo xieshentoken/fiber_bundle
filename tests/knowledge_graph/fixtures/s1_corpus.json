@@ -1,0 +1,595 @@
+{
+  "schema": "fiber-knowledge-graph-synthetic-corpus/v1",
+  "source": "fixed synthetic corpus; no real Vault data",
+  "annotation_status": "synthetic expectations; independent human quality review NOT RUN",
+  "notes": [
+    {
+      "sample_id": "n01",
+      "path": "sample-01.md",
+      "source_kind": "historical_note",
+      "category": "供应商压力",
+      "text": "# 青松供应商1\n本条为合成样本，不对应真实资料。\n青松供应商的额定压力为2.4 MPa，材料型号AB-12。\n样本编号：S1-01。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n02",
+      "path": "sample-02.md",
+      "source_kind": "historical_note",
+      "category": "供应商压力",
+      "text": "# 青松供应商2\n本条为合成样本，不对应真实资料。\n青松供应商的额定压力为2.4 MPa，材料型号AB-12。\n样本编号：S1-02。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n03",
+      "path": "sample-03.md",
+      "source_kind": "historical_note",
+      "category": "供应商压力",
+      "text": "# 青松供应商3\n本条为合成样本，不对应真实资料。\n青松供应商的额定压力为2.4 MPa，材料型号AB-12。\n样本编号：S1-03。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n04",
+      "path": "sample-04.md",
+      "source_kind": "historical_note",
+      "category": "供应商压力",
+      "text": "# 青松供应商4\n本条为合成样本，不对应真实资料。\n青松供应商的额定压力为2.4 MPa，材料型号AB-12。\n样本编号：S1-04。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n05",
+      "path": "sample-05.md",
+      "source_kind": "historical_note",
+      "category": "供应商压力",
+      "text": "# 青松供应商5\n本条为合成样本，不对应真实资料。\n青松供应商的额定压力为2.4 MPa，材料型号AB-12。\n样本编号：S1-05。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n06",
+      "path": "sample-06.md",
+      "source_kind": "historical_note",
+      "category": "供应商压力",
+      "text": "# 青松供应商6\n本条为合成样本，不对应真实资料。\n青松供应商的额定压力为2.4 MPa，材料型号AB-12。\n样本编号：S1-06。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n07",
+      "path": "sample-07.md",
+      "source_kind": "historical_note",
+      "category": "供应商压力",
+      "text": "# 青松供应商7\n本条为合成样本，不对应真实资料。\n青松供应商的额定压力为2.4 MPa，材料型号AB-12。\n样本编号：S1-07。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n08",
+      "path": "sample-08.md",
+      "source_kind": "historical_note",
+      "category": "供应商压力",
+      "text": "# 青松供应商8\n本条为合成样本，不对应真实资料。\n青松供应商的额定压力为2.4 MPa，材料型号AB-12。\n样本编号：S1-08。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n09",
+      "path": "sample-09.md",
+      "source_kind": "historical_note",
+      "category": "供应商压力",
+      "text": "# 青松供应商9\n本条为合成样本，不对应真实资料。\n青松供应商的额定压力为2.4 MPa，材料型号AB-12。\n样本编号：S1-09。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n10",
+      "path": "sample-10.md",
+      "source_kind": "historical_note",
+      "category": "供应商压力",
+      "text": "# 青松供应商10\n本条为合成样本，不对应真实资料。\n青松供应商的额定压力为2.4 MPa，材料型号AB-12。\n样本编号：S1-10。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n11",
+      "path": "sample-11.md",
+      "source_kind": "historical_note",
+      "category": "中文与别名",
+      "text": "# 微通道冷板1\n本条为合成样本，不对应真实资料。\n微通道冷板的英文简称为MC-CP。散热试验采用水冷。\n样本编号：S1-11。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n12",
+      "path": "sample-12.md",
+      "source_kind": "historical_note",
+      "category": "中文与别名",
+      "text": "# 微通道冷板2\n本条为合成样本，不对应真实资料。\n微通道冷板的英文简称为MC-CP。散热试验采用水冷。\n样本编号：S1-12。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n13",
+      "path": "sample-13.md",
+      "source_kind": "historical_note",
+      "category": "中文与别名",
+      "text": "# 微通道冷板3\n本条为合成样本，不对应真实资料。\n微通道冷板的英文简称为MC-CP。散热试验采用水冷。\n样本编号：S1-13。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n14",
+      "path": "sample-14.md",
+      "source_kind": "historical_note",
+      "category": "中文与别名",
+      "text": "# 微通道冷板4\n本条为合成样本，不对应真实资料。\n微通道冷板的英文简称为MC-CP。散热试验采用水冷。\n样本编号：S1-14。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n15",
+      "path": "sample-15.md",
+      "source_kind": "historical_note",
+      "category": "中文与别名",
+      "text": "# 微通道冷板5\n本条为合成样本，不对应真实资料。\n微通道冷板的英文简称为MC-CP。散热试验采用水冷。\n样本编号：S1-15。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n16",
+      "path": "sample-16.md",
+      "source_kind": "historical_note",
+      "category": "中文与别名",
+      "text": "# 微通道冷板6\n本条为合成样本，不对应真实资料。\n微通道冷板的英文简称为MC-CP。散热试验采用水冷。\n样本编号：S1-16。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n17",
+      "path": "sample-17.md",
+      "source_kind": "historical_note",
+      "category": "中文与别名",
+      "text": "# 微通道冷板7\n本条为合成样本，不对应真实资料。\n微通道冷板的英文简称为MC-CP。散热试验采用水冷。\n样本编号：S1-17。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n18",
+      "path": "sample-18.md",
+      "source_kind": "historical_note",
+      "category": "中文与别名",
+      "text": "# 微通道冷板8\n本条为合成样本，不对应真实资料。\n微通道冷板的英文简称为MC-CP。散热试验采用水冷。\n样本编号：S1-18。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n19",
+      "path": "sample-19.md",
+      "source_kind": "historical_note",
+      "category": "中文与别名",
+      "text": "# 微通道冷板9\n本条为合成样本，不对应真实资料。\n微通道冷板的英文简称为MC-CP。散热试验采用水冷。\n样本编号：S1-19。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n20",
+      "path": "sample-20.md",
+      "source_kind": "historical_note",
+      "category": "中文与别名",
+      "text": "# 微通道冷板10\n本条为合成样本，不对应真实资料。\n微通道冷板的英文简称为MC-CP。散热试验采用水冷。\n样本编号：S1-20。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n21",
+      "path": "sample-21.md",
+      "source_kind": "historical_note",
+      "category": "同名异义",
+      "text": "# 青松作家1\n本条为合成样本，不对应真实资料。\n青松是本篇虚构人物的笔名，从事小说写作；不是供应商。\n样本编号：S1-21。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n22",
+      "path": "sample-22.md",
+      "source_kind": "historical_note",
+      "category": "同名异义",
+      "text": "# 青松作家2\n本条为合成样本，不对应真实资料。\n青松是本篇虚构人物的笔名，从事小说写作；不是供应商。\n样本编号：S1-22。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n23",
+      "path": "sample-23.md",
+      "source_kind": "historical_note",
+      "category": "同名异义",
+      "text": "# 青松作家3\n本条为合成样本，不对应真实资料。\n青松是本篇虚构人物的笔名，从事小说写作；不是供应商。\n样本编号：S1-23。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n24",
+      "path": "sample-24.md",
+      "source_kind": "historical_note",
+      "category": "同名异义",
+      "text": "# 青松作家4\n本条为合成样本，不对应真实资料。\n青松是本篇虚构人物的笔名，从事小说写作；不是供应商。\n样本编号：S1-24。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n25",
+      "path": "sample-25.md",
+      "source_kind": "historical_note",
+      "category": "同名异义",
+      "text": "# 青松作家5\n本条为合成样本，不对应真实资料。\n青松是本篇虚构人物的笔名，从事小说写作；不是供应商。\n样本编号：S1-25。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n26",
+      "path": "sample-26.md",
+      "source_kind": "historical_note",
+      "category": "同名异义",
+      "text": "# 青松作家6\n本条为合成样本，不对应真实资料。\n青松是本篇虚构人物的笔名，从事小说写作；不是供应商。\n样本编号：S1-26。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n27",
+      "path": "sample-27.md",
+      "source_kind": "historical_note",
+      "category": "同名异义",
+      "text": "# 青松作家7\n本条为合成样本，不对应真实资料。\n青松是本篇虚构人物的笔名，从事小说写作；不是供应商。\n样本编号：S1-27。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n28",
+      "path": "sample-28.md",
+      "source_kind": "historical_note",
+      "category": "同名异义",
+      "text": "# 青松作家8\n本条为合成样本，不对应真实资料。\n青松是本篇虚构人物的笔名，从事小说写作；不是供应商。\n样本编号：S1-28。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n29",
+      "path": "sample-29.md",
+      "source_kind": "historical_note",
+      "category": "同名异义",
+      "text": "# 青松作家9\n本条为合成样本，不对应真实资料。\n青松是本篇虚构人物的笔名，从事小说写作；不是供应商。\n样本编号：S1-29。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n30",
+      "path": "sample-30.md",
+      "source_kind": "historical_note",
+      "category": "同名异义",
+      "text": "# 青松作家10\n本条为合成样本，不对应真实资料。\n青松是本篇虚构人物的笔名，从事小说写作；不是供应商。\n样本编号：S1-30。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n31",
+      "path": "sample-31.md",
+      "source_kind": "historical_note",
+      "category": "否定关系",
+      "text": "# 材料适用性1\n本条为合成样本，不对应真实资料。\nAB-12不适用于高温试验。不能从共同出现推断适用关系。\n样本编号：S1-31。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n32",
+      "path": "sample-32.md",
+      "source_kind": "historical_note",
+      "category": "否定关系",
+      "text": "# 材料适用性2\n本条为合成样本，不对应真实资料。\nAB-12不适用于高温试验。不能从共同出现推断适用关系。\n样本编号：S1-32。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n33",
+      "path": "sample-33.md",
+      "source_kind": "historical_note",
+      "category": "否定关系",
+      "text": "# 材料适用性3\n本条为合成样本，不对应真实资料。\nAB-12不适用于高温试验。不能从共同出现推断适用关系。\n样本编号：S1-33。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n34",
+      "path": "sample-34.md",
+      "source_kind": "historical_note",
+      "category": "否定关系",
+      "text": "# 材料适用性4\n本条为合成样本，不对应真实资料。\nAB-12不适用于高温试验。不能从共同出现推断适用关系。\n样本编号：S1-34。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n35",
+      "path": "sample-35.md",
+      "source_kind": "historical_note",
+      "category": "否定关系",
+      "text": "# 材料适用性5\n本条为合成样本，不对应真实资料。\nAB-12不适用于高温试验。不能从共同出现推断适用关系。\n样本编号：S1-35。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n36",
+      "path": "sample-36.md",
+      "source_kind": "historical_note",
+      "category": "否定关系",
+      "text": "# 材料适用性6\n本条为合成样本，不对应真实资料。\nAB-12不适用于高温试验。不能从共同出现推断适用关系。\n样本编号：S1-36。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n37",
+      "path": "sample-37.md",
+      "source_kind": "historical_note",
+      "category": "否定关系",
+      "text": "# 材料适用性7\n本条为合成样本，不对应真实资料。\nAB-12不适用于高温试验。不能从共同出现推断适用关系。\n样本编号：S1-37。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n38",
+      "path": "sample-38.md",
+      "source_kind": "historical_note",
+      "category": "否定关系",
+      "text": "# 材料适用性8\n本条为合成样本，不对应真实资料。\nAB-12不适用于高温试验。不能从共同出现推断适用关系。\n样本编号：S1-38。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n39",
+      "path": "sample-39.md",
+      "source_kind": "historical_note",
+      "category": "否定关系",
+      "text": "# 材料适用性9\n本条为合成样本，不对应真实资料。\nAB-12不适用于高温试验。不能从共同出现推断适用关系。\n样本编号：S1-39。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n40",
+      "path": "sample-40.md",
+      "source_kind": "historical_note",
+      "category": "否定关系",
+      "text": "# 材料适用性10\n本条为合成样本，不对应真实资料。\nAB-12不适用于高温试验。不能从共同出现推断适用关系。\n样本编号：S1-40。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n41",
+      "path": "sample-41.md",
+      "source_kind": "historical_note",
+      "category": "数值差异",
+      "text": "# 不同版本压力1\n本条为合成样本，不对应真实资料。\n旧版额定压力为1.8 MPa，新版额定压力为2.4 MPa。两版不能等同。\n样本编号：S1-41。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n42",
+      "path": "sample-42.md",
+      "source_kind": "historical_note",
+      "category": "数值差异",
+      "text": "# 不同版本压力2\n本条为合成样本，不对应真实资料。\n旧版额定压力为1.8 MPa，新版额定压力为2.4 MPa。两版不能等同。\n样本编号：S1-42。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n43",
+      "path": "sample-43.md",
+      "source_kind": "historical_note",
+      "category": "数值差异",
+      "text": "# 不同版本压力3\n本条为合成样本，不对应真实资料。\n旧版额定压力为1.8 MPa，新版额定压力为2.4 MPa。两版不能等同。\n样本编号：S1-43。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n44",
+      "path": "sample-44.md",
+      "source_kind": "historical_note",
+      "category": "数值差异",
+      "text": "# 不同版本压力4\n本条为合成样本，不对应真实资料。\n旧版额定压力为1.8 MPa，新版额定压力为2.4 MPa。两版不能等同。\n样本编号：S1-44。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n45",
+      "path": "sample-45.md",
+      "source_kind": "historical_note",
+      "category": "数值差异",
+      "text": "# 不同版本压力5\n本条为合成样本，不对应真实资料。\n旧版额定压力为1.8 MPa，新版额定压力为2.4 MPa。两版不能等同。\n样本编号：S1-45。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n46",
+      "path": "sample-46.md",
+      "source_kind": "historical_note",
+      "category": "数值差异",
+      "text": "# 不同版本压力6\n本条为合成样本，不对应真实资料。\n旧版额定压力为1.8 MPa，新版额定压力为2.4 MPa。两版不能等同。\n样本编号：S1-46。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n47",
+      "path": "sample-47.md",
+      "source_kind": "historical_note",
+      "category": "数值差异",
+      "text": "# 不同版本压力7\n本条为合成样本，不对应真实资料。\n旧版额定压力为1.8 MPa，新版额定压力为2.4 MPa。两版不能等同。\n样本编号：S1-47。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n48",
+      "path": "sample-48.md",
+      "source_kind": "historical_note",
+      "category": "数值差异",
+      "text": "# 不同版本压力8\n本条为合成样本，不对应真实资料。\n旧版额定压力为1.8 MPa，新版额定压力为2.4 MPa。两版不能等同。\n样本编号：S1-48。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n49",
+      "path": "sample-49.md",
+      "source_kind": "historical_note",
+      "category": "数值差异",
+      "text": "# 不同版本压力9\n本条为合成样本，不对应真实资料。\n旧版额定压力为1.8 MPa，新版额定压力为2.4 MPa。两版不能等同。\n样本编号：S1-49。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n50",
+      "path": "sample-50.md",
+      "source_kind": "historical_note",
+      "category": "数值差异",
+      "text": "# 不同版本压力10\n本条为合成样本，不对应真实资料。\n旧版额定压力为1.8 MPa，新版额定压力为2.4 MPa。两版不能等同。\n样本编号：S1-50。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n51",
+      "path": "sample-51.md",
+      "source_kind": "historical_note",
+      "category": "无关内容",
+      "text": "# 园艺随记1\n本条为合成样本，不对应真实资料。\n盆栽在秋天需要减少浇水。此文不讨论材料和压力。\n样本编号：S1-51。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n52",
+      "path": "sample-52.md",
+      "source_kind": "historical_note",
+      "category": "无关内容",
+      "text": "# 园艺随记2\n本条为合成样本，不对应真实资料。\n盆栽在秋天需要减少浇水。此文不讨论材料和压力。\n样本编号：S1-52。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n53",
+      "path": "sample-53.md",
+      "source_kind": "historical_note",
+      "category": "无关内容",
+      "text": "# 园艺随记3\n本条为合成样本，不对应真实资料。\n盆栽在秋天需要减少浇水。此文不讨论材料和压力。\n样本编号：S1-53。\n",
+      "split": "tuning"
+    },
+    {
+      "sample_id": "n54",
+      "path": "sample-54.md",
+      "source_kind": "historical_note",
+      "category": "无关内容",
+      "text": "# 园艺随记4\n本条为合成样本，不对应真实资料。\n盆栽在秋天需要减少浇水。此文不讨论材料和压力。\n样本编号：S1-54。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n55",
+      "path": "sample-55.md",
+      "source_kind": "historical_note",
+      "category": "无关内容",
+      "text": "# 园艺随记5\n本条为合成样本，不对应真实资料。\n盆栽在秋天需要减少浇水。此文不讨论材料和压力。\n样本编号：S1-55。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n56",
+      "path": "sample-56.md",
+      "source_kind": "historical_note",
+      "category": "无关内容",
+      "text": "# 园艺随记6\n本条为合成样本，不对应真实资料。\n盆栽在秋天需要减少浇水。此文不讨论材料和压力。\n样本编号：S1-56。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n57",
+      "path": "sample-57.md",
+      "source_kind": "historical_note",
+      "category": "无关内容",
+      "text": "# 园艺随记7\n本条为合成样本，不对应真实资料。\n盆栽在秋天需要减少浇水。此文不讨论材料和压力。\n样本编号：S1-57。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n58",
+      "path": "sample-58.md",
+      "source_kind": "historical_note",
+      "category": "无关内容",
+      "text": "# 园艺随记8\n本条为合成样本，不对应真实资料。\n盆栽在秋天需要减少浇水。此文不讨论材料和压力。\n样本编号：S1-58。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n59",
+      "path": "sample-59.md",
+      "source_kind": "historical_note",
+      "category": "无关内容",
+      "text": "# 园艺随记9\n本条为合成样本，不对应真实资料。\n盆栽在秋天需要减少浇水。此文不讨论材料和压力。\n样本编号：S1-59。\n",
+      "split": "validation"
+    },
+    {
+      "sample_id": "n60",
+      "path": "sample-60.md",
+      "source_kind": "historical_note",
+      "category": "无关内容",
+      "text": "# 园艺随记10\n本条为合成样本，不对应真实资料。\n盆栽在秋天需要减少浇水。此文不讨论材料和压力。\n样本编号：S1-60。\n",
+      "split": "validation"
+    }
+  ],
+  "questions": [
+    {
+      "id": "q01",
+      "query": "青松供应商",
+      "split": "tuning"
+    },
+    {
+      "id": "q02",
+      "query": "微通道冷板",
+      "split": "tuning"
+    },
+    {
+      "id": "q03",
+      "query": "AB-12",
+      "split": "tuning"
+    },
+    {
+      "id": "q04",
+      "query": "旧版 1.8",
+      "split": "tuning"
+    },
+    {
+      "id": "q05",
+      "query": "MC-CP",
+      "split": "validation"
+    },
+    {
+      "id": "q06",
+      "query": "青松 小说",
+      "split": "validation"
+    },
+    {
+      "id": "q07",
+      "query": "额定压力 2.4 MPa",
+      "split": "validation"
+    },
+    {
+      "id": "q08",
+      "query": "AB-123",
+      "split": "validation"
+    },
+    {
+      "id": "q09",
+      "query": "高温试验",
+      "split": "validation"
+    },
+    {
+      "id": "q10",
+      "query": "园艺",
+      "split": "validation"
+    },
+    {
+      "id": "q11",
+      "query": "量子真空泵",
+      "split": "validation"
+    },
+    {
+      "id": "q12",
+      "query": "水冷",
+      "split": "validation"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "a01",
+      "notes": [
+        "n11",
+        "n14"
+      ],
+      "expectation": "related",
+      "reason": "同一技术术语的独立合成记录"
+    },
+    {
+      "id": "a02",
+      "notes": [
+        "n01",
+        "n21"
+      ],
+      "expectation": "do_not_merge",
+      "reason": "青松供应商与作家同名异义"
+    },
+    {
+      "id": "a03",
+      "notes": [
+        "n01",
+        "n41"
+      ],
+      "expectation": "related_with_conflict",
+      "reason": "不同压力版本均保留，不裁决冲突"
+    },
+    {
+      "id": "a04",
+      "notes": [
+        "n31"
+      ],
+      "expectation": "no_positive_applicability",
+      "reason": "否定表述不能抽成适用"
+    },
+    {
+      "id": "a05",
+      "notes": [
+        "n01",
+        "n51"
+      ],
+      "expectation": "unrelated",
+      "reason": "共同字词不成立材料关系"
+    }
+  ]
+}

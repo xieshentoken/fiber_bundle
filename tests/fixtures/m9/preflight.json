@@ -1,0 +1,44 @@
+{
+  "schema": "fiber-media-preflight-source/v1",
+  "evidence_mode": "audio_only",
+  "source": {
+    "sha256": "e638cb522e6867d6fc51d596479746ba563fa7dd1bea6c46f091772c80a4eea9",
+    "byte_count": 1024,
+    "media_kind": "audio",
+    "origin": "direct",
+    "source_state": "complete",
+    "ownership": "user_original",
+    "local_duration_ms": 3000,
+    "declared_duration_ms": 3000,
+    "keep_media": false
+  },
+  "transcript": {
+    "kind": "subtitle",
+    "raw_sha256": "ca5fb60c82a2cf9b1afbcaefb6d66fd1c7760a012e670f17f214b0ec210a6074",
+    "normalized_sha256": "0e1b5f93a13afcaa0d15c952b299cce160f69921b71d055931cf4e102021c591",
+    "cues": [
+      {
+        "start_ms": 0,
+        "end_ms": 1500,
+        "text_sha256": "6aebc39101c6a338f41ae69f28a1aadf2c8f75ff448e9f00e582a4d8b60c1fc7"
+      },
+      {
+        "start_ms": 1500,
+        "end_ms": 3000,
+        "text_sha256": "f94a6394d01fb8c681f0c4c8e5901c056a07abd4228167a1e995ea725ac1066f"
+      }
+    ],
+    "failed_ranges": []
+  },
+  "glossary": {
+    "sha256": null,
+    "confirmed_sha256": null,
+    "unresolved_count": 0
+  },
+  "visual": {
+    "state": "not_applicable",
+    "frame_count": 0,
+    "unresolved_count": 0,
+    "coverage_ranges": []
+  }
+}

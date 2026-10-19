@@ -1,0 +1,200 @@
+{
+  "schema": 1,
+  "corpus_sha256": "acb9d381bbb466645438da0f2626a3036f9aabd4d437c16632a6bccf13bc6793",
+  "criteria": "candidate thematic relatedness only; identical category or supplier/version/negation material topics are related; author/writer and gardening stay separate; no factual truth claim",
+  "independent_human_review": "NOT RUN",
+  "related_categories": [
+    [
+      "供应商压力",
+      "数值差异",
+      "否定关系"
+    ],
+    [
+      "中文与别名"
+    ],
+    [
+      "同名异义"
+    ],
+    [
+      "无关内容"
+    ]
+  ],
+  "primary_evaluation": "original 12 questions plus 4 separately reported paraphrases; exact same existing literal ranking; no graph-ranking comparator available",
+  "paraphrase_questions": [
+    {
+      "id": "e01",
+      "query": "冷却液经过细小流道的散热板",
+      "categories": [
+        "中文与别名"
+      ],
+      "split": "validation"
+    },
+    {
+      "id": "e02",
+      "query": "写小说的青松先生",
+      "categories": [
+        "同名异义"
+      ],
+      "split": "validation"
+    },
+    {
+      "id": "e03",
+      "query": "这种材料不能用于高温",
+      "categories": [
+        "否定关系"
+      ],
+      "split": "validation"
+    },
+    {
+      "id": "e04",
+      "query": "秋天的植物该怎么浇水",
+      "categories": [
+        "无关内容"
+      ],
+      "split": "validation"
+    }
+  ],
+  "questions": [
+    {
+      "id": "q01",
+      "query": "青松供应商",
+      "split": "tuning",
+      "categories": [
+        "供应商压力"
+      ],
+      "set": "original"
+    },
+    {
+      "id": "q02",
+      "query": "微通道冷板",
+      "split": "tuning",
+      "categories": [
+        "中文与别名"
+      ],
+      "set": "original"
+    },
+    {
+      "id": "q03",
+      "query": "AB-12",
+      "split": "tuning",
+      "categories": [
+        "供应商压力",
+        "否定关系"
+      ],
+      "set": "original"
+    },
+    {
+      "id": "q04",
+      "query": "旧版 1.8",
+      "split": "tuning",
+      "categories": [
+        "数值差异"
+      ],
+      "set": "original"
+    },
+    {
+      "id": "q05",
+      "query": "MC-CP",
+      "split": "validation",
+      "categories": [
+        "中文与别名"
+      ],
+      "set": "original"
+    },
+    {
+      "id": "q06",
+      "query": "青松 小说",
+      "split": "validation",
+      "categories": [
+        "同名异义"
+      ],
+      "set": "original"
+    },
+    {
+      "id": "q07",
+      "query": "额定压力 2.4 MPa",
+      "split": "validation",
+      "categories": [
+        "供应商压力"
+      ],
+      "set": "original"
+    },
+    {
+      "id": "q08",
+      "query": "AB-123",
+      "split": "validation",
+      "categories": [],
+      "set": "original"
+    },
+    {
+      "id": "q09",
+      "query": "高温试验",
+      "split": "validation",
+      "categories": [
+        "否定关系"
+      ],
+      "set": "original"
+    },
+    {
+      "id": "q10",
+      "query": "园艺",
+      "split": "validation",
+      "categories": [
+        "无关内容"
+      ],
+      "set": "original"
+    },
+    {
+      "id": "q11",
+      "query": "量子真空泵",
+      "split": "validation",
+      "categories": [],
+      "set": "original"
+    },
+    {
+      "id": "q12",
+      "query": "水冷",
+      "split": "validation",
+      "categories": [
+        "中文与别名"
+      ],
+      "set": "original"
+    },
+    {
+      "id": "e01",
+      "query": "冷却液经过细小流道的散热板",
+      "categories": [
+        "中文与别名"
+      ],
+      "split": "validation",
+      "set": "paraphrase"
+    },
+    {
+      "id": "e02",
+      "query": "写小说的青松先生",
+      "categories": [
+        "同名异义"
+      ],
+      "split": "validation",
+      "set": "paraphrase"
+    },
+    {
+      "id": "e03",
+      "query": "这种材料不能用于高温",
+      "categories": [
+        "否定关系"
+      ],
+      "split": "validation",
+      "set": "paraphrase"
+    },
+    {
+      "id": "e04",
+      "query": "秋天的植物该怎么浇水",
+      "categories": [
+        "无关内容"
+      ],
+      "split": "validation",
+      "set": "paraphrase"
+    }
+  ]
+}
