@@ -1,0 +1,150 @@
+.view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 20px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+.view-tabs button {
+  background: transparent;
+  box-shadow: none;
+}
+:root .view-tabs button[aria-selected="true"],
+:root .view-tabs button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+  font-weight: 650;
+}
+.view-panel {
+  min-width: 0;
+}
+.settings-layout:has(> .view-tabs) {
+  display: block;
+}
+.view-disclosure {
+  margin: 16px 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.view-disclosure > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.task-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  margin: 16px 0;
+}
+.task-summary span {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.task-summary strong {
+  font-size: 1.3rem;
+}
+.task-progress {
+  width: 100%;
+  height: 10px;
+  accent-color: var(--accent);
+}
+.task-actions {
+  position: sticky;
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: 16px;
+  margin-top: 16px;
+}
+.task-actions label {
+  flex: 1 1 280px;
+  margin: 0;
+}
+.task-actions input[type="checkbox"] {
+  width: auto;
+}
+.task-impact {
+  border-left: 3px solid var(--status-waiting);
+  background: var(--status-waiting-soft);
+  color: var(--text);
+  padding: 12px 16px;
+  margin: 12px 0;
+}
+.task-failure {
+  border-left: 3px solid var(--error-line);
+  background: var(--error-soft);
+  color: var(--error-text);
+  padding: 12px 16px;
+  margin: 12px 0;
+}
+.task-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+:root .task-filters button[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.task-row {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+.task-row > summary {
+  cursor: pointer;
+  line-height: 1.7;
+}
+.task-row p {
+  margin: 8px 0;
+}
+.task-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin: 16px 0;
+}
+.task-search {
+  max-width: 440px;
+}
+.section-intro {
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+.record-card .record-card {
+  box-shadow: none;
+}
+@media (max-width: 767px) {
+  .task-actions {
+    position: static;
+  }
+  .task-actions > button {
+    width: 100%;
+  }
+  .view-tabs {
+    gap: 6px;
+  }
+  .view-tabs button {
+    padding: 8px 12px;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .view-tabs button,
+  .task-filters button {
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease;
+  }
+}

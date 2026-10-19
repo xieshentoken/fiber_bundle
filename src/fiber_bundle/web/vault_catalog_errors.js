@@ -1,0 +1,30 @@
+// Catalog diagnostics identify the recovery step rather than suggesting unrelated permissions.
+export function vaultCatalogErrorText(code) {
+  return {
+    vault_operation_requires_reconciliation: "目录移动已中断或结果待核对，请检查原目录与系统废纸篓，再使用‘核对/恢复’；不要重复删除。",
+    vault_read_only: "所选知识库为只读，不能授予入库权限；请选择可写库，或取消‘允许入库’。",
+    vault_index_requires_query_identity: "建立索引缺少有效查询身份，请在‘索引与查询身份’选择有查询权限的身份。",
+    cloud_item_not_downloaded: "目录包含尚未下载到本机的云文件，请先在Finder中下载，或在‘排除范围’排除后重新预检。",
+    cloud_item_pending_stale_or_conflicted: "云文件处于同步中、过期或冲突状态，请在Finder解决同步状态后重新预检。",
+    cloud_status_helper_required: "后台未加载云文件检查辅助程序，请用应用自带启动器重启后台；无需调整知识库权限。",
+    cloud_status_helper_changed: "云文件检查辅助程序校验失败，请恢复完整应用包后重试。",
+    cloud_symlink_not_allowed: "预检发现符号链接，请在‘排除范围’排除该项，或使用独立本机目录。",
+    vault_file_size_limit: "预检发现单个文件超过64MiB。请在‘排除范围’排除此文件，或拆分文件后重新预检；整库累计大小没有上限。",
+    vault_file_alias: "预检发现硬链接文件，无法确认独立来源。请在‘排除范围’排除此文件，或复制为独立普通文件后预检。",
+    vault_file_limit_or_alias: "预检发现超过单文件限制或非独立文件，请核对文件大小与硬链接，并调整‘排除范围’。",
+    vault_note_limit: "单篇Markdown笔记超过解析上限，请拆分笔记或在‘排除范围’排除该文件后重新预检。",
+    vault_reference_limit: "范围内的本地引用数量超过处理上限，请缩小‘包含范围’后重新预检。",
+    vault_reference_invalid: "笔记含无法解析的本地引用，请修正引用或调整‘排除范围’。",
+    vault_source_changed: "预检期间来源文件已变化，请等待同步/编辑完成后重新预检。",
+    vault_directory_changed: "目录身份已变化，请核对‘源目录’，重新预检；不要重用旧删除确认。",
+    vault_preview_changed: "文件或范围与预览不一致，请重新预检再确认。",
+    vault_preview_expired: "预览已过期，请重新预检。",
+    vault_trash_helper_required: "后台未加载本机废纸篓辅助程序，请使用应用自带启动器重启后台后重新预览；无需调整知识库权限。",
+    vault_trash_helper_changed: "废纸篓辅助程序校验失败，请恢复或重新安装完整应用包；当前目录未移动。",
+    vault_trash_macos_required: "移到系统废纸篓仅支持macOS，请在当前系统手动管理目录。",
+    vault_trash_protected_or_partial_scope: "此目录受保护或只接入了部分范围，不能整体移到废纸篓；请核对‘包含/排除范围’，按需仅解除接入。",
+    vault_trash_result_invalid: "无法核实废纸篓操作结果，请先检查原目录和系统废纸篓，不要重复删除。",
+    vault_trash_result_ambiguous: "废纸篓移动结果未知，请先核对原目录和系统废纸篓，再使用恢复核对。",
+    vault_policy_invalid: "目录访问策略格式无效，请核对该目录的策略文件后重新预检。",
+  }[code];
+}

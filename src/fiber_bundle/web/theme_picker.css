@@ -1,0 +1,195 @@
+.theme-picker {
+  width: min(820px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 24px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+  animation: theme-picker-enter var(--duration-base) var(--ease-out);
+}
+.theme-picker::backdrop {
+  background: rgb(23 26 32 / 40%);
+}
+.theme-picker-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.theme-picker-heading h2 {
+  margin: 0;
+  font-size: var(--text-xl);
+}
+.theme-picker-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 24px 0 16px;
+}
+body button.theme-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px;
+  text-align: left;
+  border-color: var(--line);
+  background: var(--surface-raised);
+  font-weight: 400;
+  min-width: 0;
+}
+body button.theme-choice[aria-current="true"] {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
+}
+.theme-choice-name {
+  font-weight: 500;
+  color: var(--text);
+}
+.theme-choice-current {
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+.theme-choice-description {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+.theme-sample {
+  display: grid;
+  grid-template-columns: 22% 1fr;
+  height: 130px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  color: var(--text);
+  background: var(--surface-base);
+}
+.theme-sample-rail {
+  border-right: 1px solid var(--line);
+  background: var(--surface-emphasis);
+}
+.theme-sample-content {
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 1fr 22px;
+  gap: 10px;
+  align-content: start;
+}
+.theme-sample-title {
+  font:
+    500 12px "DM Sans",
+    sans-serif;
+  letter-spacing: -0.02em;
+}
+[data-theme="oracle"].theme-sample .theme-sample-title {
+  font-family: Georgia, serif;
+}
+.theme-sample-action {
+  height: 16px;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+}
+.theme-sample-panel {
+  grid-column: 1 / -1;
+  height: 64px;
+  border-radius: var(--radius-panel);
+  border: 1px solid var(--line);
+  background: var(--surface-panel);
+}
+.theme-picker-error {
+  padding: 12px;
+  border: 1px solid var(--error-line);
+  background: var(--error-soft);
+  color: var(--error-text);
+  border-radius: var(--radius-control);
+}
+@keyframes theme-picker-enter {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@media (max-width: 600px) {
+  .theme-picker {
+    padding: 16px;
+  }
+  .theme-picker-cards {
+    grid-template-columns: 1fr;
+    margin-top: 16px;
+  }
+  .theme-sample {
+    height: 104px;
+  }
+  .theme-sample-panel {
+    height: 42px;
+  }
+}
+
+.theme-sample-content {
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 8px;
+  padding: 10px;
+}
+.theme-sample-action {
+  height: 20px;
+  line-height: 20px;
+  font-size: 10px;
+  text-align: center;
+  color: var(--on-accent);
+}
+.theme-sample-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  height: auto;
+  font-size: 11px;
+  text-align: left;
+}
+.theme-sample-panel small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.theme-sample-panel > span {
+  font-size: 10px;
+  color: var(--text);
+}
+
+.theme-choice-markers {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+.theme-choice-default {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.theme-picker-footer {
+  position: sticky;
+  bottom: -24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+.theme-picker-footer p {
+  flex: 1 1 200px;
+  margin: 0;
+  font-size: var(--text-sm);
+}
+@media (max-width: 600px) {
+  .theme-picker-footer {
+    bottom: -16px;
+  }
+}

@@ -1,0 +1,114 @@
+@import url("./fonts.css");
+:root {
+  --font-ui:
+    "DM Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-heading: var(--font-ui);
+  --font-mono: "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-ui);
+  color: var(--text);
+  background: var(--surface-base);
+  font-synthesis: none;
+  font-size: var(--ui-base-size, 14px);
+  line-height: var(--ui-line-height, 1.571429);
+  color-scheme: light;
+
+  /* Monad reference: warm paper, editorial headings and neutral actions. */
+  --line: #ded9d4;
+  --field-line: #8d8882;
+  --text: #242424;
+  --accent: #242424;
+  --accent-hover: #3a3938;
+  --accent-active: #000000;
+  --accent-soft: #eae6e3;
+  --on-accent: #f6f3f1;
+  --brand-text: var(--text);
+  --nav-selected: var(--accent);
+  --nav-selected-ink: var(--on-accent);
+  --nav-selected-line: var(--accent);
+  --nav-selected-hover: var(--accent-hover);
+  --display-weight: 400;
+  --chart-calls: #7a8da8;
+  --chart-cost: #2d7055;
+  --graph-explicit: #1464dc;
+  --graph-suggested: #8d8278;
+  --graph-accepted: #252525;
+  --graph-group: #647c79;
+  --graph-node: var(--text);
+  --graph-muted: var(--line);
+  --focus: #2563eb;
+  --focus-ring: rgba(43, 89, 209, 0.12);
+  --muted: #625d57;
+
+  /* Surface layers */
+  --surface-base: #f6f3f1;
+  --surface-panel: #faf9f7;
+  --surface-raised: #ffffff;
+  --surface-emphasis: #efebe7;
+  --surface-hover: #efebe7;
+  --surface-highlight: #cfdaf5;
+  --button-text: #242424;
+
+  /* Status colors */
+  /* Functional status colors remain distinct from decorative brand colors. */
+  --danger: #8c3b32;
+  --error-text: #8c3b32;
+  --error-line: #8c3b32;
+  --error-soft: #f4e8e4;
+  --status-waiting: #66523c;
+  --status-waiting-soft: #eee7dc;
+  --status-connected: #31563f;
+  --status-connected-soft: #e6ede7;
+  --status-disconnected: #8c3b32;
+  --status-info: #4e4d4d;
+  --status-info-soft: #eae6e3;
+
+  /* Skeleton loading */
+  --skeleton-base: #eae6e3;
+  --skeleton-highlight: #f6f3f1;
+
+  /* Layout tokens */
+  --radius-control: 8px;
+  --radius-sm: 12px;
+  --radius-lg: 16px;
+  --radius-panel: 16px;
+  --space-sm: 12px;
+  --space-md: 24px;
+  --space-lg: 24px;
+
+  /* Animation tokens */
+  --duration-hover: 150ms;
+  --duration-press: 120ms;
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-panel: 240ms;
+  --duration-slow: 300ms;
+  --duration-exit: 180ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --stagger: 0ms;
+
+  /* Hairline borders and surface contrast provide hierarchy. */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: 0 12px 32px rgba(36, 36, 36, 0.12);
+
+  /* Typography tokens */
+  --text-xs: 0.857rem;
+  --text-sm: 0.929rem;
+  --text-base: 1rem;
+  --text-md: 1.143rem;
+  --text-lg: 1.286rem;
+  --text-xl: 1.571rem;
+  --text-2xl: 2.143rem;
+
+  --leading-tight: 1.25;
+  --leading-snug: 1.4;
+  --leading-normal: 1.6;
+  --leading-relaxed: 1.75;
+
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 600;
+}

@@ -1,0 +1,85 @@
+.model-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+}
+.model-card,
+.model-environment {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
+  padding: 20px;
+  margin-block: 16px;
+  min-width: 0;
+}
+.model-card p,
+.model-runtime-digest {
+  overflow-wrap: anywhere;
+}
+.model-card-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.model-card-heading h3 {
+  margin: 0;
+}
+.model-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-panel);
+  padding: 24px;
+  background: var(--surface-raised);
+  color: var(--text);
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg);
+}
+.model-dialog::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+.model-dialog form,
+.model-dialog fieldset {
+  display: grid;
+  gap: 14px;
+}
+.model-dialog label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.model-dialog input,
+.model-dialog select {
+  width: 100%;
+  min-width: 0;
+}
+.model-dialog fieldset {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  padding: 14px;
+}
+.model-dialog [hidden] {
+  display: none;
+}
+@media (max-width: 600px) {
+  .model-dialog {
+    padding: 16px;
+  }
+  .model-card,
+  .model-environment {
+    padding: 16px;
+  }
+}
+
+.model-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 10px;
+}
+.model-tabs [aria-selected="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}

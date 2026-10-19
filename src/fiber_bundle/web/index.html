@@ -1,0 +1,1623 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title data-i18n="shell.d69ff56ab8">Fiber bundle · 本机管理</title>
+    <link rel="icon" type="image/png" href="/static/logo-original.png" />
+    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/vault_save.css" />
+    <link rel="stylesheet" href="/static/unified_workflow.css" />
+    <link rel="stylesheet" href="/static/home.css" />
+    <link rel="stylesheet" href="/static/themes.css" />
+    <link rel="stylesheet" href="/static/theme_picker.css" />
+    <link rel="stylesheet" href="/static/appearance_overrides.css" />
+    <link rel="stylesheet" href="/static/workspace_clarity.css" />
+    <link rel="stylesheet" href="/static/reading_layout.css" />
+    <script src="/static/appearance_bootstrap.js"></script>
+    <script type="module" src="/static/app.js"></script>
+    <link rel="stylesheet" href="/static/vault_relocation.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand-area">
+        <button
+          id="theme-toggle"
+          type="button"
+          class="brand"
+          aria-label="Fiber bundle，切换主题"
+          aria-haspopup="dialog"
+          aria-controls="theme-picker"
+          aria-expanded="false"
+          title="切换主题"
+          data-i18n-aria-label="shell.6f9b6a0440"
+          data-i18n-title="shell.7a1604323e"
+        >
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="260 250 740 520" focusable="false">
+              <defs>
+                <clipPath id="brand-mark-crop">
+                  <rect x="260" y="250" width="740" height="520"></rect>
+                </clipPath>
+              </defs>
+              <image
+                href="/static/logo-original.png"
+                width="1254"
+                height="1254"
+                clip-path="url(#brand-mark-crop)"
+              ></image>
+            </svg>
+          </span>
+          <span class="brand-name">Fiber bundle</span>
+        </button>
+        <button
+          id="sidebar-toggle"
+          type="button"
+          aria-controls="sidebar"
+          aria-expanded="true"
+          aria-label="收起侧栏"
+          hidden
+          data-i18n-aria-label="shell.bb0b6e36b3"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.7"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <rect x="3" y="4" width="18" height="16" rx="3"></rect>
+            <path d="M9 4v16M13 9h4M13 13h4"></path>
+          </svg>
+        </button>
+      </div>
+
+      <div class="connection">
+        <span id="connection" role="status" data-status="connecting"
+          ><span data-i18n="shell.a5930e0b6e">正在连接管理接口</span></span
+        ><button id="refresh" class="quiet" type="button">
+          <span data-i18n="shell.aee8874341">刷新</span></button
+        ><button id="logout" class="quiet" hidden type="button">
+          <span data-i18n="shell.3ab8cc1593">退出登录</span>
+        </button>
+      </div>
+    </header>
+    <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+    <aside
+      id="sidebar"
+      class="sidebar"
+      aria-label="管理页面"
+      hidden
+      data-i18n-aria-label="shell.d4611b794b"
+    >
+      <button
+        id="sidebar-close"
+        type="button"
+        aria-label="关闭侧栏"
+        hidden
+        data-i18n-aria-label="shell.b94da99084"
+      >
+        <span data-i18n="shell.b94da99084">关闭侧栏</span>
+      </button>
+      <button
+        id="command-open"
+        class="sidebar-search"
+        type="button"
+        aria-haspopup="dialog"
+        aria-keyshortcuts="Meta+K Control+K"
+      >
+        <span class="sidebar-search-label"
+          ><span data-i18n="shell.5522ec06f4">跳转页面或操作…</span></span
+        >
+        <span class="sidebar-search-short"
+          ><span data-i18n="shell.44ce7ae909">搜索</span></span
+        >
+        <kbd>⌘K</kbd>
+      </button>
+      <nav
+        aria-label="管理页面"
+        data-orientation="vertical"
+        data-i18n-aria-label="shell.d4611b794b"
+      >
+        <button
+          type="button"
+          data-tab="home"
+          aria-current="page"
+          data-i18n="shell.203c08e0d4"
+        >
+          首页
+        </button>
+        <button type="button" data-tab="worklist" data-i18n="shell.63a5e7b739">
+          收件箱
+        </button>
+        <p class="nav-heading">
+          <span data-i18n="shell.2ce2847cbc">知识</span>
+        </p>
+        <button type="button" data-tab="vaults" data-i18n="shell.975b35f9c2">
+          知识库
+        </button>
+        <button type="button" data-tab="imports" data-i18n="shell.3619939e3d">
+          资料导入
+        </button>
+        <button type="button" data-tab="inventory" data-i18n="shell.f4b32490a9">
+          资料与版本
+        </button>
+        <button type="button" data-tab="graph" data-i18n="shell.dcec41016e">
+          知识关联
+        </button>
+        <p class="nav-heading">
+          <span data-i18n="shell.685ad54102">创作</span>
+        </p>
+
+        <button type="button" data-tab="creation" data-i18n="shell.0fd6a9eb32">
+          文档制作
+        </button>
+        <p class="nav-heading">
+          <span data-i18n="shell.a5574109f0">连接</span>
+        </p>
+        <button type="button" data-tab="channels" data-i18n="shell.9b25142e64">
+          消息入口
+        </button>
+        <button type="button" data-tab="clients" data-i18n="shell.98c892d393">
+          Agent 与客户端
+        </button>
+        <button type="button" data-tab="models" data-i18n="shell.5125d6b064">
+          模型与查询
+        </button>
+        <p class="nav-heading">
+          <span data-i18n="shell.5b50d7c4b5">系统</span>
+        </p>
+        <button type="button" data-tab="execution" data-i18n="shell.174b70a1b7">
+          执行与费用
+        </button>
+        <button type="button" data-tab="backend" data-i18n="shell.e13e26efd8">
+          后台与提醒
+        </button>
+        <button type="button" data-tab="backups" data-i18n="shell.6beda481d1">
+          备份与恢复
+        </button>
+        <button type="button" data-tab="settings" data-i18n="shell.68ea5dd4d7">
+          系统设置
+        </button>
+        <button
+          type="button"
+          data-tab="pending"
+          hidden
+          data-i18n="shell.dcb49342a5"
+        >
+          待审批
+        </button>
+        <button
+          type="button"
+          data-tab="batches"
+          hidden
+          data-i18n="shell.3a172fdd7e"
+        >
+          待确认批次
+        </button>
+        <button
+          type="button"
+          data-tab="documents"
+          hidden
+          data-i18n="shell.ac0993b674"
+        >
+          文档审核
+        </button>
+        <button
+          type="button"
+          data-tab="media"
+          hidden
+          data-i18n="shell.5e5d4cad40"
+        >
+          媒体审核
+        </button>
+      </nav>
+      <div id="sidebar-footer" class="sidebar-footer"></div>
+    </aside>
+    <main>
+      <div class="notice-area">
+        <p id="notice" role="status" aria-live="polite" hidden></p>
+      </div>
+      <p id="session-warning" class="session-warning" role="status" hidden></p>
+      <section id="login-panel" class="login" hidden>
+        <p data-language-status class="error" role="status" hidden></p>
+        <label class="language-control"
+          ><span data-i18n="common.language">界面语言</span>
+          <select
+            data-language-control
+            data-draft="ignore"
+            aria-label="Interface language"
+          >
+            <option value="zh-CN">简体中文</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+        <h1><span data-i18n="shell.283a227bb2">管理你的知识空间</span></h1>
+        <p class="intro">
+          <span data-i18n="shell.9bc85ced57"
+            >在本机配置知识库和客户端权限。</span
+          >
+        </p>
+        <form id="login-form">
+          <label for="password"
+            ><span data-i18n="shell.b1c2386400">管理密码</span></label
+          ><input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            maxlength="1024"
+          /><button class="primary" type="submit">
+            <span data-i18n="shell.1e2df9c307">登录</span>
+          </button>
+        </form>
+        <p class="muted">
+          <span data-i18n="shell.c9ce857ea4">首次使用：在本机终端运行</span>
+          <code>fiber-bundle set-password</code>
+          <span data-i18n="shell.e939e352a0">设置密码。</span>
+        </p>
+      </section>
+      <section id="workspace" hidden>
+        <div class="page-title">
+          <div class="page-heading">
+            <nav
+              id="page-breadcrumb"
+              class="page-breadcrumb"
+              aria-label="当前位置"
+              hidden
+              data-i18n-aria-label="shell.6be6c8248e"
+            >
+              <button type="button" class="quiet" data-page-target="worklist">
+                <span data-i18n="shell.63a5e7b739">收件箱</span></button
+              ><span aria-hidden="true">/</span>
+            </nav>
+            <div class="page-name-line">
+              <h1 id="page-name" tabindex="-1">
+                <span data-i18n="shell.203c08e0d4">首页</span>
+              </h1>
+              <span id="page-date" class="page-date" hidden></span>
+            </div>
+            <p id="page-summary" class="page-summary" hidden></p>
+            <details id="page-notes" class="page-notes" hidden>
+              <summary><span data-i18n="shell.4262c45dc7">说明</span></summary>
+              <ul id="page-notes-list"></ul>
+            </details>
+          </div>
+          <div id="page-actions" class="page-actions">
+            <div id="page-extra" class="page-extra" hidden></div>
+            <span id="page-updated" class="muted" hidden></span
+            ><button id="page-refresh" type="button" hidden>
+              <span data-i18n="shell.aee8874341">刷新</span>
+            </button>
+            <div id="page-extra-end" class="page-extra" hidden></div>
+          </div>
+        </div>
+        <div class="page-loading-slot">
+          <p id="page-loading" class="muted" role="status" hidden>
+            <span data-i18n="shell.513a8346ba">正在加载页面内容…</span>
+          </p>
+        </div>
+        <section id="home-panel">
+          <div id="home-scope" class="home-scope" data-draft="ignore">
+            <label
+              ><span data-i18n="shell.8e9a24d765">待办来源身份</span
+              ><select id="home-client"></select
+            ></label>
+            <label
+              ><span data-i18n="shell.c7c66a42ea">待办知识库</span
+              ><select id="home-vault"></select
+            ></label>
+          </div>
+          <div id="home-content"></div>
+        </section>
+        <section id="worklist-panel" hidden>
+          <div class="inbox-layout">
+            <nav
+              class="inbox-pages"
+              aria-label="审核页面"
+              data-i18n-aria-label="shell.a5fffb6696"
+            >
+              <p class="nav-heading">
+                <span data-i18n="shell.a5fffb6696">审核页面</span>
+              </p>
+              <button type="button" data-page-target="pending">
+                <span data-i18n="shell.d7821aac3d">知识库审批</span></button
+              ><button type="button" data-page-target="batches">
+                <span data-i18n="shell.176c3e3dd8">批次选择</span></button
+              ><button type="button" data-page-target="documents">
+                <span data-i18n="shell.2962560e79">文档与文章审核</span></button
+              ><button type="button" data-page-target="media">
+                <span data-i18n="shell.c8d5968d7f">媒体与视频审核</span></button
+              ><button type="button" data-page-target="vaults">
+                <span data-i18n="shell.a1ac93f6c1">自动处理与核对</span>
+              </button>
+            </nav>
+            <div id="worklist-content"></div>
+          </div>
+        </section>
+        <section id="imports-panel" hidden>
+          <p class="intro">
+            <span data-i18n="shell.157c4a86a1"
+              >先选择导入方式，再确认身份、知识库和保存规则。</span
+            >
+          </p>
+          <div id="source-imports"></div>
+        </section>
+        <section id="graph-panel" hidden>
+          <div class="scope-bar">
+            <label
+              ><span data-i18n="shell.6999ae61b8">分析身份</span
+              ><select id="graph-client" data-draft="ignore"></select
+            ></label>
+            <label
+              ><span data-i18n="shell.975b35f9c2">知识库</span
+              ><select id="graph-vault" data-draft="ignore"></select
+            ></label>
+            <button id="graph-toggle" type="button" disabled>
+              <span data-i18n="shell.7327cb3c69">启用分析</span>
+            </button>
+            <button
+              id="graph-refresh"
+              type="button"
+              data-page-refresh
+              aria-label="刷新当前状态"
+              title="刷新当前状态"
+              data-i18n-aria-label="shell.f46c311efd"
+              data-i18n-title="shell.f46c311efd"
+            >
+              <span data-i18n="shell.aee8874341">刷新</span>
+            </button>
+          </div>
+          <p id="graph-policy" role="status"></p>
+          <section class="graph-step" aria-labelledby="graph-step-1">
+            <h2 id="graph-step-1">
+              <span>1</span
+              ><span data-i18n="shell.b53c1e4b50">选择笔记并创建任务</span>
+            </h2>
+            <details>
+              <summary>
+                <span data-i18n="shell.c0b110f66f">选择笔记并创建有限任务</span>
+              </summary>
+              <p>
+                <span data-i18n="shell.e3798a40f3"
+                  >未登记笔记须先通过已有 fiber-notes track
+                  操作登记稳定身份；此处不会自动登记。</span
+                >
+              </p>
+              <div id="graph-notes" class="rows"></div>
+              <button id="graph-submit" class="primary" type="button" disabled>
+                <span data-i18n="shell.46f351b60a">创建所选笔记的分析任务</span>
+              </button>
+            </details>
+            <div id="graph-jobs" class="rows"></div>
+          </section>
+          <section class="graph-step" aria-labelledby="graph-step-2">
+            <h2 id="graph-step-2">
+              <span>2</span><span data-i18n="shell.29a8b98611">审核建议</span>
+            </h2>
+            <div class="graph-toolbar">
+              <label
+                ><span data-i18n="shell.f2f67f3a59">建议类型</span
+                ><select id="graph-filter" data-draft="ignore">
+                  <option value="moc" data-i18n="shell.bb520eee2e">
+                    MOC 分组
+                  </option>
+                  <option value="relation" data-i18n="shell.ffce26448a">
+                    关联线索
+                  </option>
+                  <option value="entity" data-i18n="shell.9a79199318">
+                    标题提及
+                  </option>
+                  <option value="all" data-i18n="shell.5c55a67935">全部</option>
+                </select></label
+              >
+              <div
+                class="segmented"
+                role="group"
+                aria-label="显示方式"
+                data-i18n-aria-label="shell.8d3d73a18a"
+              >
+                <button id="graph-list-mode" type="button" aria-pressed="true">
+                  <span data-i18n="shell.50adfe591c">建议列表</span></button
+                ><button id="graph-map-mode" type="button" aria-pressed="false">
+                  <span data-i18n="shell.24463a1403">笔记关联图</span>
+                </button>
+              </div>
+            </div>
+            <div id="graph-canvas-panel" hidden>
+              <p id="graph-statistics" role="status"></p>
+              <p class="graph-legend">
+                <span data-i18n="shell.2a9fc70a37"
+                  >中等线：原文显式链接 · 细线：待审核关联 · 粗线：已接受关联 ·
+                  大节点：分组。位置不表示可信度或语义距离。</span
+                >
+              </p>
+              <div class="graph-toolbar">
+                <form
+                  id="graph-map-search-form"
+                  class="graph-search"
+                  data-draft="ignore"
+                >
+                  <label
+                    ><span data-i18n="shell.5dae1897e9">查找笔记</span
+                    ><input
+                      id="graph-map-search-text"
+                      required
+                      maxlength="100" /></label
+                  ><button id="graph-map-search" type="button">
+                    <span data-i18n="shell.73fa38758f">搜索定位</span>
+                  </button>
+                </form>
+                <div
+                  class="button-group"
+                  role="group"
+                  aria-label="视图操作"
+                  data-i18n-aria-label="shell.467ff1c985"
+                >
+                  <button id="graph-map-refresh" type="button">
+                    <span data-i18n="shell.4871f1c382"
+                      >核对来源并刷新图</span
+                    ></button
+                  ><button id="graph-layout-toggle" type="button">
+                    <span data-i18n="shell.3cf73bd047"
+                      >启动/暂停布局</span
+                    ></button
+                  ><button id="graph-fit" type="button">
+                    <span data-i18n="shell.ef2acc41ef">适应画布</span></button
+                  ><button id="graph-reset-view" type="button">
+                    <span data-i18n="shell.764aba1c4a">重置视图</span></button
+                  ><button id="graph-unpin" type="button">
+                    <span data-i18n="shell.2fe9db2c21">解除当前节点固定</span>
+                  </button>
+                </div>
+              </div>
+              <div id="graph-search-results"></div>
+              <div class="graph-explorer">
+                <div
+                  id="graph-canvas"
+                  role="img"
+                  aria-label="当前笔记关联图，可用下方列表访问笔记"
+                  data-i18n-aria-label="shell.467a029bad"
+                ></div>
+                <aside
+                  id="graph-node-detail"
+                  aria-label="笔记与关联详情"
+                  data-i18n-aria-label="shell.2e7a1694af"
+                ></aside>
+              </div>
+              <details>
+                <summary>
+                  <span data-i18n="shell.2f28b81f3a"
+                    >可访问笔记列表 / 无 WebGL 时使用</span
+                  >
+                </summary>
+                <div id="graph-node-list" class="panel-actions"></div>
+              </details>
+            </div>
+            <div id="graph-content" class="rows"></div>
+          </section>
+          <section class="graph-step" aria-labelledby="graph-step-3">
+            <h2 id="graph-step-3">
+              <span>3</span><span data-i18n="shell.99b4182eb4">MOC 写回</span>
+            </h2>
+            <div id="graph-moc-form"></div>
+            <div id="graph-writebacks" class="rows"></div>
+          </section>
+        </section>
+        <section id="inventory-panel" hidden>
+          <h2><span data-i18n="shell.fed1c6bc58">资料与来源版本</span></h2>
+          <div id="source-policy"></div>
+          <button id="inventory-refresh" type="button">
+            <span data-i18n="shell.21843311e2">刷新收件</span>
+          </button>
+          <label
+            ><span data-i18n="shell.d77a9e7b6c">取回身份</span
+            ><select id="inventory-client"></select
+          ></label>
+          <label
+            ><span data-i18n="shell.975b35f9c2">知识库</span
+            ><select id="inventory-vault"></select
+          ></label>
+          <button id="inventory-versions" type="button">
+            <span data-i18n="shell.53aee8fefc">查看来源版本与原件</span>
+          </button>
+          <div id="inventory-content" class="rows"></div>
+        </section>
+        <section id="creation-panel" hidden>
+          <h2><span data-i18n="shell.dc5afb7ab4">文档制作与续改</span></h2>
+          <p>
+            <span data-i18n="shell.bee4ea4381"
+              >文件是未核验草稿，明确保存才成为分析产物。模型执行需专用配置和明确执行许可。</span
+            >
+          </p>
+          <button id="creation-refresh" type="button">
+            <span data-i18n="shell.82ed27b546">刷新文档任务</span>
+          </button>
+          <div id="creation-form" class="create-form"></div>
+          <div id="creation-content" class="rows"></div>
+        </section>
+        <section id="settings-panel" hidden>
+          <p class="intro">
+            <span data-i18n="shell.319d96fdf2"
+              >让工作空间更适合你的阅读习惯。</span
+            >
+          </p>
+          <div class="settings-layout">
+            <form
+              id="appearance-form"
+              class="settings-card"
+              data-draft="tracked"
+            >
+              <div class="settings-heading">
+                <h2><span data-i18n="shell.0f993817a0">外观与阅读</span></h2>
+                <span class="muted"
+                  ><span data-i18n="shell.68e27fec88">当前客户端</span></span
+                >
+              </div>
+              <p class="muted">
+                <span data-i18n="shell.589c6893a2"
+                  >修改后即时预览，点击保存以记住你的选择。</span
+                >
+              </p>
+              <button id="font-refresh" type="button">
+                <span data-i18n="shell.2c77a8522d">读取本机字体</span>
+              </button>
+              <p
+                id="font-status"
+                class="muted"
+                role="status"
+                aria-live="polite"
+              >
+                <span data-i18n="shell.5db60d9779"
+                  >可读取当前设备已安装的字体。字体选择仅保存在当前客户端。</span
+                >
+              </p>
+              <label class="language-control"
+                ><span data-i18n="common.language">界面语言</span>
+                <select
+                  data-language-control
+                  data-draft="ignore"
+                  aria-label="Interface language"
+                >
+                  <option value="zh-CN">简体中文</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+              <p
+                id="language-status"
+                data-language-status
+                class="error"
+                role="status"
+                hidden
+              ></p>
+              <div class="settings-fields">
+                <label
+                  ><span data-i18n="shell.98259098f2">中文字体</span
+                  ><select name="cjkFont">
+                    <option value="theme" data-i18n="shell.d7fa90d22b">
+                      跟随主题
+                    </option>
+                    <option value="noto" data-i18n="shell.e637328d5b">
+                      思源黑体 · 内置
+                    </option>
+                    <option value="system" data-i18n="shell.df55a23ac7">
+                      系统黑体 · PingFang SC
+                    </option>
+                    <option value="serif" data-i18n="shell.4035b35d1f">
+                      系统宋体 · Songti SC
+                    </option>
+                  </select></label
+                >
+                <label
+                  ><span data-i18n="shell.93b58c09a1">中文字号</span
+                  ><select name="cjkSize">
+                    <option>12</option>
+                    <option>13</option>
+                    <option selected>14</option>
+                    <option>15</option>
+                    <option>16</option>
+                    <option>17</option>
+                    <option>18</option>
+                    <option>19</option>
+                    <option>20</option>
+                  </select></label
+                >
+                <label
+                  ><span data-i18n="shell.9db9994593">英文字体</span
+                  ><select name="latinFont">
+                    <option value="theme" data-i18n="shell.d7fa90d22b">
+                      跟随主题
+                    </option>
+                    <option value="dm" data-i18n="shell.fe3f8a491e">
+                      DM Sans · 内置
+                    </option>
+                    <option value="system" data-i18n="shell.fa9e7eca5b">
+                      系统无衬线
+                    </option>
+                    <option value="serif" data-i18n="shell.a18bb43509">
+                      Georgia · 衬线
+                    </option>
+                  </select></label
+                >
+                <label
+                  ><span data-i18n="shell.8e494108fd">英文字号</span
+                  ><select name="latinSize">
+                    <option>12</option>
+                    <option>13</option>
+                    <option selected>14</option>
+                    <option>15</option>
+                    <option>16</option>
+                    <option>17</option>
+                    <option>18</option>
+                    <option>19</option>
+                    <option>20</option>
+                  </select></label
+                >
+                <div class="settings-theme">
+                  <span
+                    ><span data-i18n="shell.0e61f17399">应用主题</span></span
+                  >
+                  <strong id="appearance-theme-name"></strong>
+                  <button
+                    id="appearance-theme-change"
+                    type="button"
+                    aria-haspopup="dialog"
+                    aria-controls="theme-picker"
+                    aria-expanded="false"
+                  >
+                    <span data-i18n="shell.6560d2f1de">更换主题</span>
+                  </button>
+                  <small class="muted"
+                    ><span data-i18n="shell.0740419fb7"
+                      >切换仅用于当前外观；点击“设为默认主题”记住下次选择。</span
+                    ></small
+                  >
+                </div>
+                <label
+                  ><span data-i18n="shell.78687cb4dd">信息密度</span
+                  ><select name="density">
+                    <option value="comfortable" data-i18n="shell.521479cd0b">
+                      舒适
+                    </option>
+                    <option value="compact" data-i18n="shell.5d63d587b0">
+                      紧凑
+                    </option>
+                  </select></label
+                >
+                <label
+                  ><span data-i18n="shell.846f08759a">阅读行高</span
+                  ><select name="lineHeight">
+                    <option value="normal" data-i18n="shell.6bea77acef">
+                      标准
+                    </option>
+                    <option value="relaxed" data-i18n="shell.051a34d53a">
+                      宽松
+                    </option>
+                  </select></label
+                >
+                <label
+                  ><span data-i18n="shell.22c0077def">动效偏好</span
+                  ><select name="motion">
+                    <option value="system" data-i18n="shell.217cfe7db1">
+                      跟随系统
+                    </option>
+                    <option value="reduce" data-i18n="shell.b4ec700fc0">
+                      减少动效
+                    </option>
+                  </select></label
+                >
+              </div>
+              <div class="reading-preview">
+                <p class="eyebrow">
+                  <span data-i18n="shell.664337f17a"
+                    >阅读预览 / READING PREVIEW</span
+                  >
+                </p>
+                <h3><span data-i18n="shell.9088d57190">从资料到洞见</span></h3>
+                <p>
+                  <span data-preview="cjk"
+                    ><span data-i18n="shell.64b84fbfed"
+                      >知识值得被妥善整理。</span
+                    ></span
+                  >
+                  <span data-preview="latin"
+                    >Make room for your next idea.</span
+                  >
+                </p>
+                <p class="muted">
+                  <span data-i18n="shell.0f0f61433c"
+                    >Fiber bundle · 笔记 128 篇 · Last updated 09:41</span
+                  >
+                </p>
+                <span class="status-badge success"
+                  ><span data-i18n="shell.5be0323e8a">已连接</span></span
+                >
+              </div>
+              <p class="muted">
+                <span data-i18n="shell.176a8cd32b"
+                  >系统字体不可用时使用内置字体。外观偏好不跨客户端同步。</span
+                >
+              </p>
+              <div class="panel-actions">
+                <button class="primary" type="submit">
+                  <span data-i18n="shell.200fec26bd">保存外观</span></button
+                ><button id="appearance-cancel" type="button">
+                  <span data-i18n="shell.a034a8f937">取消预览</span></button
+                ><button id="appearance-reset" class="quiet" type="button">
+                  <span data-i18n="shell.754d390642">重置字体与显示</span>
+                </button>
+              </div>
+            </form>
+            <form
+              id="session-settings-form"
+              class="settings-card"
+              data-draft="tracked"
+            >
+              <div class="settings-heading">
+                <h2><span data-i18n="shell.ddf1979f61">登录与会话</span></h2>
+                <span class="muted"
+                  ><span data-i18n="shell.c6219d505e"
+                    >此服务的所有客户端</span
+                  ></span
+                >
+              </div>
+              <label for="session-ttl"
+                ><span data-i18n="shell.59f776f09b">自动退出时长</span></label
+              ><select id="session-ttl">
+                <option value="900" data-i18n="shell.015feae6f8">
+                  15 分钟
+                </option>
+                <option value="1800" data-i18n="shell.a01a28d147">
+                  30 分钟
+                </option>
+                <option value="3600" selected data-i18n="shell.2d3502fa3b">
+                  1 小时（默认）
+                </option>
+                <option value="14400" data-i18n="shell.5f90852bb3">
+                  4 小时
+                </option>
+                <option value="28800" data-i18n="shell.364dc21f72">
+                  8 小时
+                </option>
+                <option value="86400" data-i18n="shell.9248356749">
+                  24 小时
+                </option>
+              </select>
+              <p class="muted">
+                <span data-i18n="shell.27b4fb6ebe"
+                  >从登录成功开始计时，页面操作不会延长。保存后从下次登录起生效。</span
+                >
+              </p>
+              <p id="session-current-expiry" class="muted"></p>
+              <p class="muted">
+                <span data-i18n="shell.c0d4e903ec"
+                  >到期前 5
+                  分钟提醒。退出登录后，后台任务继续按原规则运行。</span
+                >
+              </p>
+              <button
+                id="session-settings-save"
+                class="primary"
+                type="submit"
+                disabled
+              >
+                <span data-i18n="shell.d89e7fa683">保存登录时长</span>
+              </button>
+            </form>
+          </div>
+        </section>
+        <section id="execution-panel" hidden>
+          <div class="usage-heading">
+            <h2><span data-i18n="shell.dcf264eaf4">用量与费用</span></h2>
+            <span class="muted"
+              ><span data-i18n="shell.4ee79498c6"
+                >USD · 按配置单价估算</span
+              ></span
+            >
+          </div>
+          <form id="usage-filters" class="usage-filters" data-draft="ignore">
+            <label
+              ><span data-i18n="shell.07eb730af8">时间范围</span
+              ><select id="usage-period">
+                <option value="7" data-i18n="shell.2b39b90c05">
+                  最近 7 天
+                </option>
+                <option value="30" selected data-i18n="shell.c5f1c28c0d">
+                  最近 30 天
+                </option>
+                <option value="month" data-i18n="shell.0eeecd26f2">本月</option>
+                <option value="custom" data-i18n="shell.4eafa9e925">
+                  自定义
+                </option>
+              </select></label
+            >
+            <label
+              ><span data-i18n="shell.fa2318d4fa">开始日期 · UTC</span
+              ><input id="usage-start" type="date" required
+            /></label>
+            <label
+              ><span data-i18n="shell.36c09d9e8c">结束日期 · UTC</span
+              ><input id="usage-end" type="date" required
+            /></label>
+            <label
+              >API Key<select id="usage-key">
+                <option value="all" data-i18n="shell.5e7e462263">
+                  全部 API Key
+                </option>
+              </select></label
+            >
+            <button id="usage-apply" type="submit">
+              <span data-i18n="shell.90bad4ebea">更新用量</span>
+            </button>
+          </form>
+          <p id="usage-state" class="muted" role="status"></p>
+          <div class="usage-metrics">
+            <div class="usage-metric">
+              <p><span data-i18n="shell.dd4e402aba">估算费用</span></p>
+              <strong id="usage-total-cost" class="usage-value">—</strong
+              ><small
+                ><span data-i18n="shell.bfe1fb9c62"
+                  >已返回用量并结算的记录</span
+                ></small
+              >
+            </div>
+            <div class="usage-metric">
+              <p><span data-i18n="shell.4da9d82778">调用记录</span></p>
+              <strong id="usage-total-calls" class="usage-value">—</strong
+              ><small
+                ><span data-i18n="shell.f848bec436"
+                  >包含待结算与结果未知</span
+                ></small
+              >
+            </div>
+            <div class="usage-metric">
+              <p><span data-i18n="shell.9f4a0b6f9c">已报告 Tokens</span></p>
+              <strong id="usage-total-tokens" class="usage-value">—</strong
+              ><small
+                ><span data-i18n="shell.9c38f812c4">输入 + 输出</span></small
+              >
+            </div>
+            <div class="usage-metric">
+              <p><span data-i18n="shell.59372c64cb">待确认预留</span></p>
+              <strong id="usage-total-pending" class="usage-value">—</strong
+              ><small id="usage-pending-count"></small>
+            </div>
+          </div>
+          <p class="muted">
+            <span data-i18n="shell.0dea81550a">本地查询调用记录：</span
+            ><strong id="usage-local-calls">—</strong>
+            <span data-i18n="shell.1a48c85c57"
+              >· 同一日期范围，不受云 API Key 筛选影响；非用户问题总数。</span
+            >
+          </p>
+          <div class="usage-chart-card">
+            <div class="usage-chart-heading">
+              <h3><span data-i18n="shell.adbb78f881">每日趋势</span></h3>
+              <div class="usage-legend">
+                <span
+                  ><i aria-hidden="true"></i
+                  ><span data-i18n="shell.39c444eef9"
+                    >调用记录 · 下图</span
+                  ></span
+                ><span
+                  ><i class="legend-cost" aria-hidden="true"></i
+                  ><span data-i18n="shell.596430cf8d"
+                    >估算费用 · 上图</span
+                  ></span
+                >
+              </div>
+            </div>
+            <div id="usage-chart" class="usage-chart-scroll"></div>
+            <p id="usage-day-detail" class="usage-day-detail" role="status"></p>
+          </div>
+          <div id="usage-keys-table" class="usage-table-wrap"></div>
+          <details>
+            <summary>
+              <span data-i18n="shell.4cd09e402f">每日数值明细</span>
+            </summary>
+            <div id="usage-daily-table" class="usage-table-wrap"></div>
+          </details>
+          <p class="usage-footnote">
+            <span data-i18n="shell.0051c7aa7c"
+              >费用来自本应用账本与配置单价，实际账单以服务商为准。调用记录按已预留的模型请求计数，不能等同于服务商确认的成功调用；预留金额未计入费用折线。本地模型不计入
+              API 费用。</span
+            >
+          </p>
+          <p class="usage-footnote">
+            <span data-i18n="shell.bf7e84ced3"
+              >按凭据文件配置区分 API
+              Key，仅展示配置标识。同一文件更换密钥会延续此分组；旧记录缺少归属时列为“历史未归属”。</span
+            >
+          </p>
+          <h3 class="execution-records-heading">
+            <span data-i18n="shell.57b0c73f09">执行任务</span>
+          </h3>
+          <p class="muted">
+            <span data-i18n="shell.a63354bdeb"
+              >取消保留已发生费用。未知结果须对账，不自动重放。</span
+            >
+          </p>
+          <button id="execution-refresh" type="button">
+            <span data-i18n="shell.34b70d2e36">刷新执行与费用</span>
+          </button>
+          <div id="execution-content" class="rows"></div>
+        </section>
+        <section id="backend-panel" hidden>
+          <h2><span data-i18n="shell.e13e26efd8">后台与提醒</span></h2>
+          <div class="panel-actions">
+            <button id="backend-refresh" type="button">
+              <span data-i18n="shell.1cde3273f5">刷新后台与版本</span>
+            </button>
+          </div>
+          <div id="backend-content"></div>
+          <details class="backend-danger">
+            <summary>
+              <span data-i18n="shell.1a08480106">后台停止操作</span>
+            </summary>
+            <p>
+              <span data-i18n="shell.31e6e8fcfc"
+                >停止后管理界面暂不可用，已保存数据保留。</span
+              >
+            </p>
+            <button id="backend-stop" class="danger" type="button" disabled>
+              <span data-i18n="shell.144cda3933">明确停止管理后台</span>
+            </button>
+          </details>
+          <h3>
+            <span data-i18n="shell.d044a4f1b2">Skill、执行器与配置版本</span>
+          </h3>
+          <div id="components-content"></div>
+          <h3><span data-i18n="shell.9818377188">批次提醒偏好</span></h3>
+          <div id="reminders-content" class="rows"></div>
+        </section>
+        <section id="backups-panel" hidden>
+          <div id="backup-automation-content" class="rows"></div>
+          <details id="backups-legacy">
+            <summary data-i18n="backup.legacy">离线备份与恢复</summary>
+            <h2><span data-i18n="shell.6beda481d1">备份与恢复</span></h2>
+            <p>
+              <span data-i18n="shell.d5c82f8342"
+                >手动离线备份状态库、原件、历史与知识库；状态和知识库分别加密。外部凭证与浏览器登录须重新配置。</span
+              >
+            </p>
+            <p>
+              <span data-i18n="shell.eb9c1d1e11"
+                >此页面准备操作。停止全部后台和任务后，在本机终端隐藏输入密码并执行。恢复到新目录，默认停用；源机退役与新机启用须明确操作。</span
+              >
+            </p>
+            <div class="panel-actions">
+              <button id="backups-prepare" class="primary" type="button">
+                <span data-i18n="shell.c031dc838b">准备完整数据备份</span>
+              </button>
+              <button id="backups-refresh" type="button">
+                <span data-i18n="shell.d847fe25a0">刷新备份状态</span>
+              </button>
+            </div>
+            <div id="backups-content" class="rows"></div>
+          </details>
+        </section>
+        <section id="models-panel" hidden>
+          <h2><span data-i18n="shell.5125d6b064">模型与查询</span></h2>
+          <div
+            class="model-tabs"
+            role="tablist"
+            aria-label="模型与查询视图"
+            data-i18n-aria-label="shell.2426365c51"
+          >
+            <button
+              id="model-query-tab"
+              type="button"
+              role="tab"
+              aria-controls="model-query-view"
+            >
+              <span data-i18n="shell.bcd6771e08">查询</span>
+            </button>
+            <button
+              id="model-config-tab"
+              type="button"
+              role="tab"
+              aria-controls="model-config-view"
+            >
+              <span data-i18n="shell.8cbcf741e7">模型配置</span>
+            </button>
+          </div>
+          <div
+            id="model-config-view"
+            role="tabpanel"
+            aria-labelledby="model-config-tab"
+            hidden
+          >
+            <section
+              id="models-catalog"
+              aria-label="模型配置"
+              data-i18n-aria-label="shell.8cbcf741e7"
+            ></section>
+            <details>
+              <summary>
+                <span data-i18n="shell.5168f64520">高级：旧版路由配置</span>
+              </summary>
+              <p class="muted">
+                <span data-i18n="shell.0a61559d1e"
+                  >已有路由继续兼容。新配置请使用上方“添加模型”；旧固定 Agent
+                  和已提交任务保持原模型。</span
+                >
+              </p>
+              <p id="query-policy-status" role="status"></p>
+              <label
+                ><span data-i18n="shell.ad714a0d83">导入已准备的配置文件</span
+                ><input
+                  id="query-policy-import"
+                  type="file"
+                  accept=".json,application/json"
+              /></label>
+              <p class="muted">
+                <span data-i18n="shell.a9c2062384"
+                  >凭证只填写本机文件路径。导入后核对服务、模型和预算；保存不会启动调用。</span
+                >
+              </p>
+              <form id="query-policy-form">
+                <div id="query-policy-fields"></div>
+                <button type="submit">
+                  <span data-i18n="shell.a3ebdd786f">保存模型配置</span>
+                </button>
+              </form>
+              <button id="query-policy-discard" type="button">
+                <span data-i18n="shell.5d63a2a8ca">放弃未保存配置并刷新</span>
+              </button>
+            </details>
+          </div>
+          <div
+            id="model-query-view"
+            role="tabpanel"
+            aria-labelledby="model-query-tab"
+          >
+            <p>
+              <span data-i18n="shell.fab1a64a96"
+                >本地查询完成后可准备云端整理；云端仅收到答案及其中引文。每次调用需明确启动，失败即停止。</span
+              >
+            </p>
+            <button id="query-refresh" type="button">
+              <span data-i18n="shell.9568a39a1b">刷新配置与任务</span>
+            </button>
+            <p class="muted">
+              <span data-i18n="shell.a212c6390b"
+                >入队使用当前身份可查询且默认参与查询的知识库。请先在知识库页设置默认参与查询，并核对客户端查询权限。</span
+              >
+            </p>
+            <form id="query-submit" class="create-form" data-draft="tracked">
+              <label
+                ><span data-i18n="shell.97491b9552">查询身份</span
+                ><select id="query-client" required></select
+              ></label>
+              <label
+                ><span data-i18n="shell.33a8618cb6">问题</span
+                ><input id="query-question" required maxlength="2000"
+              /></label>
+              <label
+                ><span data-i18n="shell.c03bdf1481">检索词</span
+                ><input id="query-search" required maxlength="200"
+              /></label>
+              <button type="submit">
+                <span data-i18n="shell.8ff3f99d08">入队本地查询</span>
+              </button>
+            </form>
+            <div id="query-task-list" class="rows"></div>
+          </div>
+        </section>
+        <section id="channels-panel" hidden>
+          <h2><span data-i18n="shell.9b25142e64">消息入口</span></h2>
+          <p>
+            <span data-i18n="shell.7f7bd0f786"
+              >独立飞书/微信实例；关闭 GUI
+              后后台继续运行。保存配置不启动模型或发送消息。</span
+            >
+          </p>
+          <div class="panel-actions">
+            <button id="channel-refresh" type="button">
+              <span data-i18n="shell.e71c122d03">刷新连接状态</span>
+            </button>
+            <button id="channel-new" type="button">
+              <span data-i18n="shell.fbac688222">新增飞书 / 微信入口</span>
+            </button>
+          </div>
+          <div
+            id="channel-overview"
+            class="channel-overview"
+            aria-live="polite"
+          ></div>
+          <div id="channel-list" class="rows"></div>
+          <details id="channel-archive" hidden></details>
+          <details>
+            <summary>
+              <span data-i18n="shell.d5faf0b4bc">平台准备步骤</span>
+            </summary>
+            <p>
+              <span data-i18n="shell.b9f2b24273"
+                >飞书：在开放平台创建独立自建应用，启用机器人，开通接收消息事件与发送消息权限，选择长连接并发布。不要复用其他
+                Hermes Bot
+                的应用。保存后验证连接，再开始本人配对并在本机确认。</span
+              >
+            </p>
+            <p>
+              <span data-i18n="shell.d487fc7aed"
+                >微信：保存独立入口后点击扫码登录，展示的二维码来自 Hermes
+                实际登录接口；本人扫码后在本机确认。历史消息无法直接转给
+                bot，可经“其他应用”转到飞书。</span
+              >
+            </p>
+            <p>
+              <span data-i18n="shell.591812047b"
+                >只读查询只需查询权限；入库和原件权限独立。新建/复制建议目录：/absolute/Vaults/。</span
+              >
+            </p>
+          </details>
+          <details id="channel-configuration" class="channel-configuration">
+            <summary>
+              <span data-i18n="shell.cbb997e04d">新增 / 编辑入口配置</span>
+            </summary>
+            <form id="channel-form" class="record-card" data-draft="tracked">
+              <h3><span data-i18n="shell.2810bb351c">入口配置</span></h3>
+              <label
+                ><span data-i18n="shell.d44e9b3d3b">名称</span
+                ><input id="channel-name" required maxlength="100"
+              /></label>
+              <label
+                ><span data-i18n="shell.910887705c">平台</span
+                ><select id="channel-platform">
+                  <option value="feishu" data-i18n="shell.7e4419d1de">
+                    飞书
+                  </option>
+                  <option value="weixin" data-i18n="shell.81b430b696">
+                    微信
+                  </option>
+                </select></label
+              >
+              <label
+                ><span data-i18n="services.purpose">入口职责</span
+                ><select id="channel-purpose">
+                  <option value="query" data-i18n="services.query">
+                    知识库查询
+                  </option>
+                  <option value="intake" data-i18n="services.intake">
+                    笔记保存
+                  </option>
+                  <option value="" data-i18n="services.both" hidden>
+                    兼用（现有配置）
+                  </option>
+                </select></label
+              >
+              <div id="channel-feishu-fields">
+                <label
+                  >App ID<input
+                    id="channel-app-id"
+                    required
+                    pattern="cli_[A-Za-z0-9]+"
+                /></label>
+                <label
+                  ><span data-i18n="shell.8833d02450"
+                    >App Secret（保存后清空）</span
+                  ><input
+                    id="channel-secret"
+                    type="password"
+                    autocomplete="new-password"
+                /></label>
+                <label
+                  ><span data-i18n="shell.45f0e21a51"
+                    >或导入本机凭证文件绝对路径</span
+                  ><input
+                    id="channel-credential"
+                    placeholder="/Users/…/feishu_bot.txt"
+                /></label>
+              </div>
+              <label
+                ><span data-i18n="shell.73bde4e50d"
+                  >Hermes 固定运行清单绝对路径</span
+                ><input
+                  id="channel-manifest"
+                  required
+                  placeholder="/Users/…/runtime-manifest.json"
+              /></label>
+              <label
+                ><span data-i18n="shell.2af5cb590c">本人访问身份</span
+                ><select id="channel-client" required></select
+              ></label>
+              <label
+                ><span data-i18n="shell.8c19a96bf5">默认知识库</span
+                ><select id="channel-vault" required></select
+              ></label>
+              <p>
+                <span data-i18n="shell.3412b7adb5"
+                  >保存会为所选身份设置本库查询权限，并按下面选择设置原件和入库权限。</span
+                >
+              </p>
+              <label
+                ><input id="channel-original" type="checkbox" /><span
+                  data-i18n="shell.8b2970f3cf"
+                  >允许取回原件</span
+                ></label
+              >
+              <label
+                ><input id="channel-add" type="checkbox" /><span
+                  data-i18n="shell.1e4f38d508"
+                  >允许入库（只读库不可选）</span
+                ></label
+              >
+              <label
+                ><span data-i18n="shell.64921f1057">回答方式</span
+                ><select id="channel-answer-mode">
+                  <option value="evidence" data-i18n="shell.4fd41ffed9">
+                    原文证据，零模型调用
+                  </option>
+                  <option value="model" data-i18n="shell.46e1991d9a">
+                    统一模型检索与引用回答
+                  </option>
+                  <option value="local" data-i18n="shell.e17f7cad89">
+                    本地引用草稿
+                  </option>
+                  <option value="local_cloud" data-i18n="shell.c06ed56153">
+                    本地引用草稿 + 云端整理
+                  </option>
+                </select></label
+              >
+              <input id="channel-policy" type="hidden" />
+              <label
+                ><input id="channel-natural-questions" type="checkbox" /><span
+                  data-i18n="shell.a98250279a"
+                  >自然语言提问（无需“查询本库：”前缀）</span
+                ></label
+              >
+              <p>
+                <span data-i18n="shell.7bef0d6a58"
+                  >提问先生成检索词，再根据命中资料回答，沿用统一模型消耗。链接、附件和保存指令继续走资料入库。</span
+                >
+              </p>
+              <label id="channel-expert-media-field"
+                ><span data-i18n="shell.232eea5224">专家图表展示</span
+                ><select id="channel-expert-media">
+                  <option value="unknown" data-i18n="shell.f929e950f8">
+                    能力未知，保留文字
+                  </option>
+                  <option value="text" data-i18n="shell.fabcb8fd53">
+                    仅文字
+                  </option>
+                  <option value="images" data-i18n="shell.fabee610bb">
+                    已确认支持图片
+                  </option>
+                  <option value="full" data-i18n="shell.9b361287d9">
+                    已确认支持图表（可靠表格可降为文字）
+                  </option>
+                </select></label
+              >
+              <p>
+                <span data-i18n="shell.9db81be24c"
+                  >仅用于已登记专家模块；读取图片仍需原件权限。飞书需图片上传与消息权限；微信分条发送文字和图片，可靠表格以文字展示。</span
+                >
+              </p>
+              <p id="channel-policy-info"></p>
+              <p id="channel-cloud-hint" hidden>
+                <span data-i18n="shell.373972c36d"
+                  >云端仅整理本地答案及其中引文，不直接读取整库；失败不会切备用。</span
+                >
+              </p>
+              <p>
+                <span data-i18n="shell.5e685897b7"
+                  >本配置版本的有限额度（暂停/重新启动不重置；新版本需重新确认额度）：</span
+                >
+              </p>
+              <label
+                ><span data-i18n="shell.60dbc4bf38">最多接收查询</span
+                ><input
+                  id="channel-query-limit"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value="0"
+                  required
+              /></label>
+              <label
+                ><span data-i18n="shell.c3f50f0dd9">最多模型调用</span
+                ><input
+                  id="channel-model-limit"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value="0"
+                  required
+              /></label>
+              <label
+                ><span data-i18n="shell.74d859ef32">最多手机回复</span
+                ><input
+                  id="channel-outbound-limit"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value="0"
+                  required
+              /></label>
+              <label
+                ><span data-i18n="shell.6d781bb993">最多飞书附件下载</span
+                ><input
+                  id="channel-download-limit"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value="0"
+                  required
+              /></label>
+              <label
+                ><input type="checkbox" id="channel-expert-enabled" /><span
+                  data-i18n="shell.ed232da11e"
+                  >启用私聊 fake-expert 文件指令（须新增与原件权限）</span
+                ></label
+              >
+              <label
+                ><span data-i18n="shell.9cc4a7c6e1">本次配置的专家指令上限</span
+                ><input
+                  type="number"
+                  id="channel-expert-limit"
+                  min="0"
+                  max="100"
+                  value="0"
+              /></label>
+              <label
+                ><span data-i18n="shell.124931ec66"
+                  >专家状态回执上限（独立出站许可）</span
+                ><input
+                  type="number"
+                  id="channel-expert-receipt-limit"
+                  min="0"
+                  max="100"
+                  value="0"
+              /></label>
+              <button id="channel-save" type="button">
+                <span data-i18n="shell.a6b9fe9ed6">保存配置与所选权限</span>
+              </button>
+            </form>
+          </details>
+        </section>
+        <section id="vaults-panel" hidden>
+          <div id="vault-relocation-panel" hidden></div>
+          <div class="section-heading">
+            <h2><span data-i18n="shell.975b35f9c2">知识库</span></h2>
+            <p>
+              <span data-i18n="shell.ecb08cc37f"
+                >默认参与查询与访问授权分别设置。</span
+              >
+            </p>
+          </div>
+          <div id="vault-list" class="rows"></div>
+          <div id="vault-save-panel" class="record-card" hidden></div>
+          <div id="vault-placement-panel" class="record-card" hidden></div>
+          <details
+            id="vault-admission-panel"
+            class="vault-admission-disclosure"
+          >
+            <summary>
+              <span data-i18n="shell.86de3ba27b">接入笔记仓库</span>
+            </summary>
+            <form id="vault-admission" data-draft="tracked">
+              <h3><span data-i18n="shell.86de3ba27b">接入笔记仓库</span></h3>
+              <label
+                ><span data-i18n="shell.91697a026c">方式</span
+                ><select id="vault-mode">
+                  <option value="attach" data-i18n="shell.547359aa4b">
+                    接入现有仓库
+                  </option>
+                  <option value="copy" data-i18n="shell.62f607753e">
+                    复制导入
+                  </option>
+                  <option value="create" data-i18n="shell.38a4489386">
+                    新建仓库
+                  </option>
+                </select></label
+              >
+              <label
+                ><span data-i18n="shell.d44e9b3d3b">名称</span
+                ><input id="vault-name" required maxlength="100"
+              /></label>
+              <div id="vault-source-field">
+                <label
+                  ><span data-i18n="shell.d79abfeef1">现有仓库绝对路径</span
+                  ><input
+                    id="vault-source"
+                    required
+                    placeholder="/Users/…/Obsidian Vault" /></label
+                ><button type="button" id="vault-pick-source">
+                  <span data-i18n="shell.3cbae2de37">选择现有目录</span>
+                </button>
+              </div>
+              <div id="vault-target-field" hidden>
+                <label
+                  ><span data-i18n="shell.939f657cf1">新目录绝对路径</span
+                  ><input
+                    id="vault-target"
+                    placeholder="/absolute/Vaults/仓库名"
+                    data-i18n-placeholder="shell.3c381d6936" /></label
+                ><button type="button" id="vault-pick-target">
+                  <span data-i18n="shell.306be790df">选择父目录</span>
+                </button>
+                <p>
+                  <span data-i18n="shell.911acbe282"
+                    >最后一级目录须尚不存在；不会覆盖已有文件。</span
+                  >
+                </p>
+              </div>
+              <label
+                ><input type="checkbox" id="vault-read-only" checked /><span
+                  data-i18n="shell.9e47217e5c"
+                  >现有仓库只读接入</span
+                ></label
+              >
+              <label
+                ><span data-i18n="shell.5c6c5dbd83"
+                  >包含范围（相对路径，每行一个；空白表示整个允许范围）</span
+                ><textarea id="vault-include" rows="2"></textarea>
+              </label>
+              <label
+                ><span data-i18n="shell.99d862421e"
+                  >排除范围（每行一个目录或文件）</span
+                ><textarea id="vault-exclude" rows="2"></textarea>
+              </label>
+              <p>
+                <span data-i18n="shell.704c166c0f"
+                  >继承已有目录政策。受保护目录在遍历前排除；不调用模型或
+                  OCR。</span
+                >
+              </p>
+              <label
+                ><span data-i18n="shell.c0235f8e69">索引与查询身份</span
+                ><select id="vault-client" required></select
+              ></label>
+              <label
+                ><input type="checkbox" id="vault-original" /><span
+                  data-i18n="shell.5192a49e30"
+                  >允许取回保存的原件</span
+                ></label
+              >
+              <label
+                ><input type="checkbox" id="vault-add" /><span
+                  data-i18n="shell.a8998b4f99"
+                  >允许入库与写入（只读库不可授予）</span
+                ></label
+              >
+              <div class="button-row">
+                <button type="button" id="vault-preflight">
+                  <span data-i18n="shell.6176001c4f">预检接入范围</span></button
+                ><button type="button" id="vault-confirm" disabled>
+                  <span data-i18n="shell.720e4a0982">确认接入并建立索引</span>
+                </button>
+              </div>
+              <div id="vault-preview" aria-live="polite"></div>
+            </form>
+          </details>
+          <h3><span data-i18n="shell.3c6863bdf5">接入任务</span></h3>
+          <div id="vault-jobs" class="rows" aria-live="polite"></div>
+        </section>
+        <section id="clients-panel" hidden>
+          <div class="section-heading">
+            <h2><span data-i18n="shell.98c892d393">Agent 与客户端</span></h2>
+            <p>
+              <span data-i18n="shell.cf2fdab6a8"
+                >每个客户端使用独立凭证，只授予所需权限。</span
+              >
+            </p>
+          </div>
+          <div
+            class="row"
+            role="group"
+            aria-label="接入管理视图"
+            data-i18n-aria-label="shell.b8c298eff2"
+          >
+            <button type="button" data-client-view="agent" aria-pressed="true">
+              <span data-i18n="shell.a8940a3da6">Agent 接入</span>
+            </button>
+            <button
+              type="button"
+              data-client-view="ordinary"
+              aria-pressed="false"
+            >
+              <span data-i18n="shell.59d054ffdc">客户端权限</span>
+            </button>
+          </div>
+          <div id="agent-connections"></div>
+          <div id="ordinary-clients" hidden>
+            <form id="create-client" class="create-form" data-draft="tracked">
+              <div>
+                <label for="client-name"
+                  ><span data-i18n="shell.0545625bdb">客户端名称</span></label
+                ><input
+                  id="client-name"
+                  required
+                  maxlength="100"
+                  placeholder="例如：资料整理助手"
+                  data-i18n-placeholder="shell.ed0f3df6fb"
+                />
+              </div>
+              <label class="check"
+                ><input id="create-capability" type="checkbox" /><span
+                  data-i18n="shell.acc8feac68"
+                  >允许申请新建空库</span
+                ></label
+              ><button class="primary" type="submit">
+                <span data-i18n="shell.5e5b889746">创建客户端</span>
+              </button>
+            </form>
+            <div id="token-panel" class="token-panel" hidden>
+              <label for="new-token"
+                ><span data-i18n="shell.44bf52f136"
+                  >新凭证 · 仅本次可查看，请妥善保存</span
+                ></label
+              >
+              <div class="token-line">
+                <input
+                  id="new-token"
+                  type="password"
+                  readonly
+                  autocomplete="off"
+                /><button id="reveal-token" type="button">
+                  <span data-i18n="shell.6117abec95">显示凭证</span></button
+                ><button id="dismiss-token" type="button">
+                  <span data-i18n="shell.1bd91a7d0c">已保存</span>
+                </button>
+              </div>
+            </div>
+            <label for="client-select"
+              ><span data-i18n="shell.93bdd3d8ea">选择客户端</span></label
+            ><select id="client-select"></select>
+            <div id="client-permissions"></div>
+          </div>
+        </section>
+        <section id="pending-panel" hidden>
+          <div class="section-heading">
+            <h2><span data-i18n="shell.a29d17291d">待审批空库</span></h2>
+            <p>
+              <span data-i18n="shell.c32a4e890b"
+                >确认接收客户端与权限后启用。审批前不能写入资料。</span
+              >
+            </p>
+          </div>
+          <div id="pending-list" class="rows"></div>
+        </section>
+        <section id="media-panel" hidden>
+          <h2><span data-i18n="shell.5e5d4cad40">媒体审核</span></h2>
+          <p>
+            <span data-i18n="shell.984208348c"
+              >核对完整来源、音频和画面；转录与关键帧均保留来源定位，未核验内容不会自动发布。</span
+            >
+          </p>
+          <div id="video-processing"></div>
+          <div id="media-list"></div>
+        </section>
+        <section id="documents-panel" hidden>
+          <div class="section-heading">
+            <h2><span data-i18n="shell.ac0993b674">文档审核</span></h2>
+            <p>
+              <span data-i18n="shell.ab4182cc84"
+                >逐项核对原件与疑点后显式发布。人工审核不等于独立核验。</span
+              >
+            </p>
+          </div>
+          <div id="source-selection"></div>
+          <div id="document-list"></div>
+          <div id="article-list"></div>
+        </section>
+        <section id="batches-panel" hidden>
+          <div class="section-heading">
+            <h2><span data-i18n="shell.3a172fdd7e">待确认批次</span></h2>
+            <p>
+              <span data-i18n="shell.8a7cfcef99"
+                >选择保存方式后进入入库队列。此处显示归档、提取和笔记保存进度；是否自动保存笔记遵循目标知识库的提取与入库策略。</span
+              >
+            </p>
+          </div>
+          <div id="batch-list" class="batch-list"></div>
+          <button id="delivery-reconcile" type="button">
+            <span data-i18n="shell.08d1b51763">核对未知送达</span>
+          </button>
+          <div id="delivery-reconciliation"></div>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,224 @@
+/* Knowledge-space presentation; admission and authorization stay in their modules. */
+#workspace > #vaults-panel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+#vault-list:not(:empty) {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+#vault-list .row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  margin: 0;
+  padding: 24px;
+  gap: 16px 24px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+}
+#vault-list .row:first-child {
+  border-top: 0;
+}
+#vault-list .empty {
+  margin: 0;
+  padding: 24px;
+}
+.vault-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.vault-heading h3 {
+  margin: 0;
+}
+#vault-list .vault-path {
+  margin-top: 12px;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+#vault-list .check {
+  position: relative;
+  padding-left: 56px;
+  min-height: 44px;
+  margin: 0;
+}
+#vault-list .check input {
+  position: absolute;
+  left: 0;
+  width: 44px;
+  height: 26px;
+  border: 1px solid var(--field-line);
+  border-radius: 100px;
+  background: var(--field-line);
+}
+#vault-list .check input::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface-raised);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+#vault-list .check input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+#vault-list .check input:checked::after {
+  transform: translateX(18px);
+}
+.vault-actions summary {
+  padding: 10px 12px;
+  border-radius: var(--radius-control);
+  font-size: var(--text-sm);
+}
+.vault-actions summary:hover {
+  background: var(--surface-hover);
+}
+.vault-actions[open] {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.vault-actions[open] summary {
+  width: fit-content;
+}
+.vault-actions-body {
+  display: grid;
+  gap: 12px;
+  padding: 8px 0;
+}
+.vault-actions-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.vault-actions-group:empty {
+  display: none;
+}
+.vault-actions-group:not(:empty) + .vault-actions-danger:not(:empty) {
+  padding-top: 12px;
+  border-top: 1px dashed var(--line);
+}
+.vault-admission-disclosure {
+  margin: 24px 0 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+.vault-admission-disclosure > summary {
+  padding: 16px 24px;
+  font-size: var(--text-base);
+}
+.vault-admission-disclosure > summary:hover {
+  background: var(--surface-panel);
+  border-radius: var(--radius-lg);
+}
+#vault-admission {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 16px 20px;
+  padding: 24px;
+  border-top: 1px solid var(--line);
+}
+#vault-admission > :is(h3, div, p),
+#vault-admission > label:has(#vault-read-only, #vault-client) {
+  grid-column: 1 / -1;
+}
+#vault-admission > label {
+  margin: 0;
+  min-width: 0;
+}
+#vault-admission label input:not([type="checkbox"]),
+#vault-admission label textarea,
+#vault-admission .select-field {
+  display: block;
+  margin-top: 8px;
+  max-width: none;
+}
+#vault-admission > label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 400;
+}
+#vault-admission > p {
+  max-width: 72ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+#vault-admission textarea {
+  min-height: 88px;
+}
+#vault-source-field,
+#vault-target-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px 12px;
+}
+#vault-source-field label,
+#vault-target-field label {
+  margin: 0;
+}
+#vault-target-field p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+#vault-admission .button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+#vault-jobs > .record-card {
+  margin: 16px 0;
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+}
+@media (max-width: 1023px) {
+  #vault-list .row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 20px;
+    gap: 12px;
+  }
+  #vault-list .vault-info {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 767px) {
+  #vault-list .row {
+    padding: 16px;
+  }
+  #vault-list .row:not(.vault-row) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #vault-admission {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+  }
+  #vault-source-field,
+  #vault-target-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .vault-admission-disclosure > summary {
+    padding: 16px;
+  }
+  .vault-actions-body button,
+  #vault-admission .button-row button {
+    flex: 1 1 180px;
+  }
+}

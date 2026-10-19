@@ -1,0 +1,279 @@
+/* Figma 36:170–36:175: scoped native layout; existing sidebar/themes remain shared. */
+#vault-relocation-panel[hidden] {
+  display: none;
+}
+#vaults-panel[data-relocating] > :not(#vault-relocation-panel) {
+  display: none;
+}
+.show-vault-relocation .page-title {
+  display: none;
+}
+.relocation-workspace {
+  max-width: 1136px;
+  padding: 32px 0;
+  display: grid;
+  gap: 24px;
+  color: var(--text);
+}
+.relocation-heading {
+  min-height: 76px;
+  display: block;
+  position: static;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.relocation-heading h2 {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 44px;
+  margin: 0 0 4px;
+}
+.relocation-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.relocation-steps {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  min-height: 40px;
+}
+.relocation-steps li {
+  width: 176px;
+  min-height: 28px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--surface-emphasis);
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+.relocation-steps li[data-done="true"] {
+  background: var(--success-soft, #e7eee8);
+  color: var(--success, #315344);
+}
+.relocation-steps li[data-current="true"][data-done="false"] {
+  background: var(--text);
+  color: var(--surface-raised);
+}
+.relocation-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 744fr) minmax(260px, 368fr);
+  gap: 24px;
+  align-items: start;
+  min-height: 640px;
+}
+.relocation-card {
+  background: var(--surface-raised);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.relocation-columns > .relocation-card {
+  min-height: 578px;
+}
+.relocation-aside {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.relocation-card h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 30px;
+}
+.relocation-aside h3 {
+  font-size: 18px;
+  line-height: 28px;
+}
+.relocation-info {
+  display: grid;
+  gap: 4px;
+}
+.relocation-card h4 {
+  margin: 0;
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 22px;
+}
+.relocation-card p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.relocation-info p,
+.relocation-check p,
+.relocation-card small {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+}
+.relocation-path {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.relocation-path span {
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--muted);
+}
+.relocation-path code {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-height: 48px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 20px;
+}
+.relocation-location-pair,
+.relocation-path-soft {
+  padding: 12px;
+  background: var(--surface-emphasis);
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+}
+.relocation-location-pair .relocation-path {
+  gap: 4px;
+}
+.relocation-location-pair code,
+.relocation-path-soft code {
+  padding: 0;
+  border: 0;
+  min-height: 20px;
+}
+.relocation-check {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 54px;
+}
+.relocation-check > span {
+  font-size: 14px;
+  color: var(--muted);
+}
+.relocation-check[data-complete="true"] > span,
+.relocation-card .relocation-success {
+  color: var(--success, #315344);
+}
+.relocation-check > span:last-child {
+  text-align: right;
+  min-width: 60px;
+}
+.relocation-picker,
+.relocation-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.relocation-footer {
+  justify-content: flex-end;
+}
+.relocation-workspace button {
+  min-height: 44px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.relocation-workspace button.primary {
+  color: var(--surface-raised);
+  background: var(--text);
+  border-color: var(--text);
+}
+.relocation-footer button {
+  min-width: 120px;
+}
+.relocation-footer button.primary {
+  min-width: 208px;
+}
+.relocation-card label {
+  font-size: 14px;
+  font-weight: 500;
+}
+.relocation-card input[type="text"],
+.relocation-card input:not([type]) {
+  width: 100%;
+  min-height: 48px;
+  border-color: var(--line);
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.relocation-card label.check {
+  font-size: 13px;
+  font-weight: 400;
+}
+.relocation-badge {
+  align-self: start;
+  border-radius: 8px;
+  padding: 4px 20px;
+  background: var(--surface-emphasis);
+  font-size: 12px;
+}
+.relocation-workspace progress {
+  width: 100%;
+  height: 8px;
+  accent-color: var(--accent);
+}
+.relocation-error {
+  margin: 0;
+  border: 1px solid var(--error-line);
+  border-radius: 8px;
+  padding: 12px;
+}
+@media (max-width: 1100px) {
+  .relocation-columns {
+    grid-template-columns: minmax(0, 1fr);
+    min-height: auto;
+  }
+  .relocation-columns > .relocation-card {
+    min-height: auto;
+  }
+  .relocation-aside {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 680px) {
+  .relocation-aside {
+    grid-template-columns: 1fr;
+  }
+  .relocation-card {
+    padding: 20px;
+  }
+  .relocation-heading h2 {
+    font-size: 25px;
+  }
+  .relocation-steps li {
+    width: auto;
+    flex: 1;
+    min-width: 100px;
+  }
+  .relocation-footer {
+    justify-content: stretch;
+  }
+  .relocation-footer button {
+    flex: 1;
+  }
+}

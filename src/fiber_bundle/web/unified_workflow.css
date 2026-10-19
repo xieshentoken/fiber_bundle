@@ -1,0 +1,66 @@
+/* Only the new unified-workflow forms; existing administration layouts stay scoped. */
+.uv-import-form,
+#vault-save-panel .uv-policy-form,
+#vault-save-panel .uv-merge-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-md, 12px);
+}
+.uv-import-form > label,
+#vault-save-panel .uv-policy-form > label,
+#vault-save-panel .uv-merge-form > label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.uv-import-form > label > .select-field,
+#vault-save-panel .uv-policy-form > label > .select-field,
+#vault-save-panel .uv-merge-form > label > .select-field {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+.uv-import-form > [hidden] {
+  display: none;
+}
+.uv-import-form .import-drop {
+  padding: 16px;
+  border: 1px dashed var(--field-line);
+  border-radius: var(--radius-control, 8px);
+}
+
+.import-basics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.import-basics > label,
+.import-advanced > label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.import-basics .select-field,
+.import-advanced .select-field {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.import-advanced > label {
+  margin-top: 16px;
+}
+.import-advanced > label[hidden] {
+  display: none;
+}
+#import-submit {
+  justify-self: start;
+  min-height: 44px;
+}
+@media (max-width: 767px) {
+  .import-basics {
+    grid-template-columns: 1fr;
+  }
+  #import-submit {
+    width: 100%;
+  }
+}

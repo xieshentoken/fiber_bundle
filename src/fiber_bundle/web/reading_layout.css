@@ -1,0 +1,376 @@
+/* Task hierarchy and reading rhythm shared by the five existing palettes. */
+:root {
+  --section-gap: 2rem;
+  --panel-inset: 1.714rem;
+  --heading-content-gap: 1rem;
+}
+body .brand .brand-name {
+  color: #000;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 21px;
+  font-weight: 400;
+  line-height: 1.3;
+}
+[data-theme="dark"] body .brand,
+[data-theme="dark"] body .brand:enabled:hover,
+[data-theme="dark"] body .brand:enabled:active {
+  background: #f5f5f3;
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+body .brand:enabled:hover .brand-name,
+body .brand:enabled:active .brand-name {
+  color: #000;
+}
+.page-heading {
+  margin-bottom: 1.714rem;
+}
+.ui-card {
+  padding: var(--panel-inset);
+}
+.ui-card-head {
+  align-items: flex-start;
+  margin-bottom: 1.143rem;
+}
+.ui-card-head h2 {
+  font-size: 1.286rem;
+}
+.view-tabs {
+  margin-bottom: 1.714rem;
+}
+.view-panel > .record-card {
+  margin-top: 0;
+}
+.settings-heading + p {
+  margin-top: 0.857rem;
+}
+.form-section {
+  min-width: 0;
+  margin: 0 0 var(--section-gap);
+  padding: 0;
+  border: 0;
+}
+.form-section > legend {
+  font-size: 1.286rem;
+  font-weight: 600;
+  padding: 0 0 1rem;
+}
+.form-section + .form-section {
+  border-top: 1px solid var(--line);
+  padding-top: 1.714rem;
+}
+.form-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.143rem 1.714rem;
+}
+.form-fields > label {
+  margin: 0;
+  min-width: 0;
+}
+.form-fields .select-field {
+  max-width: none;
+}
+.help-tip {
+  display: inline-block;
+  position: relative;
+  vertical-align: middle;
+  margin-inline-start: 6px;
+}
+body button.help-tip-trigger {
+  min-height: 24px;
+  width: 24px;
+  padding: 0;
+  border-radius: 50%;
+  box-shadow: none;
+  color: var(--muted);
+}
+.help-tip-content {
+  position: absolute;
+  z-index: 35;
+  top: 100%;
+  inset-inline-end: 0;
+  width: min(320px, 70vw);
+  padding: 12px;
+  border: 1px solid var(--field-line);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: 0.929rem;
+  line-height: 1.6;
+  font-weight: 400;
+}
+.help-tip-content[hidden] {
+  display: none;
+}
+.inventory-summary {
+  display: grid;
+  gap: 0.5rem;
+  padding: 1.143rem 0;
+  border-bottom: 1px solid var(--line);
+}
+.inventory-summary h3 {
+  margin: 0;
+  font-size: 1.143rem;
+  overflow-wrap: anywhere;
+}
+.inventory-summary p {
+  margin: 0;
+}
+.inventory-summary > .status-badge {
+  justify-self: start;
+}
+.language-control {
+  display: block;
+  max-width: 440px;
+  margin: 1rem 0;
+}
+.settings-fields {
+  align-items: start;
+}
+.settings-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.settings-fields input,
+.settings-fields select {
+  scroll-margin-block-end: 110px;
+}
+.sidebar-search {
+  flex-shrink: 0;
+}
+.sidebar-search-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-search kbd {
+  flex-shrink: 0;
+}
+.inventory-summary .technical-details {
+  margin: 0;
+}
+#inventory-content.rows {
+  gap: 0;
+}
+#inventory-panel > h2 {
+  display: none;
+}
+#inventory-panel > label {
+  display: inline-flex;
+  flex-direction: column;
+  margin: 0 1.143rem 1.143rem 0;
+  width: min(440px, 100%);
+}
+#inventory-panel > .view-tabs {
+  margin-top: 0.571rem;
+}
+#home-panel .home-columns {
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.429rem;
+}
+#home-panel .home-column {
+  gap: 1.429rem;
+}
+#home-panel .home-columns .ui-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 1rem 0;
+  box-shadow: none;
+  gap: 0.714rem;
+}
+#home-panel .home-columns .ui-row > .status-badge {
+  grid-column: 2;
+  justify-self: start;
+  max-width: 100%;
+  white-space: normal;
+}
+#home-panel .home-columns .ui-row > .icon:last-child {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+}
+#home-panel .home-columns .ui-row-text strong {
+  -webkit-line-clamp: 3;
+}
+#home-panel .home-columns .ui-row-text small {
+  -webkit-line-clamp: 2;
+}
+#home-panel .home-columns .ui-row-text {
+  grid-column: 2;
+  grid-row: 1;
+}
+.inventory-toolbar {
+  display: flex;
+  align-items: end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.429rem;
+}
+.vault-scope-picker {
+  display: flex;
+  align-items: end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.714rem;
+}
+.vault-scope-picker label {
+  flex: 1 1 280px;
+  max-width: 440px;
+  margin: 0;
+}
+.vault-scope-picker p {
+  width: 100%;
+  margin: 0;
+}
+#vault-save-panel form > .form-section {
+  grid-column: 1 / -1;
+}
+#vault-save-panel .form-fields > .check {
+  align-self: start;
+}
+.form-fields > label > small {
+  display: block;
+  margin-top: 0.5rem;
+  line-height: 1.6;
+}
+.vault-policy-section {
+  margin-top: var(--section-gap);
+  padding-top: 1.429rem;
+  border-top: 1px solid var(--line);
+}
+.vault-policy-section > summary {
+  font-size: 1.286rem;
+  font-weight: 600;
+}
+.organization-workspace.record-card {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.organization-workspace > [role="status"] {
+  margin-bottom: 1.429rem;
+}
+.organization-workspace .task-actions {
+  position: static;
+  margin-top: 1.714rem;
+}
+.task-row-summary {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.571rem 1rem;
+}
+.task-row-summary strong {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text);
+}
+.task-row-summary .status-badge {
+  justify-self: end;
+}
+.task-row-summary small {
+  grid-column: 2 / -1;
+  color: var(--muted);
+  font-weight: 400;
+}
+.task-row-summary::before {
+  content: "▸";
+  grid-column: 1;
+  grid-row: 1;
+  color: var(--accent);
+}
+.task-row-summary strong {
+  grid-column: 2;
+  grid-row: 1;
+}
+.task-row-summary > .status-badge {
+  grid-column: 3;
+  grid-row: 1;
+}
+.task-row[open] > .task-row-summary::before {
+  content: "▾";
+}
+:root[data-density="compact"] {
+  --section-gap: 1.429rem;
+  --panel-inset: 1.143rem;
+}
+@container (max-width: 1080px) {
+  #home-panel .home-columns {
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  }
+}
+@container (max-width: 760px) {
+  #home-panel .home-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 767px) {
+  :root {
+    --panel-inset: 1.143rem;
+  }
+  .form-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .help-tip-content {
+    inset-inline-end: auto;
+    inset-inline-start: -24px;
+  }
+  body .brand .brand-name {
+    font-size: 20px;
+  }
+}
+
+#inventory-content > h3 {
+  margin: 1.429rem 0 1.143rem;
+}
+.task-actions input[type="checkbox"] {
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.task-actions > label {
+  display: flex;
+  align-items: center;
+  gap: 0.571rem;
+}
+.form-fields > label:not(.check) {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.571rem;
+}
+.directory-field-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.714rem;
+}
+.directory-field-heading > span {
+  min-width: 0;
+}
+.directory-field-heading > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+#vault-save-panel .directory-field > input {
+  margin-top: 0;
+}
+/* Keep the complete fixed wordmark beside its toggle, including the dark plate. */
+body[data-sidebar="expanded"] {
+  --sidebar-width: 240px;
+}
+body[data-authenticated="true"] .brand {
+  gap: 6px;
+}
+body[data-authenticated="true"] .brand .brand-name {
+  font-size: 20px;
+}
+[data-theme="dark"] body .brand,
+[data-theme="dark"] body .brand:enabled:hover,
+[data-theme="dark"] body .brand:enabled:active {
+  padding: 4px;
+}

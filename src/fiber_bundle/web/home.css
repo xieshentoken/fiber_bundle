@@ -1,0 +1,676 @@
+/* Home dashboard: system map, three columns of cards. Tokens only. */
+#workspace > #home-panel {
+  background: transparent;
+  padding: 0;
+  border: 0;
+  min-height: 0;
+}
+#home-panel {
+  container-type: inline-size;
+}
+/* Header actions beside the greeting. */
+.home-state {
+  padding: 4px 10px;
+}
+.home-count {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+.home-count strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.home-inbox,
+#page-refresh,
+.page-actions [data-page-refresh] {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+}
+.home-inbox .icon,
+#page-refresh .icon,
+.page-actions [data-page-refresh] .icon {
+  width: 16px;
+  height: 16px;
+}
+.button-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--on-accent);
+  color: var(--accent);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+}
+/* Blocking failure banner; the detailed root issues stay in .home-issues. */
+.home-alert {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 14px 18px;
+  border-radius: var(--radius-lg);
+  background: var(--danger);
+  color: var(--on-accent);
+}
+.home-alert > .icon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+}
+.home-alert div {
+  flex: 1;
+  min-width: 0;
+}
+.home-alert strong {
+  font-size: var(--text-md);
+}
+.home-alert p {
+  margin: 2px 0 0;
+  font-size: var(--text-sm);
+}
+#home-panel .home-alert-action {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border-color: var(--on-accent);
+  background: var(--surface-raised);
+  color: var(--danger);
+  font-size: var(--text-sm);
+}
+/* System map */
+.arch-card {
+  margin-bottom: 16px;
+}
+.arch-head {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+.home-issues {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.home-issues:empty {
+  display: none;
+}
+.home-issues p {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--status-waiting-soft);
+  color: var(--status-waiting);
+  font-size: var(--text-xs);
+}
+.home-issues p.error {
+  background: var(--error-soft);
+  color: var(--error-text);
+}
+.home-issues .icon {
+  width: 14px;
+  height: 14px;
+}
+.arch-map {
+  --arch-lines: on;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(200px, 1.35fr) repeat(5, minmax(104px, 1fr));
+  grid-template-areas:
+    "entries .      model   .      .     ."
+    "entries intake backend review vault index"
+    "entries .      storage backup .     .";
+  align-items: center;
+  gap: 16px 30px;
+  padding: 4px 0;
+}
+.arch-lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.arch-lines path {
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.5;
+}
+.arch-lines path[data-kind="dependency"] {
+  stroke-dasharray: 4 4;
+}
+.arch-lines path[data-kind="paused"] {
+  stroke: var(--status-waiting);
+}
+.arch-lines path[data-kind="fault"] {
+  stroke: var(--danger);
+}
+.arch-lines path[data-kind="idle"] {
+  stroke: var(--field-line);
+  opacity: 0.6;
+}
+.arch-marker circle {
+  fill: var(--surface-raised);
+  stroke-width: 1.5;
+}
+.arch-marker path {
+  fill: none;
+  stroke-width: 1.5;
+}
+.arch-marker[data-kind="paused"] circle,
+.arch-marker[data-kind="paused"] path {
+  stroke: var(--status-waiting);
+}
+.arch-marker[data-kind="fault"] circle,
+.arch-marker[data-kind="fault"] path {
+  stroke: var(--danger);
+}
+.arch-entries {
+  grid-area: entries;
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  z-index: 1;
+}
+.arch-entries-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  margin: 0 4px 2px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+#home-panel .arch-entry,
+#home-panel .arch-node {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  text-align: left;
+  font-weight: 400;
+}
+#home-panel .arch-entry {
+  /* Long translated states must not squeeze the title into a narrow column. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+#home-panel .arch-entry strong,
+#home-panel .arch-node strong {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#home-panel .arch-node small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+#home-panel .arch-node[data-tone="error"] {
+  border-color: var(--error-line);
+  background: var(--error-soft);
+}
+#home-panel .arch-node[data-tone="paused"],
+#home-panel .arch-entry[data-tone="paused"] {
+  border-style: dashed;
+}
+[data-node="intake"] {
+  grid-area: intake;
+}
+[data-node="backend"] {
+  grid-area: backend;
+}
+[data-node="model"] {
+  grid-area: model;
+}
+[data-node="storage"] {
+  grid-area: storage;
+}
+[data-node="review"] {
+  grid-area: review;
+}
+[data-node="backup"] {
+  grid-area: backup;
+}
+[data-node="vault"] {
+  grid-area: vault;
+}
+[data-node="index"] {
+  grid-area: index;
+}
+.arch-status {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.arch-status::before {
+  content: "– ";
+}
+.arch-status[data-tone="success"] {
+  color: var(--status-connected);
+}
+.arch-status[data-tone="success"]::before {
+  content: "✓ ";
+}
+.arch-status[data-tone="waiting"] {
+  color: var(--status-waiting);
+}
+.arch-status[data-tone="waiting"]::before {
+  content: "○ ";
+}
+.arch-status[data-tone="paused"] {
+  color: var(--status-waiting);
+}
+.arch-status[data-tone="paused"]::before {
+  content: "Ⅱ ";
+}
+.arch-status[data-tone="error"] {
+  color: var(--error-text);
+}
+.arch-status[data-tone="error"]::before {
+  content: "⚠ ";
+}
+.arch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 16px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.arch-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.arch-legend li::before {
+  content: "";
+  width: 18px;
+  border-top: 2px solid var(--muted);
+}
+.arch-legend li[data-kind="dependency"]::before {
+  border-top-style: dashed;
+}
+.arch-legend li[data-kind="paused"]::before {
+  border-top-color: var(--status-waiting);
+}
+.arch-legend li[data-kind="fault"]::before {
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--danger);
+  border-radius: 50%;
+}
+.arch-legend li[data-kind="idle"]::before {
+  border-top-color: var(--field-line);
+}
+/* Three columns: work, intake and knowledge, cost and agents. */
+.home-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.home-column {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.imports-card .home-scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 0 0 4px;
+  padding: 6px 8px;
+  border-radius: var(--radius-control);
+  background: var(--surface-panel);
+}
+.imports-card .home-scope label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.imports-card .home-scope .select-field {
+  width: auto;
+  min-width: 96px;
+  max-width: 160px;
+}
+.imports-card .home-scope button.select-trigger {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: var(--text-xs);
+}
+.imports-card .home-scope select {
+  margin: 0;
+}
+/* Cost */
+.cost-hero {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.cost-hero strong {
+  font-size: var(--text-2xl);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+.cost-hero span {
+  font-size: var(--text-xs);
+}
+.cost-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 6px 0 4px;
+  font-size: var(--text-xs);
+}
+.cost-facts div {
+  display: flex;
+  gap: 4px;
+}
+.cost-facts dt {
+  color: var(--muted);
+}
+.cost-facts dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.cost-figure {
+  position: relative;
+  margin: 4px 0 0;
+}
+.cost-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.cost-chart .grid {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.cost-chart .baseline {
+  stroke: var(--field-line);
+  stroke-width: 1;
+}
+.cost-chart .axis {
+  fill: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+.cost-chart .hit {
+  fill: transparent;
+}
+.cost-chart .value {
+  fill: var(--chart-series);
+}
+.cost-chart .bar:hover .value {
+  fill: var(--chart-series-strong);
+}
+.cost-tip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin: 0;
+  padding: 3px 8px;
+  border-radius: var(--radius-control);
+  background: var(--text);
+  color: var(--on-accent);
+  font-size: var(--text-xs);
+  pointer-events: none;
+}
+.cost-table-wrap {
+  max-height: 220px;
+  overflow: auto;
+}
+.cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+.cost-table caption {
+  text-align: left;
+  color: var(--muted);
+}
+.cost-table th,
+.cost-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+}
+.cost-table th:first-child,
+.cost-table td:first-child {
+  text-align: left;
+}
+.home-build {
+  margin: 16px 0 0;
+  font-size: var(--text-xs);
+}
+/* Inbox (worklist) page keeps its grouped list. */
+.home-pending-row {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.home-pending-row button {
+  flex-shrink: 0;
+}
+.home-pending-group h3 {
+  font-size: var(--text-base);
+  margin-top: 18px;
+}
+#home-panel > .home-scope {
+  display: none;
+}
+#home-panel button:active {
+  transform: scale(0.98);
+}
+[data-task-id]:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 4px;
+}
+@container (max-width: 1080px) {
+  .home-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-columns > .home-column:last-child {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .arch-map {
+    grid-template-columns: minmax(130px, 1.2fr) repeat(5, minmax(84px, 1fr));
+    column-gap: 16px;
+  }
+  /* Narrow nodes wrap instead of truncating the state they report. */
+  #home-panel .arch-entry strong,
+  #home-panel .arch-node strong,
+  .arch-status {
+    white-space: normal;
+  }
+}
+@container (max-width: 760px) {
+  .home-columns,
+  .home-columns > .home-column:last-child {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Stacked map: same nodes in reading order, no connectors. */
+  .arch-map {
+    --arch-lines: none;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: none;
+  }
+  .arch-map > * {
+    grid-area: auto;
+  }
+  .arch-lines {
+    display: none;
+  }
+  .home-alert {
+    flex-wrap: wrap;
+  }
+}
+:root[data-motion="reduce"] #home-panel button:active {
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  #home-panel button:active {
+    transform: none;
+  }
+}
+
+:root {
+  --chart-series: var(--chart-cost);
+  --chart-series-strong: var(--accent);
+}
+#home-panel .arch-status,
+#home-panel .arch-entry strong,
+#home-panel .arch-node strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  overflow: visible;
+  text-overflow: clip;
+}
+#home-panel .arch-node {
+  min-height: 64px;
+}
+.ui-card-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.imports-card .ui-card-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.imports-card .home-scope .select-field {
+  max-width: 100%;
+}
+.cost-chart .bar:focus-visible {
+  outline: 2px solid var(--focus);
+}
+@media (max-width: 600px) {
+  #home-panel button {
+    min-width: 44px;
+  }
+  .imports-card .home-scope button.select-trigger {
+    min-height: 44px;
+  }
+}
+@container (max-width: 760px) {
+  .imports-card .home-scope label {
+    min-width: 0;
+    white-space: normal;
+    flex-wrap: wrap;
+  }
+  .home-columns > .home-column:last-child {
+    grid-column: auto;
+  }
+  button.ui-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  button.ui-row > .status-badge {
+    grid-column: 2;
+    justify-self: start;
+  }
+  button.ui-row > .icon:last-child {
+    display: none;
+  }
+}
+@container (max-width:760px) {
+  .arch-legend {
+    display: none;
+  }
+  .arch-map::after {
+    content: "资料路径：接入 → 处理与审核 → 知识库 → 检索。模型与备份作为依赖。";
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+}
+
+.home-system-details {
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+.home-system-details > summary {
+  padding: 12px 4px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.home-system-details[open] > summary {
+  margin-bottom: 8px;
+}
+.component-details p {
+  overflow-wrap: anywhere;
+}
+.backend-danger {
+  margin: 20px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-control);
+}
+.backend-danger .danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+/* Recorded lifetime totals stay distinct from the recent daily chart. */
+.cost-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px 18px;
+  margin: 4px 0 14px;
+}
+.cost-totals dt {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.cost-totals dd {
+  margin: 6px 0 0;
+  font-size: var(--text-xl);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.cost-token-split {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+.cost-period {
+  font-size: var(--text-sm);
+  margin: 16px 0 8px;
+}
+.cost-metric {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+.cost-metric button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
