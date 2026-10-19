@@ -1,0 +1,11 @@
+{
+  "asr_enabled": false,
+  "cpus": 2,
+  "daily_maximum": 2,
+  "image": "sha256:8c2e32cace39c8c68d53ce4e33132c4a36fd9f07fb1efc86f759c91f4f8f6512",
+  "max_duration_ms": 60000,
+  "memory_mib": 6144,
+  "model_lock_sha256": "1cc7225310c3c438e96165b9311aec25b486f61a82b49882e4cc64c54e067b2c",
+  "qualified": true,
+  "timeout_seconds": 300
+}

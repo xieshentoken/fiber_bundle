@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "enabled": false,
+  "binding": {
+    "account_id": "configure-locally",
+    "owner_id": "configure-locally",
+    "client_id": "configure-locally",
+    "vault_id": "configure-locally"
+  },
+  "quiet_seconds": 3,
+  "intent_routing": false,
+  "media_limit": 0,
+  "store_limit": 0,
+  "submission_limit": 0,
+  "outbound_limit": 0,
+  "result_receipts": false,
+  "execution_config": "configs/execution.example.json",
+  "capture_policy": null
+}

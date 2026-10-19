@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "engine": {
+    "name": "semantica",
+    "version": "0.7.0",
+    "revision": "320761de5d040a54a3220acc563223b4a7ffdc51"
+  },
+  "algorithm": "body_topics_v5",
+  "model": {
+    "name": "BAAI/bge-small-zh-v1.5",
+    "revision": "7999e1d3359715c523056ef9478215996d62a620",
+    "dimensions": 512,
+    "files_sha256": "81d3cf5d98d31f7e79868f3667209279fff448b35490bffac3f4b2d5cc6f3563"
+  },
+  "model_files": {
+    "1_Pooling/config.json": "aaa8861589f80c961a03cc86c7eeaef7605c1676b9ab55329d33a304738769c6",
+    "config.json": "3853a7979202c348751b753e36f579c41d8da7d36af617d3d907e1fc9b441f2a",
+    "config_sentence_transformers.json": "940d5f50db195fa6e5e6a4f122c095f77880de259d74b14a65779ed48bdd7c56",
+    "model.safetensors": "354763b9b1357bc9c44f62c6be2276321081ed2567773608c0d0785b61d5a026",
+    "modules.json": "84e40c8e006c9b1d6c122e02cba9b02458120b5fb0c87b746c41e0207cf642cf",
+    "sentence_bert_config.json": "84e39fda68ccbff05bfa723ae9c0e70e23e2ec373b76e0f8c6e71af72a693cbf",
+    "special_tokens_map.json": "b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3",
+    "tokenizer.json": "48cea5d44424912a6fd1ea647bf4fe50b55ab8b1e5879c3275f80e339e8fae26",
+    "tokenizer_config.json": "e6f3b96db926a37d4039995fbf5ad17de158dfb8f6343d607e4dbaad18d75f5a",
+    "vocab.txt": "45bbac6b341c319adc98a532532882e91a9cefc0329aa57bac9ae761c27b291c"
+  },
+  "sdk_files_sha256": "bfaee4991446f1ddfac71b606b238bde91eddcd604a135030cb99fe3b27e7031",
+  "sdk_source_files_sha256": "83c344bbb0a164c47e6cea173ce8ceb1ed77b3eebece8e8118b6439e63a9d753",
+  "requirements_sha256": "69a2db3face2c835a7d840dd606f51c05b8067e26d0cd730620d568120a3d9ec"
+}

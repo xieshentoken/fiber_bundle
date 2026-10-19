@@ -1,0 +1,8 @@
+{
+  "schema": "document-creation-preparation/v1",
+  "enabled": false,
+  "executor": "pi",
+  "model_config": null,
+  "capability_revision": null,
+  "formats": []
+}

@@ -1,0 +1,30 @@
+{
+  "name": "fiber-bundle-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/web/*.test.js tests/desktop/*.test.js",
+    "lint": "eslint src/fiber_bundle/web --ignore-pattern \"*.bundle.js\" --ignore-pattern \"graph_force_worker.js\" src/fiber_bundle/executor/*.mjs src/fiber_bundle/creation_executor/*.mjs tests/web desktop/*.mjs desktop/*.js tests/desktop frontend/graph",
+    "format:check": "prettier --check \"src/fiber_bundle/web/*.{html,css,js}\" \"src/fiber_bundle/web/i18n/*.js\" \"tests/web/*.js\" \"src/fiber_bundle/executor/*.mjs\" \"src/fiber_bundle/creation_executor/*.mjs\" \"desktop/*.{mjs,js,cjs,html,css,json}\" \"tests/desktop/*.js\" \"frontend/graph/*.{js,mjs}\" \"!src/fiber_bundle/web/*bundle.js\" \"!src/fiber_bundle/web/graph_force_worker.js\"",
+    "format": "prettier --write \"src/fiber_bundle/web/*.{html,css,js}\" \"src/fiber_bundle/web/i18n/*.js\" \"tests/web/*.js\" \"src/fiber_bundle/executor/*.mjs\" \"src/fiber_bundle/creation_executor/*.mjs\"",
+    "desktop": "electron desktop",
+    "build:desktop": "node desktop/build.mjs",
+    "build:graph": "node frontend/graph/build.mjs",
+    "lint:ui": "node tests/e2e/lintapple.mjs"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "@eslint/js": "^10.0.1",
+    "electron": "44.5.1",
+    "esbuild": "0.25.12",
+    "eslint": "^10.11.0",
+    "lintapple": "https://codeload.github.com/gholtzap/lintapple/tar.gz/90ddc736af6f2712903d53dd9a463445e109f586",
+    "playwright": "1.63.0",
+    "prettier": "^3.9.9"
+  },
+  "dependencies": {
+    "graphology": "0.26.0",
+    "graphology-layout-forceatlas2": "0.10.1",
+    "sigma": "3.0.2"
+  }
+}

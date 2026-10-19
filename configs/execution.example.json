@@ -1,0 +1,20 @@
+{
+  "image": "sha256:f4d9f5f11635ad96fc7cdc9de76cbb210bf98c108cf1c80d8deb81cf1bf52a7f",
+  "endpoint": "https://opencode.ai/zen/go/v1/chat/completions",
+  "model": "glm-5.3-flash",
+  "secret_file": "/configure/your/local/key-file",
+  "price_revision": "configure-verified-pricing",
+  "input_nusd": null,
+  "output_nusd": null,
+  "max_input_tokens": 131072,
+  "max_output_tokens": 512,
+  "max_request_bytes": 65536,
+  "task_limit_nusd": null,
+  "daily_limit_nusd": null,
+  "max_calls": null,
+  "daily_calls": null,
+  "max_attempts": 2,
+  "timeout_seconds": 180,
+  "timezone": "Asia/Taipei",
+  "currency": "USD"
+}

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "enabled": false,
+  "app_id": "cli_REPLACE_NEW_APP_ID",
+  "owner_id": "ou_REPLACE_NEW_APP_SCOPED_OWNER",
+  "client_id": "REPLACE_DISTINCT_FIBER_CLIENT_ID",
+  "vault_id": "REPLACE_AUTHORIZED_TEST_VAULT_ID",
+  "home": "configs/hermes-feishu-knowledge",
+  "secret_file": "/absolute/path/to/new-feishu-credentials.json",
+  "quiet_seconds": 3,
+  "download_limit": 0,
+  "store_limit": 0,
+  "authorization_id": null,
+  "query_enabled": false,
+  "expert_enabled": false,
+  "expert_limit": 0,
+  "model_limit": 0,
+  "outbound_limit": 0,
+  "execution_file": null
+}

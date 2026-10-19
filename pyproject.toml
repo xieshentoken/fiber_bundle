@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fiber-bundle"
+version = "0.6.0a2"
+description = "Local authenticated knowledge storage and administration for Fiber bundle"
+requires-python = ">=3.12"
+dependencies = ["fastapi>=0.115", "uvicorn>=0.30"]
+
+[project.optional-dependencies]
+backup = ["cryptography>=43"]
+weixin = ["aiohttp>=3.10", "cryptography>=43"]
+agent = ["mcp==1.26.0"]
+
+[project.scripts]
+fiber-bundle = "fiber_bundle.cli:main"
+fiber-agent = "fiber_bundle.agent_connections.cli:main"
+fiber-backend = "fiber_bundle.backend_cli:main"
+fiber-backup = "fiber_bundle.backup_cli:main"
+fiber-setup = "fiber_bundle.setup_cli:main"
+fiber-execute = "fiber_bundle.execution_cli:main"
+fiber-publish = "fiber_bundle.publication_cli:main"
+fiber-answer = "fiber_bundle.answer_cli:main"
+fiber-answer-worker = "fiber_bundle.answer_worker_cli:main"
+fiber-document-worker = "fiber_bundle.document_creation_worker_cli:main"
+fiber-local-query-worker = "fiber_bundle.local_query_worker_cli:main"
+fiber-cloud-answer-switch = "fiber_bundle.cloud_answer_switch_cli:main"
+fiber-cloud-answer-worker = "fiber_bundle.cloud_answer_worker_cli:main"
+fiber-weixin-worker = "fiber_bundle.weixin_worker_cli:main"
+fiber-feishu-gateway = "fiber_bundle.feishu_gateway_cli:main"
+fiber-notes = "fiber_bundle.note_changes_cli:main"
+fiber-note-migrate = "fiber_bundle.note_migration_cli:main"
+fiber-moc = "fiber_bundle.moc_cli:main"
+fiber-graph = "fiber_bundle.knowledge_graph.cli:main"
+fiber-moc-dispatch = "fiber_bundle.moc_dispatch_cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "mypy>=1.11",
+    "ruff>=0.6",
+    "build>=1.2",
+    "httpx>=0.27",
+    "httpx2>=2.13.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+fiber_bundle = ["py.typed", "expert_tool_snapshots/*/*.py", "expert_tool_snapshots/*/*.json", "build_identity.json", "web/*.html", "web/*.css", "web/*.js", "web/i18n/*.js", "web/*.ttf", "web/*.png", "web/*-OFL.txt", "web/font-sources.json", "web/graph-library-licenses.txt", "executor/*", "article_executor/*", "document_executor/*", "creation_executor/*", "media_executor/*", "knowledge_executor/*", "vendor/*.json", "vendor/*-LICENSE.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+exclude = ["src/fiber_bundle/vendor"]
+
+[[tool.mypy.overrides]]
+module = "fiber_bundle.vendor.*"
+ignore_errors = true
+
+[tool.ruff]
+exclude = ["src/fiber_bundle/vendor"]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

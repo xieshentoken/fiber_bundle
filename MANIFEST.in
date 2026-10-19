@@ -1,0 +1,62 @@
+include tests/conftest.py
+include uv.lock
+include package.json package-lock.json eslint.config.js
+include ui-policy.json
+include tests/e2e/lintapple.mjs tests/e2e/lintapple_guards.mjs
+recursive-include tests/web *.js
+
+include configs/execution.example.json
+include configs/weixin-worker.example.json
+include configs/weixin-receiver.example.json
+include configs/feishu-knowledge.example.json
+
+recursive-include tests/fixtures *.json
+recursive-include tests/knowledge_graph/fixtures *.json
+recursive-include tests/knowledge_graph *.py
+include tools/build_knowledge_graph_runtime.py
+include configs/knowledge-graph-runtime.example.json
+
+include tests/draft_eval_support.py
+include tests/hermes_gateway_acceptance.py
+include tests/hermes_platform_lock_acceptance.py
+include tests/document_support.py
+include tests/schema_support.py
+include tests/document_creation_runtime_acceptance.py
+
+recursive-include tests/fixtures/m8 *.png *.pdf *.docx *.xlsx *.pptx
+
+recursive-include tests/fixtures/m9 *.mp4
+
+include configs/media-processing.example.json
+include configs/query-routing.example.json
+include configs/document-creation.example.json
+
+recursive-include desktop *.mjs *.js *.html *.css *.json
+recursive-include desktop *.swift *.py
+recursive-include desktop/runtime-licenses *
+recursive-include tests/desktop *.js
+
+recursive-include desktop *.cjs *.ttf *.png *.txt
+recursive-include frontend/graph *.js *.mjs
+
+include docs/TECHNICAL_REFERENCE.md
+include docs/STATUS.md
+include docs/HANDOFF.md
+include docs/SPEC.md
+include docs/DECISIONS.md
+include docs/ARCHITECTURE.md
+include docs/PRIVACY.md
+
+include tests/e2e/themes.cjs tests/e2e/theme_guards.cjs tests/e2e/theme_desktop.cjs
+
+recursive-include skills/fake-expert *
+recursive-include skills/bili-note-V3 *
+global-exclude *.pyc
+prune skills/fake-expert/__pycache__
+prune skills/bili-note-V3/__pycache__
+
+include tests/agent_connections/test_media_output_runtime.py
+include tests/e2e/expert_outputs.cjs
+include tests/agent_connections/test_original_grants.py
+include tests/agent_connections/test_expert_operation_runtime.py
+include tests/agent_connections/test_http.py

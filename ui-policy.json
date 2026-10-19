@@ -1,0 +1,124 @@
+{
+  "fonts": [
+    "DM Sans",
+    "Noto Sans SC",
+    "FiberCJK-noto",
+    "FiberCJK-system",
+    "FiberCJK-serif",
+    "PingFang SC",
+    "Microsoft YaHei",
+    "system-ui",
+    "-apple-system",
+    "BlinkMacSystemFont",
+    "SF Pro Text",
+    "SF Pro Display",
+    "Georgia",
+    "Times New Roman",
+    "serif",
+    "sans-serif",
+    "SFMono-Regular",
+    "Menlo",
+    "Monaco",
+    "Consolas",
+    "monospace"
+  ],
+  "fontSizes": [
+    12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 30, 32, 40, 44, 48, 64, 17
+  ],
+  "typeRules": [
+    {
+      "selector": "#inventory-content .row h3, #execution-content .record-heading h3, #creation-content .row h3, #reminders-content h3",
+      "sizes": [15]
+    },
+    {
+      "selector": ".brand",
+      "sizes": [18, 20]
+    },
+    {
+      "selector": "h1",
+      "sizes": [24, 28, 30, 32, 36, 40, 48, 64]
+    },
+    {
+      "selector": "h2",
+      "sizes": [18, 20, 22, 24, 28, 30, 32, 17]
+    },
+    {
+      "selector": "h3",
+      "sizes": [14, 16, 18, 20, 22, 24]
+    },
+    {
+      "selector": "button, [role=button]",
+      "sizes": [12, 13, 14, 16]
+    }
+  ],
+  "minControlSize": 24,
+  "controlSizeRules": [
+    {
+      "selector": "button, [role=button]",
+      "minSize": 44,
+      "maxViewportWidth": 600
+    }
+  ],
+  "minControlGap": 8,
+  "minControlInset": 8,
+  "controlContainers": ["[data-ui-container]"],
+  "minLayoutGap": 8,
+  "bannedCopy": ["unlock your potential", "seamlessly", "game-changing"],
+  "viewports": [
+    {
+      "width": 1180,
+      "height": 788
+    },
+    {
+      "width": 390,
+      "height": 844
+    },
+    {
+      "width": 1440,
+      "height": 900
+    }
+  ],
+  "colorSchemes": ["light"],
+  "exceptions": [
+    {
+      "selector": ".sidebar nav > button",
+      "rules": ["control-gap"],
+      "reason": "Dense vertical navigation intentionally uses 44px targets and 2px separators. The companion interaction check verifies target size; workflow action groups still require 8px."
+    },
+    {
+      "selector": "#vaults-panel .section-heading h2, #clients-panel .section-heading h2, #documents-panel .section-heading h2, #media-panel > h2, #models-panel > h2, #backend-panel > h2, #backups-panel > h2",
+      "rules": ["content-clipping"],
+      "reason": "These duplicate section names are deliberately 1px visually hidden headings for assistive technology. The companion check verifies their clipping contract and visible page heading."
+    },
+    {
+      "selector": "body:has(dialog#theme-picker:not([open])) #theme-toggle[aria-expanded=\"false\"][aria-haspopup=\"dialog\"][aria-controls=\"theme-picker\"], body:has(dialog#theme-picker:not([open])) #appearance-theme-change[aria-expanded=\"false\"][aria-haspopup=\"dialog\"][aria-controls=\"theme-picker\"]",
+      "rules": ["control-state"],
+      "reason": "axe 4.14 returns unresolved for a closed native dialog reference. The companion check verifies the real dialog target, expanded state, modal focus, Escape, and focus return."
+    },
+    {
+      "selector": "button.select-trigger[role=\"combobox\"][aria-haspopup=\"listbox\"][aria-expanded=\"false\"][aria-controls]",
+      "rules": ["control-state"],
+      "reason": "axe 4.14 returns unresolved for the existing hidden listbox. Every reference and listbox role is checked separately; keyboard opening, Escape, value preservation and focus return are exercised."
+    },
+    {
+      "selector": ".usage-chart-scroll .chart-label, .cost-chart .axis",
+      "rules": ["text-contrast"],
+      "reason": "axe cannot resolve the background of SVG text. The companion check computes foreground/background contrast for the rendered chart labels and requires 4.5:1."
+    },
+    {
+      "selector": ".sidebar .nav-heading",
+      "rules": ["text-contrast"],
+      "reason": "Section captions can be partly outside the bounded navigation scrollport. The companion check verifies their real foreground/sidebar-background contrast."
+    },
+    {
+      "selector": ".sidebar nav > button .nav-label",
+      "rules": ["text-contrast"],
+      "reason": "Navigation rows can be partly outside the bounded scrollport after visiting lower pages; axe cannot resolve an occluded background. The companion check verifies actual text/background contrast for every navigation label, including selected and unselected rows."
+    },
+    {
+      "selector": "body[data-sidebar=\"rail\"] .sidebar nav .nav-label",
+      "rules": ["content-clipping"],
+      "reason": "Icon-rail navigation deliberately clips its duplicate text labels to 1px. The companion guard verifies the clipping contract, accessible button name, unique linked tooltip and keyboard focus; expanded labels are never exempt."
+    }
+  ]
+}

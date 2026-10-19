@@ -1,0 +1,7 @@
+{
+  "schema": "query-routing-preparation/v1",
+  "enabled": false,
+  "local_query": null,
+  "cloud_answer": null,
+  "approved_backups": []
+}

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "enabled": false,
+  "binding": {
+    "account_id": "configure-existing-bot-account",
+    "owner_id": "configure-existing-owner",
+    "client_id": "configure-existing-client-id",
+    "vault_id": "configure-existing-vault-id"
+  },
+  "execution_config": "configs/execution.example.json",
+  "maximum": 0,
+  "poll_limit": 1,
+  "poll_seconds": 1,
+  "publication_maximum": 0
+}
