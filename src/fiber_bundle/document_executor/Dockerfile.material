@@ -1,0 +1,11 @@
+FROM fiber-document-m8:remaining
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends libreoffice-writer && rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/opt/fiber:/opt/fiber/decoder OMP_THREAD_LIMIT=1
+COPY fiber_bundle /opt/fiber/fiber_bundle
+COPY pypdf /opt/fiber/pypdf
+COPY decoder /opt/fiber/decoder
+COPY PYPDF-LICENSE context.json decoder-files.json /opt/fiber/
+USER 1000:1000
+WORKDIR /tmp
+ENTRYPOINT ["python", "-m", "fiber_bundle.document_worker_entry"]

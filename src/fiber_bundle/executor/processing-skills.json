@@ -1,0 +1,18 @@
+{
+  "schema": "fiber-pi-skills/v1",
+  "pi_version": "0.87.1",
+  "skills": {
+    "article": {
+      "file": "article-processing.md",
+      "sha256": "016f71d5233762521eb8c10faf149b80a2d269cdb20a43ea0b2862ecbe7943ab"
+    },
+    "video": {
+      "file": "video-processing.md",
+      "sha256": "74ed840252977ea9f6212f05c6323017301a044c6e5dd58d5e4c21255fbd13d7"
+    },
+    "expert": {
+      "file": "expert-processing.md",
+      "sha256": "3629e3cd389a3cd0143a45578d88427c61a6ecaf6cec4478aea5440e3f6eb6a2"
+    }
+  }
+}

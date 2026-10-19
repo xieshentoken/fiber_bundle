@@ -1,0 +1,9 @@
+FROM python:3.13.12-slim-bookworm@sha256:a58daefb915e1e03ad48f3ca4df8832065412c5c35cacb9d39f4229184de12b6
+RUN apt-get update && apt-get install -y --no-install-recommends poppler-utils tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim tesseract-ocr-chi-tra && rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONPATH=/opt/fiber OMP_THREAD_LIMIT=1
+COPY fiber_bundle /opt/fiber/fiber_bundle
+COPY pypdf /opt/fiber/pypdf
+COPY PYPDF-LICENSE context.json /opt/fiber/
+USER 1000:1000
+WORKDIR /tmp
+ENTRYPOINT ["python", "-m", "fiber_bundle.document_worker_entry"]
