@@ -3,7 +3,7 @@
 try {
   const value = JSON.parse(window.localStorage.getItem("fiber.appearance.v1"));
   const root = document.documentElement;
-  const themes = ["oracle", "tesla", "cursor", "clay", "dark"];
+  const themes = ["oracle", "tesla", "cursor", "clay", "dark", "atlas"];
   root.dataset.theme = themes.includes(value?.defaultTheme)
     ? value.defaultTheme
     : themes.includes(value?.theme)

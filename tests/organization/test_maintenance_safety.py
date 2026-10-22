@@ -33,7 +33,7 @@ def test_confirmation_recomputes_seal_and_permission_epoch(config, ready):
 
 def test_all_modes_prune_policy_before_note_reads(config, ready, monkeypatch):
     cid, vid, root, *_ = ready
-    excluded = "01-Projects/PROTECTED_PROJECT"
+    excluded = "01-Projects/GF_supply_chain"
     forbidden = root / excluded
     forbidden.mkdir(parents=True)
     (forbidden / "do-not-open.md").write_text("# forbidden")

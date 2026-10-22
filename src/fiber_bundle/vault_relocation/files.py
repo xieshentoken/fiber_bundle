@@ -42,21 +42,29 @@ def local(path: Path) -> None:
     require_local(path)
 
 
-def target(config: Config, db: Any, row: Any, value: str) -> tuple[Path, Path]:
+def target(
+    config: Config, db: Any, row: Any, value: str, *, icloud: bool = False
+) -> tuple[Path, Path]:
     source = vault_catalog.physical_path(config, row)
     path = Path(value)
     if not path.is_absolute() or len(value) > 4096 or "\0" in value or ".." in path.parts:
         reject("invalid_target")
     if path == Path(path.anchor) or path.name in {"", ".", ".."}:
         reject("invalid_target")
-    raw_scope = json.loads(row["scope_json"])
-    before = vault_scope.effective(source, raw_scope)
-    after = vault_scope.effective(path, raw_scope)
-    # Full-root preservation cannot be proved by bypassing excluded/protected subtrees.
-    if before.include != ("",) or before.exclude or after.include != ("",) or after.exclude:
-        reject("full_scope_required")
-    local(source)
-    local(path.parent)
+    if icloud:
+        from .icloud import location, scopes
+
+        scopes(source, path, row)
+        location(source)
+        location(path.parent)
+    else:
+        raw_scope = json.loads(row["scope_json"])
+        before = vault_scope.effective(source, raw_scope)
+        after = vault_scope.effective(path, raw_scope)
+        if before.include != ("",) or before.exclude or after.include != ("",) or after.exclude:
+            reject("full_scope_required")
+        local(source)
+        local(path.parent)
     if path.parent.resolve(strict=True) != path.parent:
         reject("invalid_target")
     if source == path or source in path.parents or path in source.parents:
@@ -76,9 +84,16 @@ def target(config: Config, db: Any, row: Any, value: str) -> tuple[Path, Path]:
     return source, path
 
 
-def inventory(root: Path) -> list[dict[str, Any]]:
+def inventory(
+    root: Path, *, icloud: bool = False, excluded: tuple[str, ...] = ()
+) -> list[dict[str, Any]]:
     """Read through no-follow directory descriptors; include hidden metadata and bytes."""
-    local(root)
+    if icloud:
+        from .icloud import available
+
+        available(root, excluded)
+    else:
+        local(root)
     root_key = key(root)
     found: list[dict[str, Any]] = []
     total = 0
@@ -98,6 +113,9 @@ def inventory(root: Path) -> list[dict[str, Any]]:
             if len(found) >= MAX_ENTRIES or time.monotonic() > deadline:
                 reject("inventory_limit")
             path = parent / name
+            relative = path.relative_to(root).as_posix()
+            if any(vault_scope.inside(relative, prefix) for prefix in excluded):
+                reject("protected_entries_present")
             info = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
             if info.st_dev != root_key[0] or stat.S_ISLNK(info.st_mode):
                 reject("links_or_mounts")
@@ -188,6 +206,10 @@ def inventory(root: Path) -> list[dict[str, Any]]:
         os.close(root_fd)
     if key(root) != root_key:
         reject("source_changed")
+    if icloud:
+        from .icloud import available
+
+        available(root, excluded)
     return found
 
 

@@ -100,7 +100,7 @@ ipcMain.handle("fiber:appearance-snapshot", (event) => {
 ipcMain.handle("fiber:apply-appearance", (event, value) => {
   trustedAppearance(event, window, backend, offline, true);
   const result = appearance.apply(value);
-  const presentation = themePresentation(result.theme);
+  const presentation = themePresentation(result.theme, result.presentationMode);
   nativeTheme.themeSource = presentation.themeSource;
   window.setBackgroundColor(presentation.backgroundColor);
   return result;
@@ -131,7 +131,10 @@ function openWindow() {
     window.focus();
     return;
   }
-  const presentation = themePresentation(appearance.snapshot().theme);
+  const presentation = themePresentation(
+    appearance.snapshot().theme,
+    appearance.snapshot().presentationMode,
+  );
   nativeTheme.themeSource = presentation.themeSource;
   window = new BrowserWindow({
     width: 1180,

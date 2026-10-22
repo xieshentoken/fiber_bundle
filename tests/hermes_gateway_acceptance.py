@@ -37,7 +37,7 @@ def main():
             raise RuntimeError("external effects disabled in offline gateway acceptance")
         if event == "open" and isinstance(args[0], (str, bytes)):
             path = Path(os.fsdecode(args[0])).absolute()
-            if path.is_relative_to(Path("/Users/synthetic/.hermes")):
+            if path.is_relative_to(Path.home() / ".hermes"):
                 private_reads.append("production_hermes_home")
                 raise RuntimeError("production home reads disabled")
 

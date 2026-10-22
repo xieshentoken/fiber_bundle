@@ -50,7 +50,7 @@ async function launch() {
 }
 async function select(id, { saveDefault = false } = {}) {
   await page.locator("#theme-toggle").click();
-  assert.equal(await page.locator("[data-theme-choice]").count(), 5);
+  assert.equal(await page.locator("[data-theme-choice]").count(), 6);
   await page.locator(`[data-theme-choice="${id}"]`).click();
   if (saveDefault) {
     await page.locator("#theme-set-default").click();

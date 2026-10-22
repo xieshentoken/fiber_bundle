@@ -74,7 +74,9 @@ def run(root: Path, configuration: Path, nonce: str) -> None:
                     break
                 state.update(state="working", error=None)
                 try:
-                    with database.lock_wait(1):
+                    # One tick includes acquired content and paid-response checkpoints.
+                    # A polling-sized timeout here can discard in-memory capture results.
+                    with database.lock_wait(60):
                         execution.tick(config, identity, role)
                     state.update(state="idle")
                 except database.LockTimeout:

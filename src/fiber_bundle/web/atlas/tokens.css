@@ -1,0 +1,244 @@
+/* Atlas design tokens. Contrast pairs are verified by tests/web/atlas_tokens.test.js. */
+:root {
+  --font-sans:
+    "DM Sans", "FiberCJK-noto", "Noto Sans SC", "PingFang SC", system-ui,
+    sans-serif;
+  --font-mono: "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+  --text-xs: 11.5px;
+  --text-sm: 12.5px;
+  --text-md: 14px;
+  --text-lg: 16px;
+  --text-xl: 20px;
+  --text-2xl: 26px;
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --row-pad: 12px;
+  --control-h: 36px;
+  --sidebar-w: 256px;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --fast: 120ms;
+  --base: 200ms;
+}
+:root[data-density="compact"] {
+  --row-pad: 8px;
+  --control-h: 30px;
+  --space-5: 18px;
+  --space-6: 24px;
+}
+
+/* Light (default) */
+:root {
+  color-scheme: light;
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --surface-2: #f2f2f5;
+  --surface-3: #e7e7ec;
+  --border: #e2e2e8;
+  --border-strong: #c4c4cf;
+  --text: #18181b;
+  --text-2: #52525b;
+  --text-3: #6b6b74;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eef0ff;
+  --accent-text: #3730a3;
+  --on-accent: #ffffff;
+  --success: #15803d;
+  --success-soft: #eaf7ef;
+  --warning: #9a5b00;
+  --warning-soft: #fff5e1;
+  --danger: #b42318;
+  --danger-soft: #fdeeec;
+  --info: #1d4ed8;
+  --info-soft: #edf3ff;
+  --paused: #52525b;
+  --paused-soft: #f0f0f3;
+  --shadow-sm: 0 1px 2px rgba(16, 16, 24, 0.06);
+  --shadow: 0 1px 2px rgba(16, 16, 24, 0.05), 0 4px 16px rgba(16, 16, 24, 0.06);
+  --shadow-lg: 0 12px 40px rgba(16, 16, 24, 0.18);
+  --scrim: rgba(16, 16, 24, 0.38);
+  --chart-1: #4f46e5;
+  --chart-2: #0e7490;
+  --graph-explicit: #1d4ed8;
+  --graph-suggested: #8a8a94;
+  --graph-accepted: #18181b;
+  --graph-node: #3f3f46;
+  --graph-group: #4f7d78;
+  --graph-faded: #dcdce2;
+  --graph-canvas: #fafafb;
+}
+:root[data-accent="teal"] {
+  --accent: #0f766e;
+  --accent-hover: #115e59;
+  --accent-soft: #e6f6f4;
+  --accent-text: #115e59;
+  --chart-1: #0f766e;
+}
+:root[data-accent="amber"] {
+  --accent: #b45309;
+  --accent-hover: #92400e;
+  --accent-soft: #fdf3e5;
+  --accent-text: #92400e;
+  --chart-1: #b45309;
+}
+:root[data-accent="graphite"] {
+  --accent: #27272a;
+  --accent-hover: #000000;
+  --accent-soft: #eeeef1;
+  --accent-text: #27272a;
+  --chart-1: #3f3f46;
+}
+
+/* Dark */
+:root[data-mode="dark"] {
+  color-scheme: dark;
+  --bg: #0e0e11;
+  --surface: #17171b;
+  --surface-2: #1e1e23;
+  --surface-3: #2a2a31;
+  --border: #2b2b32;
+  --border-strong: #45454f;
+  --text: #ececf0;
+  --text-2: #a8a8b2;
+  --text-3: #8e8e98;
+  --accent: #8f8bff;
+  --accent-hover: #aaa7ff;
+  --accent-soft: #23224a;
+  --accent-text: #bdbaff;
+  --on-accent: #0e0e11;
+  --success: #4ade80;
+  --success-soft: #11251a;
+  --warning: #fbbf24;
+  --warning-soft: #2a2110;
+  --danger: #f87171;
+  --danger-soft: #2e1616;
+  --info: #7cb2ff;
+  --info-soft: #14213b;
+  --paused: #a8a8b2;
+  --paused-soft: #232329;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 20px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.6);
+  --chart-1: #8f8bff;
+  --chart-2: #5ec8d8;
+  --graph-explicit: #7cb2ff;
+  --graph-suggested: #8e8e98;
+  --graph-accepted: #ececf0;
+  --graph-node: #d4d4dc;
+  --graph-group: #8fb3ae;
+  --graph-faded: #34343c;
+  --graph-canvas: #141418;
+}
+:root[data-mode="dark"][data-accent="teal"] {
+  --accent: #2dd4bf;
+  --accent-hover: #5eead4;
+  --accent-soft: #10302c;
+  --accent-text: #7ae8d6;
+  --chart-1: #2dd4bf;
+}
+:root[data-mode="dark"][data-accent="amber"] {
+  --accent: #fbbf24;
+  --accent-hover: #fcd34d;
+  --accent-soft: #33260c;
+  --accent-text: #fcd34d;
+  --chart-1: #fbbf24;
+}
+:root[data-mode="dark"][data-accent="graphite"] {
+  --accent: #e4e4e7;
+  --accent-hover: #ffffff;
+  --accent-soft: #2a2a30;
+  --accent-text: #f4f4f5;
+  --chart-1: #d4d4d8;
+}
+
+/* Clay (Claude-style warm) — full light palette. Warm paper ladder, terracotta
+   accent and Alpha hairlines; status hues stay distinct but low-saturation.
+   Component refinements live in theme_clay.css, scoped to the same attribute. */
+:root[data-accent="clay"] {
+  --bg: #fcfcfb;
+  --surface: #ffffff;
+  --surface-2: #f3f3f0;
+  --surface-3: #eae9e4;
+  --border: rgba(21, 21, 21, 0.1);
+  --border-strong: rgba(21, 21, 21, 0.2);
+  --text: #151515;
+  --text-2: #525252;
+  --text-3: #6d6963;
+  --accent: #b3502e;
+  --accent-hover: #9e4526;
+  --accent-soft: #f9ede6;
+  --accent-text: #9a4a2b;
+  --on-accent: #ffffff;
+  --success: #346847;
+  --success-soft: #e8efe9;
+  --warning: #8a5a24;
+  --warning-soft: #f4ead9;
+  --danger: #b3422e;
+  --danger-soft: #f7e9e4;
+  --info: #415f7d;
+  --info-soft: #e9eef4;
+  --paused: #6d6b67;
+  --paused-soft: #efece8;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05), 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.05), 0 6px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg:
+    0 4px 8px rgba(0, 0, 0, 0.06), 0 12px 28px -2px rgba(0, 0, 0, 0.1);
+  --scrim: rgba(20, 20, 18, 0.38);
+  --chart-1: #b3502e;
+  --chart-2: #7a8da8;
+  --graph-explicit: #3d698e;
+  --graph-suggested: #8a8781;
+  --graph-accepted: #9b3a0c;
+  --graph-node: #45443f;
+  --graph-group: #526e60;
+  --graph-faded: #e4e2dc;
+  --graph-canvas: #fafaf8;
+}
+:root[data-mode="dark"][data-accent="clay"] {
+  --bg: #151515;
+  --surface: #1a1a19;
+  --surface-2: #20201e;
+  --surface-3: #2c2c2a;
+  --border: rgba(255, 253, 250, 0.09);
+  --border-strong: rgba(255, 253, 250, 0.18);
+  --text: #f0ede9;
+  --text-2: #a3a3a3;
+  --text-3: #8e8e88;
+  --accent: #d97757;
+  --accent-hover: #e08264;
+  --accent-soft: rgba(217, 119, 87, 0.16);
+  --accent-text: #e08264;
+  --on-accent: #1a1a19;
+  --success: #7fc49a;
+  --success-soft: #16241b;
+  --warning: #d9b078;
+  --warning-soft: #2a2114;
+  --danger: #e2907f;
+  --danger-soft: #2f1913;
+  --info: #9db8d6;
+  --info-soft: #16202b;
+  --paused: #a3a3a3;
+  --paused-soft: #232320;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.4), 0 6px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg:
+    0 4px 8px rgba(0, 0, 0, 0.5), 0 16px 36px -2px rgba(0, 0, 0, 0.6);
+  --scrim: rgba(0, 0, 0, 0.6);
+  --chart-1: #d97757;
+  --chart-2: #5ec8d8;
+  --graph-explicit: #d99a7a;
+  --graph-suggested: #8e8e88;
+  --graph-accepted: #f0ede9;
+  --graph-node: #d4d4cc;
+  --graph-group: #8fb3ae;
+  --graph-faded: #34342f;
+  --graph-canvas: #141413;
+}

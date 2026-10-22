@@ -172,3 +172,9 @@ class Client:
 
     def evidence(self, body: dict[str, Any]) -> Any:
         return self.request("/v1/agent-knowledge/evidence", body)
+
+
+    def supplier(self, action: str, body: dict[str, Any]) -> Any:
+        if action not in {"query", "compare", "evidence"}:
+            raise ClientError("agent_supplier_action_invalid")
+        return self.request("/v1/agent-knowledge/suppliers/" + action, body)

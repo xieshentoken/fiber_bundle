@@ -6,6 +6,7 @@ import { manuallyResolved } from "./organization_progress.js";
 
 export function taskActions(job) {
   const actions = [];
+  if (job.pause_requested) return actions;
   if (
     job.cache_recovery &&
     !job.confirmed &&
@@ -21,7 +22,10 @@ export function taskActions(job) {
       label: "仅补齐缺少的模型分析",
       consent: true,
     });
-  if (["queued", "running", "preview", "cancelling"].includes(job.state))
+  if (
+    !job.pause_requested &&
+    ["queued", "running", "preview", "cancelling"].includes(job.state)
+  )
     actions.push({ operation: "pause", label: "暂停整理" });
   if (["failed", "partial", "blocked", "paused"].includes(job.state))
     actions.push({ operation: "resume", label: "恢复未完成整理" });
@@ -77,6 +81,14 @@ export function taskActions(job) {
 }
 
 export function appendTaskControls(host, job, action) {
+  if (job.pause_requested)
+    host.append(
+      el(
+        "p",
+        uiText("暂停请求已接收；当前安全步骤完成后暂停，已完成修改会保留。"),
+        "muted",
+      ),
+    );
   for (const spec of taskActions(job)) {
     const button = control(spec.label, action(spec.operation));
     if (spec.consent) {

@@ -1,3 +1,4 @@
+import { relationCard } from "./channel_query_scope.js";
 import { createChannelServices } from "./channel_services.js";
 import { phrase, setText, uiText } from "./i18n/index.js";
 import { expertIntents } from "./channel_expert_intents.js";
@@ -16,6 +17,8 @@ export function createChannelCard(api, initial, refresh, edit) {
   root.dataset.channelId = entry.id;
   root.dataset.taskKind = "channel";
   root.dataset.taskId = entry.id;
+  const relation = el("div");
+  root.append(relation);
   const title = el("h3"),
     meta = el("p", null, "muted"),
     status = createChannelStatus(),
@@ -43,12 +46,12 @@ export function createChannelCard(api, initial, refresh, edit) {
     label = el("label", uiText("测试问题")),
     preview = el("button", uiText("测试原文查询（零模型调用）")),
     model = el("button", uiText("明确执行所选模型查询"));
-  queryDetails.append(el("summary", uiText("本库查询与模型测试")));
+  queryDetails.append(el("summary", uiText("指定范围查询与模型测试")));
   form.dataset.draft = "tracked";
   form.addEventListener("submit", (event) => event.preventDefault());
   input.required = true;
   input.maxLength = 2000;
-  setText(input, uiText("输入本库测试问题"), "placeholder");
+  setText(input, uiText("输入问题，或查询[库别名]：问题"), "placeholder");
   label.append(input);
   form.append(label, preview, model);
   for (const [button, execute] of [
@@ -134,6 +137,7 @@ export function createChannelCard(api, initial, refresh, edit) {
     },
     update(current, stale = false) {
       entry = current;
+      relation.replaceChildren(relationCard(entry));
       title.textContent = entry.name;
       setText(
         meta,

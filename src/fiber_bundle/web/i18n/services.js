@@ -1,4 +1,41 @@
 export default {
+  "channel.receipt.sending": [
+    "{p0} 批回执发送待确认，不会重复发送。",
+    "{p0} batches await send confirmation; no duplicate send will be attempted.",
+  ],
+  "channel.transport.title": ["平台通道", "Platform transport"],
+  "channel.query.title": ["查询服务", "Query service"],
+  "channel.model.missing": [
+    "尚未配置默认查询模型",
+    "No default query model configured",
+  ],
+  "channel.model.disabled": [
+    "默认查询模型或凭据已停用",
+    "Default query model or credential disabled",
+  ],
+  "channel.processing.title": ["资料处理：{p0}", "Processing: {p0}"],
+  "channel.receipt.stale": [
+    "回执状态已过期，请刷新。",
+    "Receipt status is stale. Refresh to check.",
+  ],
+  "channel.receipt.on": ["回执已开启。", "Receipts enabled."],
+  "channel.receipt.off": ["新回执已关闭。", "New receipts disabled."],
+  "channel.receipt.held": [
+    "{p0} 批回执待核对，不会自动重发。",
+    "{p0} batches need receipt reconciliation; they will not be resent automatically.",
+  ],
+  "channel.receipt.pending": [
+    "{p0} 批回执待发送或更新。",
+    "{p0} batches await a receipt or status update.",
+  ],
+  "channel.receipt.independent": [
+    "新批次回执独立发送。",
+    "New batches send receipts independently.",
+  ],
+  "channel.receipt.disconnected": [
+    "平台连接恢复后继续发送。",
+    "Sending resumes when the platform reconnects.",
+  ],
   "services.error.pause.config": [
     "修改入口配置前，请先分别暂停查询和保存服务并等待当前阶段结束。",
     "Before editing entry settings, pause its query and saving services and wait for the current stage to finish.",

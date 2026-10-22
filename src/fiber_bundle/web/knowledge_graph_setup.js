@@ -15,7 +15,7 @@ export function graphLoadFailure(error) {
     return noteIndexErrorText(error.code);
   return (
     "笔记列表加载失败：" +
-    (error?.message || "请重试或检查当前身份的查询权限。")
+    String(uiText(error?.message || "请重试或检查当前身份的查询权限。"))
   );
 }
 

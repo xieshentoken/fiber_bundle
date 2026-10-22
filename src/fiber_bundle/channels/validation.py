@@ -74,6 +74,19 @@ def start_issues(value: dict[str, Any], *, intake_enabled: bool) -> list[str]:
 
 def require_permissions(config: Config, main: Any, channel: dict[str, Any]) -> None:
     value = channel["value"]
+    if "query_vaults" in value:
+        from . import query_scope
+
+        query_scope.entries(value)
+        client = main.execute(
+            "SELECT active FROM clients WHERE id=?", (value["client_id"],)
+        ).fetchone()
+        if client is None or not client["active"]:
+            raise ChannelValidationError(["client_unavailable"], status=403)
+        # Scope permissions are checked for the selected message, not an unrelated library.
+        if "_query_scope" in channel:
+            query_scope.checked(config, main, channel)
+        return
     issues = []
     for action in ("query", "original", "add"):
         if action != "query" and not value.get(action):

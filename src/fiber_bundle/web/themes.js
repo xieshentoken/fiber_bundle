@@ -46,6 +46,15 @@ export const THEMES = Object.freeze([
     displayLatin: "dm",
     displayCjk: "noto",
   }),
+  Object.freeze({
+    id: "atlas",
+    name: "Atlas",
+    description: "独立界面 · 知识、连接与系统",
+    latin: "dm",
+    cjk: "noto",
+    displayLatin: "dm",
+    displayCjk: "noto",
+  }),
 ]);
 export const THEME_IDS = Object.freeze(THEMES.map(({ id }) => id));
 export function themeInfo(id) {

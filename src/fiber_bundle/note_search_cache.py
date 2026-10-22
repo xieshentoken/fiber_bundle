@@ -68,7 +68,16 @@ def fingerprint(config: Config, db: sqlite3.Connection, vault: sqlite3.Row) -> s
     registered_experts = expert_roots(config, vault["id"])
     if registered_experts:
         h.update(canonical(["organization-expert-roots", sorted(registered_experts)]).encode())
-    for p, i in entries(root, scope, hidden=True):
+    for p, i in entries(
+        root,
+        scope,
+        hidden=True,
+        batch=True,
+        file_filter=lambda p: (
+            p.name.lower().endswith(".md")
+            or p.name in {note_publications.MARKER, ".fiber-analysis.json"}
+        ),
+    ):
         if stat.S_ISDIR(i.st_mode):
             continue
         if not scope.allows(p.relative_to(root).as_posix()):
@@ -157,9 +166,14 @@ def status(config: Config, db: sqlite3.Connection, vault: sqlite3.Row) -> dict[s
             else "stale"
         )
         if state == "stale":
+            from .display_observation import pending_indexes
             from .note_search_jobs import changed
 
-            changed(config, vault["id"])
+            pending = pending_indexes.get()
+            if pending is None:
+                changed(config, vault["id"])
+            else:
+                pending.add(vault["id"])
         return {
             "state": state,
             "index_mode": "persistent_chunks",

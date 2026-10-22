@@ -111,3 +111,28 @@ test("navigation preview cleanup does not retry or re-notify a failed desktop sy
   assert.equal(prefs.saved.defaultTheme, "clay");
   prefs.destroy();
 });
+test("Atlas mode changes sync while font and secret values stay in the renderer", async () => {
+  const calls = [],
+    sync = createDesktopAppearanceSync({
+      applyAppearance: async (v) => {
+        calls.push(v);
+        return { defaultSaved: true };
+      },
+    });
+  await sync({
+    theme: "atlas",
+    defaultTheme: "atlas",
+    presentationMode: "dark",
+    latinSize: 19,
+    password: "excluded",
+  });
+  await sync({
+    theme: "atlas",
+    defaultTheme: "atlas",
+    presentationMode: "light",
+  });
+  assert.deepEqual(calls, [
+    { theme: "atlas", defaultTheme: "atlas", presentationMode: "dark" },
+    { theme: "atlas", defaultTheme: "atlas", presentationMode: "light" },
+  ]);
+});

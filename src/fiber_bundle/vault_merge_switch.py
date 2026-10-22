@@ -8,7 +8,7 @@ from .config import Config, InvalidInput
 def entrances(
     config: Config, db: Any, sources: list[str], target: str, selected: list[str]
 ) -> dict[str, Any]:
-    from .channels import store
+    from .channels import query_scope, store
 
     with store.readonly(config) as side:
         channels = (
@@ -20,8 +20,12 @@ def entrances(
             ]
         )
     relevant = [
-        c for c in channels if c["value"]["vault_id"] in [*sources, target] or c["id"] in selected
+        c
+        for c in channels
+        if query_scope.referenced(c["value"]) & {*sources, target} or c["id"] in selected
     ]
+    if any("query_vaults" in c["value"] and c["id"] in selected for c in relevant):
+        raise InvalidInput("vault_merge_query_scope_requires_configuration")
     if set(selected) - {c["id"] for c in relevant}:
         raise InvalidInput("vault_merge_channel_unavailable")
     # Include the intake target as a separate entrance, not an inferred default.

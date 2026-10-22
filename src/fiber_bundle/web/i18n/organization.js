@@ -1,5 +1,13 @@
 // UI message catalog; parameters preserve source data.
 export default {
+  "organization.pause_pending": [
+    "暂停请求已接收；当前安全步骤完成后暂停，已完成修改会保留。",
+    "Pause requested. Pausing after the current safe step; completed changes are retained.",
+  ],
+  "organization.pausing": [
+    "正在暂停 · 等待当前安全步骤完成",
+    "Pausing · Finishing the current safe step",
+  ],
   "organization.progress_live": [
     "后台进度：{p0} · {p1}/{p2} 项",
     "Background progress: {p0} · {p1}/{p2} items",

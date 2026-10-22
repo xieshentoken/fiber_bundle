@@ -512,7 +512,8 @@ def test_backup_status_remains_readable_and_other_http_waits_are_bounded(config,
         with database.locked(config):
             start = time.monotonic()
             assert http.get("/admin/backup-automation").status_code == 200
-            result = http.get("/admin/vaults")
+            assert http.get("/admin/vaults").status_code == 200
+            result = http.get("/admin/components")
             assert result.status_code == 503 and result.json()["error"] == "backup_snapshot_busy"
             assert time.monotonic() - start < 2
         assert http.get("/admin/vaults").status_code == 200

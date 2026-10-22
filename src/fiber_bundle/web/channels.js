@@ -1,3 +1,7 @@
+import {
+  createQueryScopeEditor,
+  relationOverview,
+} from "./channel_query_scope.js";
 import { channelPurpose } from "./channel_services.js";
 import { phrase, setText, uiText } from "./i18n/index.js";
 // Configuration editing and bounded observation; feature cards retain their own drafts.
@@ -47,6 +51,8 @@ export function createChannelsView(api) {
   const cards = new Map(),
     field = (name) => $("channel-" + name),
     visible = () => !$("channels-panel").hidden && !document.hidden;
+  const scopeEditor = createQueryScopeEditor();
+  form.append(scopeEditor.root);
   function layout() {
     const feishu = field("platform").value === "feishu";
     const purpose = field("purpose").value;
@@ -67,10 +73,16 @@ export function createChannelsView(api) {
     field("expert-media-field").hidden = false;
     field("model-limit").disabled = field("answer-mode").value === "evidence";
     field("cloud-hint").hidden = field("answer-mode").value !== "local_cloud";
-    field("natural-questions").disabled =
-      field("answer-mode").value !== "model";
+    field("natural-questions").disabled = field("purpose").value === "intake";
+    scopeEditor.context(
+      !field("add").checked,
+      field("vault"),
+      field("original"),
+    );
   }
   field("purpose").addEventListener("change", layout);
+  field("add").addEventListener("change", layout);
+  scopeEditor.root.addEventListener("change", layout);
   field("platform").addEventListener("change", layout);
   field("answer-mode").addEventListener("change", layout);
   layout();
@@ -86,12 +98,11 @@ export function createChannelsView(api) {
           : null,
       client_id: field("client").value,
       vault_id: field("vault").value,
+      ...scopeEditor.settings(),
       add: field("add").checked,
       original: field("original").checked,
       answer_mode: field("answer-mode").value,
-      natural_questions:
-        field("answer-mode").value === "model" &&
-        field("natural-questions").checked,
+      natural_questions: field("natural-questions").checked,
       configuration_sha256: field("policy").value || null,
       runtime_manifest: field("manifest").value.trim(),
       query_limit: 0,
@@ -180,6 +191,7 @@ export function createChannelsView(api) {
   action(field("new"), async () => {
     current = null;
     form.reset();
+    scopeEditor.reset();
     field("purpose").querySelector('[value=""]').hidden = true;
     layout();
     disclosure.open = true;
@@ -190,6 +202,7 @@ export function createChannelsView(api) {
   function edit(channel) {
     current = channel;
     form.reset();
+    scopeEditor.reset(channel.settings);
     field("purpose").value = channel.settings.purpose || "";
     field("purpose").querySelector('[value=""]').hidden = Boolean(
       channel.settings.purpose,
@@ -229,6 +242,7 @@ export function createChannelsView(api) {
   function render(overview, stale = false) {
     snapshot = overview;
     renderChannelOverview(summary, overview, stale);
+    summary.append(relationOverview(overview.channels));
     const archived = overview.removed_channels || [],
       stamp = JSON.stringify(archived);
     if (stamp !== archiveStamp) {
@@ -373,6 +387,14 @@ export function createChannelsView(api) {
             })
           : uiText("尚未配置回答模型，可先使用原文查询。"),
       );
+      scopeEditor.setVaults(
+        vaults.filter(
+          (v) =>
+            v.status === "active" &&
+            (!v.attachment_state || v.attachment_state === "attached"),
+        ),
+      );
+      layout();
       render(overview);
       schedule(version);
     } catch (error) {

@@ -74,9 +74,11 @@ def busy(config: Config, db: Any, identity: str) -> bool:
             side is not None
             and side.execute(
                 "SELECT 1 FROM events e JOIN channels c ON c.id=e.channel_id "
-                "WHERE json_extract(c.value,'$.vault_id')=? AND e.state IN "
+                "WHERE (json_extract(c.value,'$.vault_id')=? OR EXISTS(SELECT 1 "
+                "FROM json_each(json_extract(c.value,'$.query_vaults')) q "
+                "WHERE json_extract(q.value,'$.vault_id')=?)) AND e.state IN "
                 "('processing','gui_processing','sending') LIMIT 1",
-                (identity,),
+                (identity, identity),
             ).fetchone()
         ):
             return True
@@ -109,11 +111,13 @@ def parent_policy(path: Path) -> str:
     return vault_scope.effective(path.parent, {"include": [""], "exclude": []}).policy_sha256
 
 
-def preview(config: Config, identity: str, destination: str) -> dict[str, Any]:
+def preview(
+    config: Config, identity: str, destination: str, *, icloud: bool = False
+) -> dict[str, Any]:
     with database.locked(config), database.connect(config.state_root) as db:
         row = vault(db, identity)
         conflicts(db, identity)
-        source, target = files.target(config, db, row, destination)
+        source, target = files.target(config, db, row, destination, icloud=icloud)
         source_key = files.key(source)
         if source_key != [row["directory_dev"], row["directory_ino"]]:
             files.reject("directory_changed")
@@ -121,12 +125,25 @@ def preview(config: Config, identity: str, destination: str) -> dict[str, Any]:
         preserved = evidence.preservation(config, db, identity)
         if busy(config, db, identity):
             files.reject("busy")
-    observed = files.inventory(source)
+    options: dict[str, Any] = {}
+    if icloud:
+        from .icloud import scopes
+
+        effective, destination_scope = scopes(source, target, row)
+        options = {
+            "icloud": True,
+            "effective_scope": effective,
+            "destination_scope_json": destination_scope,
+        }
+    observed = files.inventory(
+        source, icloud=icloud, excluded=tuple(options.get("effective_scope", {}).get("exclude", []))
+    )
     size = sum(f.get("bytes", 0) for f in observed)
     if shutil.disk_usage(config.state_root).free < size + 16 * 1024**2:
         files.reject("space_required")
     now = time.time()
     plan = {
+        **options,
         "vault": row,
         "location_revision": location_revision,
         "source": str(source),
@@ -165,6 +182,8 @@ def current(config: Config, db: Any, value: dict[str, Any], path: Path) -> None:
     original = dict(p["vault"])
     actual = row.pop("absolute_root")
     original.pop("absolute_root")
+    if p.get("icloud") and actual == p["destination"]:
+        original["scope_json"] = p["destination_scope_json"]
     if guard.revision(db, row["id"]) != value["location_revision"]:
         files.reject("location_changed")
     if row != original or actual not in {p["source"], p["destination"]}:
@@ -181,8 +200,16 @@ def current(config: Config, db: Any, value: dict[str, Any], path: Path) -> None:
         or parent_policy(Path(p["destination"])) != p["target_policy"]
     ):
         files.reject("policy_changed")
-    scope = vault_scope.effective(path, json.loads(row["scope_json"]))
-    if scope.exclude or scope.include != ("",):
+    configured_scope = (
+        p.get("destination_scope_json")
+        if p.get("icloud") and str(path) == p["destination"]
+        else row["scope_json"]
+    )
+    scope = vault_scope.effective(path, json.loads(configured_scope))
+    if p.get("icloud"):
+        if scope.wire() != p["effective_scope"]:
+            files.reject("policy_changed")
+    elif scope.exclude or scope.include != ("",):
         files.reject("policy_changed")
     if files.key(path) != p["root_key"]:
         files.reject("directory_changed")

@@ -50,7 +50,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-fiber_bundle = ["py.typed", "expert_tool_snapshots/*/*.py", "expert_tool_snapshots/*/*.json", "build_identity.json", "web/*.html", "web/*.css", "web/*.js", "web/i18n/*.js", "web/*.ttf", "web/*.png", "web/*-OFL.txt", "web/font-sources.json", "web/graph-library-licenses.txt", "executor/*", "article_executor/*", "document_executor/*", "creation_executor/*", "media_executor/*", "knowledge_executor/*", "vendor/*.json", "vendor/*-LICENSE.txt"]
+fiber_bundle = ["py.typed", "expert_tool_snapshots/*/*.py", "expert_tool_snapshots/*/*.json", "build_identity.json", "web/*.html", "web/atlas/*.html", "web/atlas/*.css", "web/atlas/*.js", "web/atlas/*.svg", "web/*.css", "web/*.js", "web/i18n/*.js", "web/*.ttf", "web/*.png", "web/*-OFL.txt", "web/font-sources.json", "web/graph-library-licenses.txt", "executor/*", "article_executor/*", "document_executor/*", "creation_executor/*", "media_executor/*", "knowledge_executor/*", "vendor/*.json", "vendor/*-LICENSE.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -237,3 +237,50 @@ def test_pending_old_rows_do_not_starve_later_receipts(config, entry, policy, mo
             )
     deliver(3)
     assert len(calls) == 1 and "消息已接收" in calls[0]
+
+
+@pytest.mark.parametrize("held_state", ["unknown", "sending"])
+def test_ambiguous_old_batch_does_not_block_new_batch_receipts(
+    config, entry, policy, monkeypatch, notify, held_state
+):
+    from test_channel_intake import receive
+
+    from fiber_bundle.channels import intake_processing
+    from fiber_bundle.channels.intake_receipt_health import summary
+
+    calls, _, deliver = notify
+    old = capture(config, entry, policy, monkeypatch, "basic", True)
+    with channels.opened(config) as db:
+        row = db.execute("SELECT * FROM channel_intake_records WHERE batch_id=?", (old,)).fetchone()
+        value = json.loads(row["value"])
+        value.update(receipt_state=held_state, receipt_event="received")
+        value["receipt_updates"] = {"received": {"state": held_state, "body": "old receipt"}}
+        wire = json.dumps(value)
+        db.execute("UPDATE channel_intake_records SET value=? WHERE batch_id=?", (wire, old))
+    new = receive(config, entry, identity="new-receipt", text="新批次资料")
+    intake_processing.advance(config, entry[0]["id"])
+    status = summary(config, entry[0]["id"], row["revision"], True)
+    assert status["needs_review_batches"] + status["sending_batches"] == 1
+    assert status["pending_batches"] == 1
+    deliver(4)
+    assert len(calls) == 2
+    assert all(new in body and old not in body for body in calls)
+    assert "消息已接收" in calls[0] and "仅消息/附件已归档" in calls[1]
+    assert "尚未生成笔记" in calls[1]
+    with channels.readonly(config) as db:
+        assert (
+            db.execute(
+                "SELECT value FROM channel_intake_records WHERE batch_id=?", (old,)
+            ).fetchone()[0]
+            == wire
+        )
+        saved = json.loads(
+            db.execute(
+                "SELECT value FROM channel_intake_records WHERE batch_id=?", (new,)
+            ).fetchone()[0]
+        )
+    assert saved["receipt_state"] == "sent"
+    assert len(saved["receipt_updates"]) == 2
+    # A new adapter/process cannot replay either the ambiguous old send or sent new sends.
+    fresh = SimpleNamespace(_fiber_send_receipt=lambda *args: pytest.fail("no send may repeat"))
+    asyncio.run(intake_receipts.deliver(config, entry[0]["id"], fresh))

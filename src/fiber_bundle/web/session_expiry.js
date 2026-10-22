@@ -17,8 +17,8 @@ function recoverable(workspace) {
       !!field.id &&
       !field.readOnly &&
       !field.closest('[data-draft="ignore"]') &&
-      !/password|secret|token|api.?key|credential/i.test(
-        `${field.id} ${field.name}`,
+      !/password|secret|token|api.?key|credential|密码|密钥|令牌|凭据/i.test(
+        `${field.id} ${field.name} ${field.dataset?.sessionKey || ""}`,
       ) &&
       !/\bsk-[A-Za-z0-9_-]{16,}/.test(field.value),
   );
@@ -50,6 +50,13 @@ export function createSessionExpiry(session, workspace, warning) {
         saved.push({
           index,
           id: field.id,
+          key: field.dataset?.sessionKey,
+          ordinal: recoverable(panel)
+            .filter(
+              (other) =>
+                other.dataset?.sessionKey === field.dataset?.sessionKey,
+            )
+            .indexOf(field),
           name: field.name,
           value: field.value,
         });
@@ -62,9 +69,13 @@ export function createSessionExpiry(session, workspace, warning) {
       const fields = recoverable(panel);
       let restored = false;
       for (const item of saved) {
-        const field = item.id
-          ? fields.find((field) => field.id === item.id)
-          : fields[item.index];
+        const field = item.key
+          ? fields.filter((field) => field.dataset?.sessionKey === item.key)[
+              item.ordinal
+            ]
+          : item.id
+            ? fields.find((field) => field.id === item.id)
+            : fields[item.index];
         if (!field || field.name !== item.name) continue;
         field.value = item.value;
         field.dispatchEvent(new window.Event("input", { bubbles: true }));

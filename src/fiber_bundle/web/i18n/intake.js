@@ -572,12 +572,12 @@ export default {
     "Explicitly run the selected model query",
   ],
   "channel_card.45f844109f": [
-    "本库查询与模型测试",
+    "指定范围查询与模型测试",
     "Vault query and model tests",
   ],
   "channel_card.32e34df909": [
-    "输入本库测试问题",
-    "Enter a question for this vault",
+    "输入问题，或查询[库别名]：问题",
+    "Enter a question or a query command with a library alias",
   ],
   "channel_card.76e828c25a": [
     "查看测试结果 / 模型任务",

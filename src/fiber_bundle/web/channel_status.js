@@ -40,6 +40,8 @@ const labels = {
   binding_required: "请先完成本人绑定",
   permission_revoked: "查询授权不可用",
   policy_changed: "模型配置已变化",
+  model_unconfigured: "尚未配置默认查询模型",
+  model_disabled: "默认查询模型或凭据已停用",
   channel_paused: "入口已暂停",
   budget_or_switch_disabled: "开关关闭或额度不足",
   runtime_unavailable: "连接尚未就绪",
@@ -111,6 +113,36 @@ export function channelStatusText(entry, stale = false) {
   };
 }
 
+export function receiptStatusText(entry, stale = false) {
+  const receipts = entry.receipts;
+  if (!receipts) return "";
+  if (stale) return phrase("回执状态已过期，请刷新。");
+  const parts = [phrase(receipts.enabled ? "回执已开启。" : "新回执已关闭。")];
+  const held = receipts.needs_review_batches + receipts.sending_batches;
+  if (receipts.needs_review_batches)
+    parts.push(
+      phrase("{p0} 批回执待核对，不会自动重发。", {
+        p0: receipts.needs_review_batches,
+      }),
+    );
+  if (receipts.sending_batches)
+    parts.push(
+      phrase("{p0} 批回执发送待确认，不会重复发送。", {
+        p0: receipts.sending_batches,
+      }),
+    );
+  if (receipts.enabled) {
+    if (receipts.pending_batches)
+      parts.push(
+        phrase("{p0} 批回执待发送或更新。", { p0: receipts.pending_batches }),
+      );
+    if (held) parts.push(phrase("新批次回执独立发送。"));
+    if (entry.transport !== "connected")
+      parts.push(phrase("平台连接恢复后继续发送。"));
+  }
+  return joinText(parts, " ");
+}
+
 export function createChannelStatus() {
   const root = el("div", null, "channel-status"),
     grid = el("dl", null, "channel-status-grid"),
@@ -118,8 +150,8 @@ export function createChannelStatus() {
   for (const [key, title] of [
     ["binding", "账号绑定"],
     ["process", "后台进程"],
-    ["transport", "平台连接"],
-    ["query", "查询与回复"],
+    ["transport", "平台通道"],
+    ["query", "查询服务"],
   ]) {
     const row = el("div");
     nodes[key] = el("dd");
@@ -130,9 +162,11 @@ export function createChannelStatus() {
   const reason = el("p", null, "muted"),
     capability = el("p", null, "muted"),
     intake = el("p", null, "muted"),
+    receipt = el("p", null, "muted"),
     updated = el("p", null, "muted"),
     operation = el("p", null, "channel-operation");
-  root.append(grid, reason, capability, intake, updated, operation);
+  receipt.dataset.receiptStatus = "true";
+  root.append(grid, reason, capability, intake, receipt, updated, operation);
   return {
     root,
     update(entry, stale = false) {
@@ -155,21 +189,35 @@ export function createChannelStatus() {
       );
       setText(
         capability,
-        uiText(
+        joinText(
           [
             ["capture", "接收待审资料"],
             ["download", "附件下载"],
             ["store", "自动入库"],
             ["model", "模型回复"],
-          ]
-            .map(
-              ([key, name]) =>
-                `${name}：${stale ? "待刷新" : entry.capabilities[key].available ? "可用" : "未就绪"}`,
-            )
-            .join(" · "),
+          ].map(([key, name]) =>
+            joinText([
+              uiText(name),
+              ": ",
+              uiText(
+                stale
+                  ? "待刷新"
+                  : entry.capabilities[key].available
+                    ? "可用"
+                    : "未就绪",
+              ),
+            ]),
+          ),
+          " · ",
         ),
       );
-      setText(intake, uiText(intakeStatusText(entry, stale)));
+      const processing = intakeStatusText(entry, stale);
+      setText(
+        intake,
+        processing ? phrase("资料处理：{p0}", { p0: uiText(processing) }) : "",
+      );
+      setText(receipt, receiptStatusText(entry, stale));
+      receipt.hidden = !receipt.textContent;
       intake.hidden = !intake.textContent;
       intake.dataset.intakeStatus = entry.intake?.worker?.state || "unobserved";
       setText(

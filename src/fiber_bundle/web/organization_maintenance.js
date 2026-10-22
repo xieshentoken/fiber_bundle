@@ -288,7 +288,9 @@ export function maintenanceSection(
         }
         throw error;
       }
-      await refresh();
+      await refresh({
+        automatic: ["pause", "resume", "confirm", "cancel"].includes(operation),
+      });
     };
     const actions = el("div", null, "task-actions");
     if (job.state === "preview") {

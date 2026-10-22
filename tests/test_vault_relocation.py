@@ -291,7 +291,7 @@ def test_running_and_paused_message_bindings_and_pending_events_survive(config, 
     packet = plan.preview(config, vid, str(target))
     execution.start(config, packet["id"], packet["plan_sha256"])
     assert dispatch.capture(
-        config, running["id"], running["revision"], "during-move", "ou_synthetic", "查询本库：压力"
+        config, running["id"], running["revision"], "during-move", "ou_synthetic", "查询：压力"
     )
     with channels.readonly(config) as db:
         assert channels.get(db, running["id"]) == running

@@ -105,8 +105,8 @@ def test_material_and_control_messages_keep_existing_route(body):
     assert query.question(body, True) is None
 
 
-def test_legacy_prefix_and_invalid_plan_are_preserved():
-    assert query.question("查询本库：压力", True) == "压力"
+def test_explicit_prefix_and_invalid_plan_are_preserved():
+    assert query.question("查询：压力", True) == "压力"
     for bad in [{"queries": []}, {"queries": ["x"] * 4}, {"queries": [""]}, {"query": "pressure"}]:
         with pytest.raises((ValueError, InvalidInput)):
             natural_query.queries(bad)
@@ -332,5 +332,152 @@ def test_invalid_model_quote_retains_paid_response_and_specific_failure(
     cached = list((config.state_root / "channel-query-results").glob("*.json"))
     assert len(cached) == 2
     assert all(p.stat().st_mode & 0o777 == 0o600 for p in cached)
+    dispatch.advance(config, value["id"], value["revision"])
+    assert len(calls) == 2
+
+
+def test_chinese_zero_hit_fallback_returns_body_and_rechecks_without_model(
+    config, model_channel, monkeypatch
+):
+    value, root = model_channel
+    (root / "module.md").write_text(
+        "# 冷却模块检验规范\n模块检验规范要求记录气密测试过程，"
+        "并列明所采用的标准编号；本段仅为合成验证资料。\n"
+    )
+    (root / "terms.md").write_text("# 测试方法与标准\n这里仅定义合成测试的标题词汇。\n")
+
+    def forbidden(*a, **k):
+        pytest.fail("local fallback must not call a model")
+
+    monkeypatch.setattr(model_gateway, "complete", forbidden)
+    with database.connect(config.state_root) as db, store.readonly(config) as side:
+        current = store.get(side, value["id"])
+        packet = natural_query.evidence(config, db, current, "模块的标准？", ["冷却模块测试标准"])
+        assert packet["sources"] and "module.md" in {s["note_path"] for s in packet["sources"]}
+        assert packet["retrieval_queries"] == ["冷却模块 测试 标准"]
+        assert "气密测试过程" in packet["sources"][0]["snippet"]
+        query.recheck(config, db, current, packet)
+        assert db.execute("select count(*) from model_configuration_calls").fetchone()[0] == 0
+
+
+def test_chinese_relaxation_keeps_topic_and_finds_separate_condition(config, model_channel):
+    value, root = model_channel
+    (root / "module.md").write_text(
+        "# 冷却模块检验规范\n冷却模块需按标准记录，具体参数应查阅所选标准正文。\n"
+    )
+    (root / "test.md").write_text("# 测试方法\n无关主题的测试，不包含模块规范。\n")
+    with database.connect(config.state_root) as db, store.readonly(config) as side:
+        current = store.get(side, value["id"])
+        packet = natural_query.evidence(config, db, current, "模块的标准？", ["冷却模块测试标准"])
+        assert packet["retrieval_queries"] == ["冷却模块 标准"]
+        assert all(s["note_path"] != "test.md" for s in packet["sources"])
+        query.recheck(config, db, current, packet)
+
+
+def test_zero_hit_message_and_attempt_bound(config, model_channel, monkeypatch):
+    from fiber_bundle.channels import retrieval_terms
+
+    value, _ = model_channel
+    attempted = []
+    original = query.evidence
+
+    def observe(*args):
+        attempted.append(args[-1])
+        return original(*args)
+
+    monkeypatch.setattr(query, "evidence", observe)
+    with database.connect(config.state_root) as db, store.readonly(config) as side:
+        current = store.get(side, value["id"])
+        packet = natural_query.evidence(config, db, current, "不存在的主题？", ["未见过的中文主题"])
+        assert not packet["sources"]
+        assert "未找到匹配资料" in packet["answer"] and "授权" not in packet["answer"]
+        assert len(attempted) <= retrieval_terms.MAX_ATTEMPTS
+
+
+def test_chinese_vocabulary_and_results_stay_inside_query_grant_and_scope(config, model_channel):
+    from fiber_bundle import auth
+    from fiber_bundle.channels import retrieval_terms
+
+    value, root = model_channel
+    private = root / "private"
+    private.mkdir()
+    (private / "secret.md").write_text("# 密封装置性能测试标准\n此处是禁止查询的合成资料。\n")
+    with database.connect(config.state_root) as db, store.readonly(config) as side:
+        current = store.get(side, value["id"])
+        settings = current["value"]
+        db.execute(
+            "update vaults set scope_json=? where id=?",
+            (json.dumps({"include": [""], "exclude": ["private"]}), settings["vault_id"]),
+        )
+        titles = retrieval_terms.authorized_titles(config, db, current)
+        assert not any("密封装置" in title for title in titles)
+        packet = natural_query.evidence(config, db, current, "检验标准？", ["密封装置性能测试标准"])
+        assert not packet["sources"]
+        auth.set_grant(
+            db, settings["client_id"], settings["vault_id"], query=False, original=False, add=False
+        )
+        from fiber_bundle.channels.validation import ChannelValidationError
+
+        with pytest.raises(ChannelValidationError) as denied:
+            natural_query.evidence(config, db, current, "检验标准？", ["密封装置性能测试标准"])
+
+        assert denied.value.status == 403
+
+
+def test_indexed_chinese_query_calls_plan_and_answer_once_without_replay(
+    config, model_channel, monkeypatch
+):
+    from fiber_bundle import note_search_build
+
+    value, root = model_channel
+    note = root / "module.md"
+    note.write_text(
+        "# 冷却模块检验规范\n合成记录要求测试时记录压力与所用标准编号，参数仅适用于本次合成实验。\n"
+    )
+    (root / "terms.md").write_text("# 测试方法与标准\n用于合成实验的主题定义。\n")
+    content = note.read_bytes()
+    calls = []
+
+    def complete(policy, identity, payload):
+        calls.append(identity)
+        if len(calls) == 1:
+            return envelope({"queries": ["冷却模块测试标准"]})
+        data = json.loads(payload["messages"][1]["content"])
+        return envelope(
+            {
+                "claims": [
+                    {
+                        "text": "合成记录要求记录测试压力和标准编号。",
+                        "citations": [data["quotations"][0]["citation"]],
+                    }
+                ]
+            }
+        )
+
+    monkeypatch.setattr(model_gateway, "complete", complete)
+    note_search_build.build(config, value["settings"]["client_id"], value["settings"]["vault_id"])
+    assert dispatch.capture(
+        config,
+        value["id"],
+        value["revision"],
+        "chinese-synthetic",
+        "ou_synthetic",
+        "请问冷却模块的测试标准？",
+    )
+    dispatch.advance(config, value["id"], value["revision"])
+    state, data = result(config, value)
+    assert state == "ready" and data["result"]["sources"]
+    assert data["retrieval_queries"] == ["冷却模块 测试 标准"]
+    assert len(calls) == 2 and note.read_bytes() == content
+    with database.connect(config.state_root) as db, store.readonly(config) as side:
+        query.recheck(config, db, store.get(side, value["id"]), data["result"])
+    assert not dispatch.capture(
+        config,
+        value["id"],
+        value["revision"],
+        "chinese-synthetic",
+        "ou_synthetic",
+        "请问冷却模块的测试标准？",
+    )
     dispatch.advance(config, value["id"], value["revision"])
     assert len(calls) == 2

@@ -20,6 +20,7 @@ from . import (
 from . import note_search_cache as cache
 from .config import Config, IntegrityError, InvalidInput, make_directory, sync_directory
 from .executor_container import run_lock
+from .index_read_lease import Lease
 from .inputs import canonical
 from .search_matching import fold
 
@@ -33,13 +34,13 @@ def build(
 ) -> dict[str, object]:
     # The local command owns one Vault index; unrelated query/import locks stay free.
     with run_lock(config, str(uuid5(NAMESPACE_URL, "fiber-note-index:" + vault_id))):
-        with database.locked(config):
+        with Lease(config, vault_id) as lease:
             db = database.connect(config.state_root)
             try:
                 vault = auth.grant(db, client_id, vault_id, "query")
                 destination = cache.location(config, vault_id)
                 make_directory(destination.parent)
-                before = cache.fingerprint(config, db, vault)
+                before = lease.read(lambda: cache.fingerprint(config, db, vault))
                 epoch = db.execute(
                     "SELECT revision FROM graph_permission_epochs WHERE client_id=? AND vault_id=?",
                     (client_id, vault_id),
@@ -125,7 +126,7 @@ def build(
                     "INSERT INTO generation VALUES(?,?,?)", (before, "ready", time.time())
                 )
             # Validate source/permission again before atomically making this generation visible.
-            with database.locked(config):
+            with Lease(config, vault_id) as lease:
                 if cancelled is not None and cancelled(db):
                     raise InvalidInput("note_index_cancelled")
                 current = auth.grant(db, client_id, vault_id, "query")
@@ -133,7 +134,10 @@ def build(
                     "SELECT revision FROM graph_permission_epochs WHERE client_id=? AND vault_id=?",
                     (client_id, vault_id),
                 ).fetchone()[0]
-                if now != epoch or cache.fingerprint(config, db, current) != before:
+                if (
+                    now != epoch
+                    or lease.read(lambda: cache.fingerprint(config, db, current)) != before
+                ):
                     raise IntegrityError("note index source or permission changed")
                 index.close()
                 os.replace(temporary, destination)

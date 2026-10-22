@@ -5,14 +5,17 @@ from typing import Any
 
 from .. import evidence_answers
 from ..search_matching import terms
+from . import retrieval_terms
 
 
-def question(body: str, enabled: bool = False) -> str | None:
+def question(body: str, enabled: bool = False, *, standalone: bool = False) -> str | None:
     from .query import PREFIXES
 
     if not isinstance(body, str):
         return None
     value = body.strip()
+    if value.startswith(("查询本库", "查询[")):
+        return None
     for prefix in PREFIXES:
         if value.startswith(prefix):
             from ..inputs import text
@@ -38,6 +41,8 @@ def question(body: str, enabled: bool = False) -> str | None:
         )
     ):
         return None
+    if standalone:
+        return value
     if re.search(
         r"[?？]\s*$|^(?:请|帮我|能否|可以|什么|为何|为什么|如何|怎么|哪些|是否|介绍|解释|概括|总结|"
         r"比较|对比|查找|查询|分析|根据|基于|列出|列举|给出|罗列)|"
@@ -101,11 +106,15 @@ def evidence(config: Any, db: Any, channel: Any, value: str, retrieval: list[str
     seen = set()
     used: list[str] = []
     packets = []
+    attempted: set[str] = set()
 
     def collect(expressions: list[str]) -> None:
         for term in expressions:
-            if len(sources) == 5:
+            if len(sources) == 5 or len(attempted) >= retrieval_terms.MAX_ATTEMPTS:
                 break
+            if term in attempted:
+                continue
+            attempted.add(term)
             packet = query.evidence(config, db, channel, value, term)
             packets.append(packet)
             before = len(sources)
@@ -121,6 +130,13 @@ def evidence(config: Any, db: Any, channel: Any, value: str, retrieval: list[str
                 used.append(term)
 
     collect(retrieval)
+    if not sources:
+        segmented, relaxed = retrieval_terms.fallbacks(
+            retrieval, retrieval_terms.authorized_titles(config, db, channel)
+        )
+        collect(segmented)
+        if not sources:
+            collect(relaxed)
     # Literal terms within an expression are ANDed. Relax an empty synonym
     # group locally, without another model call. Recheck only contributing
     # expressions: omitted empty/duplicate searches cannot change this packet.

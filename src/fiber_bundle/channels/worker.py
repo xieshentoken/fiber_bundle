@@ -207,7 +207,9 @@ async def run(config: Config, launch: dict[str, Any]) -> None:
                         raise InvalidInput("channel_connection_stopped")
                     from ..vault_relocation.guard import paused
 
-                    if await asyncio.to_thread(paused, config, channel["value"]["vault_id"]):
+                    if "query_vaults" not in channel["value"] and await asyncio.to_thread(
+                        paused, config, channel["value"]["vault_id"]
+                    ):
                         await asyncio.sleep(0.5)
                         continue
                     from ..vault_relocation.errors import RelocationError

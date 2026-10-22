@@ -162,3 +162,44 @@ def test_bad_legacy_config_is_visible_as_issue_not_an_empty_success(config, stor
         assert result["issues"] == [{"reason": "legacy_configuration_unreadable"}]
     finally:
         main.close()
+
+
+@pytest.mark.parametrize("model_error", [None, "model_unconfigured", "model_disabled"])
+def test_model_mode_health_uses_current_default_not_legacy_route(
+    config, channel, monkeypatch, model_error
+):
+    from fiber_bundle.config import InvalidInput
+    from fiber_bundle.model_configuration import policy as models
+
+    current = bind(config, channel[0])
+    current["value"].update(answer_mode="model", configuration_sha256=None, policy_version=2)
+
+    def resolve(_config):
+        if model_error:
+            raise InvalidInput(model_error)
+        return object()
+
+    monkeypatch.setattr(models, "resolve", resolve)
+    monkeypatch.setattr(
+        health.query_policy_store,
+        "checked",
+        lambda *args: pytest.fail("legacy route must not gate model mode"),
+    )
+    with database.connect(config.state_root) as main:
+        home = store.home(config, current["id"])
+        with feishu_runtime.Instance(home) as instance:
+            instance.status("connected", {})
+            feishu_runtime.write(
+                home / "channel-status.json",
+                {
+                    "instance_id": instance.identity,
+                    "revision": current["revision"],
+                    "nonce": "synthetic",
+                    "state": "query_ready",
+                    "platform": "feishu",
+                },
+            )
+            result = health.present(config, main, current)
+    assert result["transport"] == "connected"
+    assert result["capabilities"]["query"]["available"] == (model_error is None)
+    assert result["capabilities"]["query"]["reason"] == model_error

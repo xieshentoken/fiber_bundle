@@ -1,3 +1,4 @@
+import { temporaryReadFailure } from "./request_errors.js";
 // Home derivations only (no DOM, no requests). Every state comes from a recorded read;
 // anything not read is reported as unread, never as healthy or zero.
 import {
@@ -31,14 +32,11 @@ export function homeStatus(records) {
   const found = issues(records);
   if (
     storageDown(records) ||
-    (records.backend?.error &&
-      records.backend.error.code !== "backup_snapshot_busy")
+    (records.backend?.error && !temporaryReadFailure(records.backend.error))
   )
     return { tone: "error", text: "系统异常" };
   if (
-    Object.values(records).some(
-      (record) => record?.error?.code === "backup_snapshot_busy",
-    )
+    Object.values(records).some((record) => temporaryReadFailure(record?.error))
   )
     return { tone: "waiting", text: "备份正在执行" };
   if (found.length) return { tone: "waiting", text: "需要关注" };
@@ -81,10 +79,7 @@ export function criticalAlert(records) {
       action: "查看后台与提醒",
     };
   }
-  if (
-    records.backend?.error &&
-    records.backend.error.code !== "backup_snapshot_busy"
-  )
+  if (records.backend?.error && !temporaryReadFailure(records.backend.error))
     return {
       title: "后台状态" + readState(records.backend).text,
       body: "无法确认管理后台当前状态；队列与提醒以最近一次成功读取为准。",
@@ -101,7 +96,7 @@ function node(text, tone, page) {
 function unread(record, page) {
   return node(
     readState(record).text,
-    record?.error?.code === "backup_snapshot_busy"
+    temporaryReadFailure(record?.error)
       ? "waiting"
       : record?.error
         ? "error"

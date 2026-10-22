@@ -23,6 +23,11 @@ def prepare(config: Any, identity: str) -> None:
         job = store.get(config, "jobs", identity)
         if not job or job["state"] not in {"queued", "running"} or job["stage"] != "planning":
             return
+        from . import execution_control
+
+        execution_control.settle(config, job)
+        if job["state"] == "paused":
+            return
     handled = manual_resolution.resolved(config, job)
     if (
         job["mode"] == "quick"

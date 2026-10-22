@@ -21,6 +21,12 @@ def resume(
     job = jobs.get(db, identity)
     if job["vault_id"] != vault or job["state"] not in {"reconcile", "needs_review"}:
         raise InvalidInput("automatic_reconciliation_unavailable")
+    if job["phase"] == "index":
+        from .automatic_index_recovery import acknowledge
+
+        completed = acknowledge(config, db, job)
+        if completed is not None:
+            return completed
     jobs.authorize(config, db, job)
     if job["kind"] == "intake_summary" and job["phase"] == "extract":
         from .channels.intake_pi import prepare_retry

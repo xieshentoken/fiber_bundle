@@ -1,5 +1,7 @@
+import { temporaryReadFailure } from "./request_errors.js";
 // Evidence rules only. A missing response is never a zero or a health failure.
 import { automaticStatus } from "./automatic_status.js";
+import { isInboxComplete } from "./inbox_status.js";
 export function timeText(value) {
   if (!Number.isFinite(value) || value <= 0) return "未记录";
   return (
@@ -30,6 +32,14 @@ export function readState(record) {
   if (!record) return { state: "unrecorded", text: "尚未读取" };
   if (record.error?.code === "backup_snapshot_busy")
     return { state: "unverified", text: "备份正在执行" };
+  if (temporaryReadFailure(record.error))
+    return {
+      state: "unverified",
+      text:
+        record.error.code === "display_changed"
+          ? "读取期间数据已变化"
+          : "读取暂忙",
+    };
   if (record.error)
     return {
       state: "unverified",
@@ -114,7 +124,7 @@ export function pendingItems(records) {
     if (["pending", "reconcile", "trash_pending"].includes(v.status))
       add("vault", v.id, v.name + " · 待审批或核对", "pending", v.status);
   for (const b of records.batches?.value || [])
-    if (b.state === "frozen")
+    if (b.state === "frozen" && !isInboxComplete(b))
       add("batch", b.id, b.preview || "批次待选择", "batches", "selection");
   for (const [source, page] of [
     ["documents", "documents"],

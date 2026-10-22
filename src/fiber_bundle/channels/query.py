@@ -6,7 +6,6 @@ from typing import Any
 from uuid import uuid4
 
 from .. import (
-    auth,
     evidence_answers,
     local_query_tasks,
     query_job_launch,
@@ -16,15 +15,14 @@ from .. import (
 from ..answer_tasks import ScopedNoteAnswerInput
 from ..config import Config, InvalidInput
 from ..inputs import canonical
-from . import store
+from . import query_scope, store
 
-PREFIXES = ("查询本库：", "查询本库:")
+PREFIXES = ("查询：", "查询:")
 
 
-def question(body: str, natural: bool = False) -> str | None:
-    from .natural_query import question as parse
-
-    return parse(body, natural)
+def question(body: str, natural: bool = False, *, standalone: bool = False) -> str | None:
+    question, _, diagnostic = query_scope.parse(body, natural, standalone=standalone)
+    return question if diagnostic is None else body.strip()
 
 
 def evidence(
@@ -35,6 +33,7 @@ def evidence(
     retrieval: str | None = None,
 ) -> dict[str, Any]:
     store.authorize(config, db, channel)
+    selected = query_scope.checked(config, db, channel)
     settings = channel["value"]
     result = evidence_answers.answer(
         config,
@@ -42,11 +41,10 @@ def evidence(
         settings["client_id"],
         value,
         retrieval or value[:200],
-        [settings["vault_id"]],
+        [v["id"] for v in selected],
         5,
     )
-    vault = auth.grant(db, settings["client_id"], settings["vault_id"], "query")
-    result["vault_name"] = vault["name"]
+    query_scope.annotate(config, db, channel, result)
     return result
 
 
@@ -54,6 +52,7 @@ def submit(
     config: Config, db: sqlite3.Connection, channel: dict[str, Any], value: str, request_id: str
 ) -> dict[str, Any]:
     store.authorize(config, db, channel)
+    selected = query_scope.checked(config, db, channel)
     settings = channel["value"]
     if settings["answer_mode"] == "evidence":
         return {"result": evidence(config, db, channel, value)}
@@ -64,7 +63,7 @@ def submit(
         route,
         settings["client_id"],
         ScopedNoteAnswerInput(
-            (settings["vault_id"],), value, value[:200], 5, request_id, mode="cited_draft"
+            tuple(v["id"] for v in selected), value, value[:200], 5, request_id, mode="cited_draft"
         ),
     )
     job = query_jobs.submit(
@@ -83,11 +82,17 @@ def submit(
 def recheck(
     config: Config, main: sqlite3.Connection, channel: dict[str, Any], response: dict[str, Any]
 ) -> None:
+    if response.get("status") == "query_hint":
+        return
+    if response.get(query_scope.KEY) is not None:
+        channel = query_scope.bind(channel, response[query_scope.KEY])
+    elif "query_vaults" in channel["value"]:
+        raise InvalidInput("channel_query_scope_changed")
     store.authorize(config, main, channel)
+    selected = query_scope.checked(config, main, channel)
     if response.get("status") == "query_failed":
         return
     sources = response.get("sources", [])
-    settings = channel["value"]
     if response.get("retrieval_queries"):
         from .natural_query import evidence as retrieve
 
@@ -102,9 +107,11 @@ def recheck(
             response.get("question", "来源核对"),
             response.get("retrieval_query"),
         )
-    before = [(s.get("note_id"), s["sha256"], s["snippet"]) for s in sources]
-    after = [(s.get("note_id"), s["sha256"], s["snippet"]) for s in current["sources"]]
-    if before != after or response.get("searched_vault_ids") != [settings["vault_id"]]:
+    before = [(s["vault_id"], s.get("note_id"), s["sha256"], s["snippet"]) for s in sources]
+    after = [
+        (s["vault_id"], s.get("note_id"), s["sha256"], s["snippet"]) for s in current["sources"]
+    ]
+    if before != after or response.get("searched_vault_ids") != [v["id"] for v in selected]:
         raise InvalidInput("channel_source_changed")
 
 
@@ -158,6 +165,14 @@ def test(
             raise InvalidInput("channel_removed")
         if pending(db, identity):
             raise InvalidInput("channel_operation_pending")
+    question, alias, diagnostic = query_scope.parse(value, True, standalone=True)
+    if diagnostic is not None:
+        return {"result": query_scope.hint(channel, diagnostic)}
+    try:
+        channel = query_scope.bind(channel, query_scope.snapshot(channel, alias))
+    except InvalidInput as error:
+        return {"result": query_scope.hint(channel, str(error))}
+    value = question or value
     if execute_model:
         if channel["value"]["answer_mode"] == "evidence":
             raise InvalidInput("channel_model_not_selected")
@@ -165,7 +180,14 @@ def test(
         if settings["answer_mode"] == "model":
             event_id = "gui:" + str(uuid4())
             with store.opened(config) as db:
-                if not store.capture(db, channel, event_id, channel["owner"], value):
+                if not store.capture(
+                    db,
+                    channel,
+                    event_id,
+                    channel["owner"],
+                    value,
+                    scope=query_scope.selected(channel),
+                ):
                     raise InvalidInput("channel_query_not_admitted")
             return {"event_id": event_id, "state": "queued"}
         calls = 2 if settings["answer_mode"] == "local_cloud" else 1
@@ -186,7 +208,12 @@ def test(
                     event_id,
                     channel["revision"],
                     "gui_processing",
-                    canonical({"model_calls_reserved": calls}),
+                    canonical(
+                        {
+                            "model_calls_reserved": calls,
+                            query_scope.KEY: query_scope.selected(channel),
+                        }
+                    ),
                     time.time(),
                 ),
             )
@@ -200,7 +227,17 @@ def test(
                 raise
             db.execute(
                 "UPDATE events SET value=? WHERE channel_id=? AND event_id=?",
-                (canonical(result | {"model_calls_reserved": calls}), identity, event_id),
+                (
+                    canonical(
+                        result
+                        | {
+                            "model_calls_reserved": calls,
+                            query_scope.KEY: query_scope.selected(channel),
+                        }
+                    ),
+                    identity,
+                    event_id,
+                ),
             )
             return result
     return {"result": evidence(config, main, channel, value)}

@@ -4,6 +4,13 @@ from .config import IntegrityError, InvalidInput
 from .media_link_failure import REASONS as _LINK_REASONS
 
 MESSAGES = {
+    "cloud_metadata_unavailable": (
+        "系统未提供 iCloud 同步状态，无法确认当前副本。请使用已获目录访问权限的 Fiber 后台核对；"
+        "此状态不代表文件已过期或发生冲突，原任务与文件保持。"
+    ),
+    "automatic_index_source_changed": (
+        "已保存笔记与当前索引不一致，未更改任务状态。请核对笔记位置与内容并更新索引后再恢复。"
+    ),
     "project_skill_dependency_python": (
         "离线编译镜像的 Python 版本不满足 Skill 要求，请选择兼容环境。"
     ),

@@ -377,8 +377,8 @@ export default {
     "Local citation draft + cloud synthesis",
   ],
   "shell.a98250279a": [
-    "自然语言提问（无需“查询本库：”前缀）",
-    "Natural-language questions (no “查询本库：” prefix)",
+    "允许直接用自然语言提问（默认查询所选范围）",
+    "Natural-language questions (use the selected scope by default)",
   ],
   "shell.7bef0d6a58": [
     "提问先生成检索词，再根据命中资料回答，沿用统一模型消耗。链接、附件和保存指令继续走资料入库。",

@@ -12,7 +12,7 @@ from ..config import Config, InvalidInput, contained, make_directory
 from ..payloads import Identifier, Payload
 from ..query_http import Digest
 from ..query_routing_files import read
-from . import store
+from . import query_scope, store
 
 
 class Settings(Payload):
@@ -23,6 +23,9 @@ class Settings(Payload):
     app_id: Annotated[str, Field(pattern=r"^cli_[A-Za-z0-9]+$")] | None = None
     client_id: Identifier
     vault_id: Identifier
+    query_vaults: (
+        Annotated[list[query_scope.QueryVault], Field(min_length=1, max_length=20)] | None
+    ) = None
     expert_enabled: bool = False
     expert_media: Literal["unknown", "text", "images", "full"] = "unknown"
     expert_limit: Annotated[int, Field(strict=True, ge=0, le=100)] = 0
@@ -94,6 +97,19 @@ def require_runtime_manifest(config: Config, manifest: object) -> None:
 
 def save(config: Config, main: Any, data: Save) -> dict[str, Any]:
     value = data.settings.model_dump()
+    if "query_vaults" not in data.settings.model_fields_set:
+        value.pop("query_vaults")
+        if data.id:
+            with store.readonly(config) as prior_db:
+                assert prior_db is not None
+                prior_scope = store.get(prior_db, data.id)["value"].get("query_vaults")
+            if prior_scope is not None:
+                value["query_vaults"] = prior_scope
+    if value.get("query_vaults") is None:
+        value.pop("query_vaults", None)
+    selected_vaults = query_scope.entries(value)
+    if "query_vaults" in value:
+        value["vault_id"] = selected_vaults[0]["vault_id"]
     if value["purpose"] is None:
         value.pop("purpose")  # Existing mixed-purpose entries keep their behavior and identity.
     elif value["purpose"] == "query" and value["add"]:

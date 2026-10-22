@@ -20,7 +20,7 @@ def audit(event, args):
     if event in {'socket.connect', 'socket.getaddrinfo', 'os.system', 'subprocess.Popen'}:
         raise RuntimeError('external effects disabled in lock holder')
     if event == 'open' and isinstance(args[0], (str, bytes)):
-        if Path(os.fsdecode(args[0])).absolute().is_relative_to(Path('/Users/synthetic/.hermes')):
+        if Path(os.fsdecode(args[0])).absolute().is_relative_to(Path.home() / '.hermes'):
             raise RuntimeError('production home reads disabled in lock holder')
 sys.addaudithook(audit)
 from gateway.status import acquire_scoped_lock, release_scoped_lock
@@ -56,7 +56,7 @@ def main():
             external_attempts.append(event)
             raise RuntimeError("network disabled in platform-lock acceptance")
         if event == "open" and isinstance(args[0], (str, bytes)):
-            if Path(os.fsdecode(args[0])).absolute().is_relative_to(Path("/Users/synthetic/.hermes")):
+            if Path(os.fsdecode(args[0])).absolute().is_relative_to(Path.home() / ".hermes"):
                 private_reads.append("production_hermes_home")
                 raise RuntimeError("production home reads disabled")
         if event == "subprocess.Popen":

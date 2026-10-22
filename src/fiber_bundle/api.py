@@ -71,15 +71,20 @@ def create_app(
     from .backup_automation.runtime import Runtime as BackupRuntime
 
     backup_runtime = BackupRuntime(config)
+    from .suppliers.runtime import Runtime as SupplierRuntime
+
+    supplier_runtime = SupplierRuntime(config)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        supplier_runtime.start()
         backup_runtime.start()
         relocation_runtime.start()
         automatic_runtime.start()
         try:
             yield
         finally:
+            supplier_runtime.close()
             backup_runtime.close()
             relocation_runtime.close()
             automatic_runtime.close()
@@ -87,7 +92,20 @@ def create_app(
             model_test_runtime.close()
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
-    app.add_middleware(Guard, config=config, settings=settings)
+    from .http_observation import Observations
+    from .http_observation import router as observation_router
+
+    observations = Observations()
+    app.add_middleware(
+        Guard, config=config, settings=settings, observations=observations, lifecycle=lifecycle
+    )
+    app.include_router(observation_router(config, observations))
+    from .suppliers.routes import router as supplier_router
+
+    app.include_router(supplier_router(config))
+    from .suppliers.agent_routes import router as supplier_agent_router
+
+    app.include_router(supplier_agent_router(config))
     from .agent_connections.access_routes import router as agent_access_router
     from .agent_connections.knowledge_admin_routes import router as knowledge_admin_router
     from .agent_connections.knowledge_routes import router as agent_knowledge_router
@@ -179,6 +197,10 @@ def create_app(
     app.include_router(media_glossary_router(config))
 
     async def bounded_error(request: Request, exc: Exception) -> JSONResponse:
+        from .display_observation import error_code as display_error_code
+
+        if code := display_error_code(exc):
+            return JSONResponse({"error": code}, status_code=503)
         from .model_configuration.errors import MESSAGES as model_messages
         from .model_configuration.errors import ModelError
 
@@ -341,4 +363,5 @@ def create_app(
                 },
             )
 
+    observations.register(app.routes)
     return app

@@ -4,7 +4,16 @@ export function createDesktopAppearanceSync(bridge, onWarning = () => {}) {
     queue = Promise.resolve();
   return (value) => {
     if (typeof bridge?.applyAppearance !== "function") return queue;
-    const payload = { theme: value.theme, defaultTheme: value.defaultTheme };
+    const payload = {
+      theme: value.theme,
+      defaultTheme: value.defaultTheme,
+      ...(value.theme === "atlas"
+        ? {
+            presentationMode:
+              value.presentationMode === "dark" ? "dark" : "light",
+          }
+        : {}),
+    };
     const key = JSON.stringify(payload);
     if (key === last) return queue;
     last = key;

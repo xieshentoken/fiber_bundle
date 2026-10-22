@@ -9,7 +9,7 @@ from ..objects import digest
 from ..weixin_events import Binding
 from . import intake_links
 
-COMMANDS = ("查询本库：", "查询本库:", "批次 ", "术语 ", "文档 ")
+COMMANDS = ("查询本库", "查询：", "查询:", "查询[", "批次 ", "术语 ", "文档 ")
 
 
 def classify(

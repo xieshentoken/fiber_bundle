@@ -7,8 +7,19 @@ from . import database
 
 
 async def run[**P, T](function: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
+    return await _owned(1, function, *args, **kwargs)
+
+
+async def delivery[**P, T](function: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
+    """Keep an admitted single send alive across finite local checkpoint contention."""
+    return await _owned(60, function, *args, **kwargs)
+
+
+async def _owned[**P, T](
+    seconds: float, function: Callable[P, T], *args: P.args, **kwargs: P.kwargs
+) -> T:
     def invoke() -> T:
-        with database.lock_wait(1):
+        with database.lock_wait(seconds):
             return function(*args, **kwargs)
 
     task = asyncio.create_task(asyncio.to_thread(invoke))

@@ -20,21 +20,26 @@ class Stop(Payload):
     instance_id: Identifier
 
 
+def snapshot(config: Config, lifecycle: BackendControl | None) -> dict[str, Any]:
+    """Authorized status projection; runtime queue cleanup uses its own queue lease."""
+    return {
+        **(
+            {"state": "running", "managed": False, "receiver": "external_not_managed"}
+            if lifecycle is None
+            else lifecycle.status()
+        ),
+        "queue": execution_scheduler.snapshot(config),
+        "reminder_history": batch_reminders.history(config),
+    }
+
+
 def router(config: Config, lifecycle: BackendControl | None) -> APIRouter:
     routes = APIRouter(prefix="/admin/backend")
 
     @routes.get("")
     def status(request: Request) -> dict[str, Any]:
         with access(config, request, admin=True):
-            return {
-                **(
-                    {"state": "running", "managed": False, "receiver": "external_not_managed"}
-                    if lifecycle is None
-                    else lifecycle.status()
-                ),
-                "queue": execution_scheduler.snapshot(config),
-                "reminder_history": batch_reminders.history(config),
-            }
+            return snapshot(config, lifecycle)
 
     @routes.post("/stop")
     def stop(data: Stop, request: Request) -> dict[str, Any]:

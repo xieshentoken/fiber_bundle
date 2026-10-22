@@ -95,3 +95,9 @@ def test_visual_resource_hosting_does_not_expose_data_or_source(http):
     http.cookies.clear()
     assert http.get("/admin/backups").status_code == 401
     assert http.get("/admin/clients").status_code == 401
+
+
+def test_organization_refresh_module_is_served(http):
+    result = http.get("/static/organization_refresh_request.js")
+    assert result.status_code == 200
+    assert "export function scopedRead" in result.text

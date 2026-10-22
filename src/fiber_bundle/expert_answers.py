@@ -34,8 +34,20 @@ def enrich(
             "media": [],
         }
         try:
-            packet = expert_query.query(config, db, cid, module_id, version, question, 5)
-            block.update(expert_media.block(packet))
+            # Reuse the already authorized retrieval plan. Full conversational
+            # sentences (including test labels) may not match a package's literal index.
+            terms = [question]
+            for term in response.get("retrieval_queries", []):
+                if isinstance(term, str) and 0 < len(term) <= 200 and term not in terms:
+                    terms.append(term)
+                if len(terms) == 4:
+                    break
+            for term in terms:
+                packet = expert_query.query(config, db, cid, module_id, version, term, 5)
+                found = expert_media.block(packet)
+                block.update(found)
+                if found.get("object_ids") or found.get("media"):
+                    break
         except (auth.Denied, InvalidInput, IntegrityError, OSError, ValueError) as error:
             block.update(
                 behavior="abstain",

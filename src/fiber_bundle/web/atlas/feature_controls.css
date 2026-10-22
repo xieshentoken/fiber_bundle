@@ -1,0 +1,368 @@
+@import url("../channel_query_scope.css");
+:root {
+  --duration-fast: 120ms;
+  --duration-normal: 180ms;
+  --duration-slow: 240ms;
+  --ease-out: var(--ease);
+  --surface-base: var(--bg);
+  --surface-panel: var(--surface);
+  --surface-raised: var(--surface);
+  --surface-emphasis: var(--surface-2);
+  --line: var(--border);
+  --field-line: var(--border-strong);
+  --muted: var(--text-2);
+  --on-accent: #fff;
+  --font-ui: var(--font-sans);
+  --graph-muted: var(--graph-faded);
+}
+.a-feature {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.a-feature label {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+.a-feature label:has(input[type="checkbox"]),
+.a-feature label:has(input[type="radio"]) {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.a-feature input[type="checkbox"],
+.a-feature input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+.a-feature .record-card,
+.a-feature .record {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  background: var(--surface);
+}
+.a-feature .a-input,
+.a-feature .a-select {
+  max-width: 100%;
+  min-width: 0;
+}
+.a-feature textarea {
+  min-height: 90px;
+}
+.a-feature .a-toolbar {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.a-feature .view-tabs {
+  margin-bottom: 14px;
+}
+.a-feature h3 {
+  font-size: 15px;
+}
+.a-feature h4 {
+  font-size: 14px;
+}
+.a-feature p,
+.a-feature li {
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.a-feature pre {
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: 14px;
+  font: 12px/1.7 var(--font-mono);
+}
+.a-feature details {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+.a-feature details > summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 550;
+}
+.a-feature details[open] > summary {
+  margin-bottom: 12px;
+}
+.a-feature .view-tabs button[aria-selected="true"] {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.a-feature button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.a-feature .muted {
+  color: var(--text-2);
+}
+.a-feature .error {
+  color: var(--danger);
+}
+.a-feature .warning {
+  color: var(--warning);
+}
+.a-feature .backup-policy {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.a-feature .backup-policy > h3,
+.a-feature .backup-policy > p,
+.a-feature .backup-policy > div {
+  grid-column: 1/-1;
+}
+.a-feature .backup-policy button {
+  justify-self: start;
+}
+.a-feature .backup-job-status {
+  display: grid;
+  gap: 12px;
+}
+.a-feature .status-badge {
+  font-size: 12px;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-radius: 20px;
+  padding: 3px 9px;
+}
+.a-feature .row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+html[data-ui="atlas"] #notice {
+  position: fixed;
+  left: calc(var(--sidebar-w) + 24px);
+  right: 24px;
+  bottom: 20px;
+  z-index: 100;
+  padding: 14px 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+}
+html[data-ui="atlas"] #notice.error {
+  color: var(--danger);
+}
+@media (max-width: 767px) {
+  .a-feature .backup-policy {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  html[data-ui="atlas"] #notice {
+    left: 16px;
+    right: 16px;
+  }
+}
+
+.a-channel .a-feature {
+  padding: 0 24px;
+  grid-template-columns: minmax(0, 1fr);
+}
+.a-channel .channel-status {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.a-feature .channel-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.a-feature .channel-status-grid dt {
+  color: var(--text-2);
+  font-size: 12px;
+}
+.a-feature .channel-status-grid dd {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+.a-feature .channel-service-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 700px) {
+  .a-feature .channel-status-grid,
+  .a-feature .channel-service-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+html[data-ui="atlas"] {
+  font-family: var(--font-ui, var(--font-sans));
+  font-size: var(--ui-base-size, 14px);
+  line-height: var(--ui-line-height, 1.6);
+}
+.a-feature dialog {
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: min(800px, calc(100vw - 32px));
+  max-height: 85vh;
+  overflow: auto;
+}
+.a-feature dialog::backdrop {
+  background: #1113;
+}
+.a-feature dialog form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.a-feature dialog h2,
+.a-feature dialog p,
+.a-feature dialog .panel-actions,
+.a-feature dialog fieldset {
+  grid-column: 1/-1;
+}
+.a-feature .model-card,
+.a-feature .relocation-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-block: 12px;
+}
+.a-feature .relocation-info {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 2fr;
+  gap: 14px;
+}
+.a-feature .relocation-path {
+  overflow-wrap: anywhere;
+}
+.a-feature .relocation-check {
+  display: flex;
+  gap: 10px;
+  align-items: start;
+}
+.a-feature .relocation-workspace {
+  display: grid;
+  gap: 16px;
+}
+.a-feature .model-wizard-fields {
+  display: grid;
+  gap: 16px;
+}
+.a-feature .model-list {
+  display: grid;
+  gap: 16px;
+}
+@media (max-width: 600px) {
+  .a-feature dialog form,
+  .a-feature .relocation-info {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.a-feature fieldset {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+.a-feature legend {
+  padding-inline: 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.a-feature #backup-automation > h2 {
+  display: none;
+}
+.a-feature .backup-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.a-feature .relocation-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 24px;
+}
+.a-feature .relocation-steps {
+  display: flex;
+  gap: 20px;
+  list-style: none;
+  padding: 0;
+}
+.a-feature .relocation-steps [aria-current="step"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+.a-feature .relocation-card,
+.a-feature .relocation-aside,
+.a-feature .relocation-footer {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+.a-feature .relocation-path {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius);
+}
+.a-feature .relocation-card dl {
+  display: grid;
+  gap: 10px;
+}
+.a-feature .relocation-card dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 800px) {
+  .a-feature .relocation-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 700px) {
+  .a-channel .a-feature > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .a-channel .a-feature .a-button {
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    height: auto;
+    min-height: var(--control-h);
+  }
+}
+
+/* Shared organization tabs keep long English labels inside their own scroll area. */
+.a-feature .organization-workspace > div,
+.a-feature .view-panel {
+  min-width: 0;
+}
+.a-feature .view-tabs {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.a-feature .view-tabs > button {
+  flex: 0 0 auto;
+}

@@ -2,7 +2,7 @@ import { desktopText, retryText } from "./locale_copy.mjs";
 let language = "zh-CN";
 // The only native read here is a validated, presentation-only snapshot.
 document.documentElement.dataset.desktop = "offline";
-const themes = ["oracle", "tesla", "cursor", "clay", "dark"];
+const themes = ["oracle", "tesla", "cursor", "clay", "dark", "atlas"];
 async function initializeAppearance() {
   let timeout;
   try {
@@ -18,6 +18,8 @@ async function initializeAppearance() {
     document.documentElement.dataset.theme = themes.includes(value?.theme)
       ? value.theme
       : "clay";
+    document.documentElement.dataset.mode =
+      value?.presentationMode === "dark" ? "dark" : "light";
   } catch {
     document.documentElement.dataset.theme = "clay";
   } finally {

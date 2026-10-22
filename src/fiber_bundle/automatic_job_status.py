@@ -34,7 +34,7 @@ def display_state(job: dict[str, Any]) -> str:
     return str(state)
 
 
-def publication(db: sqlite3.Connection, job: dict[str, Any]) -> dict[str, Any]:
+def location(db: sqlite3.Connection, job: dict[str, Any]) -> dict[str, Any] | None:
     from . import publication_locations
 
     kind, identity = job["kind"], job["source_id"]
@@ -57,7 +57,14 @@ def publication(db: sqlite3.Connection, job: dict[str, Any]) -> dict[str, Any]:
             kind = "intake"
         else:
             identity = value.get("run_id") or ""
-    row = publication_locations.get(db, kind, identity)
+    return publication_locations.get(db, kind, identity)
+
+
+def publication(db: sqlite3.Connection, job: dict[str, Any]) -> dict[str, Any]:
+    from . import publication_locations
+
+    row = location(db, job)
+    value = job["value"]
     if row and publication_locations.committed(db, row):
         return {"state": "published", "entry_note_path": row["entry_note_path"]}
     saved = value.get("publication") or {}

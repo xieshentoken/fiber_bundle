@@ -58,6 +58,8 @@ def text(response: dict[str, Any]) -> str:
     show_sources = sources_requested(question)
     claims = response.get("claims", [])
     parts = []
+    if response.get("status") == "query_hint":
+        return str(response["answer"])
     if response.get("status") == "query_failed":
         code = re.search(r"\b[a-z]+(?:_[a-z]+)+\b", str(response.get("answer") or ""))
         reasons = {
@@ -104,6 +106,8 @@ def text(response: dict[str, Any]) -> str:
         sources = []
         for source in response["sources"]:
             label = str(source.get("title") or "相关资料")
+            if source.get("vault_alias"):
+                label = "[" + source["vault_alias"] + "] " + label
             location = source.get("source_url") or source.get("note_path")
             if location:
                 label += " · " + location
@@ -112,6 +116,8 @@ def text(response: dict[str, Any]) -> str:
     if claims and originals_requested(question):
         for source in response.get("sources", []):
             parts.append("原文片段：" + source["snippet"])
+    if response.get("query_scope_labels"):
+        parts.insert(0, "查询范围：" + "、".join(response["query_scope_labels"]))
     return "\n\n".join(dict.fromkeys(p for p in parts if p))
 
 

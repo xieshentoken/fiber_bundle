@@ -9,6 +9,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from .. import feishu_delivery, feishu_gateway, feishu_gateway_cli, feishu_pairing, feishu_receiver
 from ..config import Config, InvalidInput
 from . import configuration, dispatch, store
+from .services import policy as service_policy
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -74,7 +75,10 @@ def adapter(config: Config, channel: dict[str, Any]) -> Any:
 
                     if (
                         question(
-                            body.get("text", ""), channel["value"].get("natural_questions", False)
+                            body.get("text", ""),
+                            channel["value"].get("natural_questions", False)
+                            and "query" in service_policy.roles(channel),
+                            standalone=not channel["value"].get("add"),
                         )
                         is not None
                     ):
@@ -151,16 +155,17 @@ async def send(
 ) -> bool:
     upstream = importlib.import_module("plugins.platforms.feishu.adapter")
 
-    from ..feishu_sync import run
+    from ..feishu_sync import delivery
 
     if isinstance(body, dict) and body.get("schema") == "fiber-expert-feishu-output/v1":
         from ..expert_feishu_render import send as rich_send
 
-        result = await run(rich_send, adapter._client, owner, body, guard)
+        result = await delivery(rich_send, adapter._client, owner, body, guard)
     else:
         if not isinstance(body, str):
             raise InvalidInput("channel_message_format_invalid")
-        result = await run(
+        result = await delivery(
             feishu_delivery.sdk_send, upstream.lark, adapter._client, owner, body, guard
         )
+    guard.delivery_evidence = result
     return result.get("category") == "confirmed"

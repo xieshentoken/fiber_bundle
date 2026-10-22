@@ -378,3 +378,57 @@ def test_registration_uses_index_metadata_beyond_old_library_cap(http, config, i
         retrieve(http, headers, "AB-12", [vid]).json()["results"][0]["note_id"]
         == tracked["note_identity"]
     )
+
+
+@pytest.mark.parametrize("boundary", [1, 2])
+def test_slow_fingerprint_releases_writer_and_rejects_revocation(
+    http, config, indexed_scope, monkeypatch, boundary
+):
+    import threading
+    from fiber_bundle import database, auth
+    from fiber_bundle import note_search_cache as cache
+
+    cid, _, vid, root = indexed_scope
+    original = cache.fingerprint
+    entered, release = threading.Event(), threading.Event()
+    calls = 0
+    errors = []
+
+    def slow(*args):
+        nonlocal calls
+        calls += 1
+        if calls == boundary:
+            entered.set()
+            assert release.wait(10)
+        return original(*args)
+
+    def build():
+        try:
+            note_search_build.build(config, cid, vid)
+        except Exception as exc:
+            errors.append(exc)
+
+    monkeypatch.setattr(cache, "fingerprint", slow)
+    worker = threading.Thread(target=build)
+    worker.start()
+    try:
+        assert entered.wait(5)
+        assert http.get("/admin/vaults").status_code == 200
+        assert (
+            http.get(
+                "/admin/organization/progress", params={"client_id": cid, "vault_id": vid}
+            ).status_code
+            == 200
+        )
+        with (
+            database.lock_wait(0.5),
+            database.locked(config),
+            database.connect(config.state_root) as db,
+        ):
+            auth.set_grant(db, cid, vid, query=False, original=False, add=False)
+    finally:
+        release.set()
+        worker.join(10)
+    assert not worker.is_alive()
+    assert errors, "a revoked candidate must not become a live index"
+    assert not cache.location(config, vid).exists()

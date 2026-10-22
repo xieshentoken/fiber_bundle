@@ -193,6 +193,22 @@ def snapshot(
                 if entries > limits.entries:
                     raise IntegrityError("vault index entry limit exceeded")
                 paths.append(Path(entry.path))
+        from .display_observation import current, preflight
+
+        if current.get() is not None:
+            preflight(
+                directory,
+                [
+                    path
+                    for path in paths
+                    if not path.name.startswith(".")
+                    and path.suffix.lower() == ".md"
+                    and scope.allows(path.relative_to(vault).as_posix())
+                    and path.relative_to(vault).as_posix() not in (hidden_files or set())
+                    and not path.is_symlink()
+                    and path.is_file()
+                ],
+            )
         for path in sorted(paths):
             relative = path.relative_to(vault).as_posix()
             if relative in (hidden_roots or set()):

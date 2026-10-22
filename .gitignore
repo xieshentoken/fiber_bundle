@@ -1,60 +1,33 @@
-# Python
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-env/
-build/
-dist/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# Node / desktop
-node_modules/
-npm-debug.log*
-yarn-error.log*
-.pnpm-store/
-desktop/out/
-desktop/dist/
-
-# Local runtime state, databases, logs
-.local-state/
-.state/
-*.sqlite
-*.sqlite3
-*.db
-*.log
-*.jsonl
-
-# Secrets and credentials
+# Local secrets, state and knowledge bases
 .env
 .env.*
 !.env.example
-*.key
+config.test.json
+config.local.json
+.local-state/
+.fiber-services/
+.backup-automation/
+.backup-requests/
+test vault/
+backups/
+restores/
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
 *.pem
+*.key
 *.p12
 *.pfx
-id_rsa*
-id_ed25519*
-*credential*.json
-*secret*.json
-!configs/*.example.json
-
-# Private vaults and user data
-fiber-data/
-test vault/
-candidates/
-maintenance/
-*.backup
-
-# OS / editor
+# Generated artifacts and installed dependencies
+.venv/
+node_modules/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
 .DS_Store
-Thumbs.db
-*.swp
-*~
-.idea/
-.vscode/

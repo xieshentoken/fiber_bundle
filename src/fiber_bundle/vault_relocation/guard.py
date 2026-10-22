@@ -19,13 +19,13 @@ _receiving: ContextVar[str | None] = ContextVar("vault_relocation_receiving", de
 def operation(db: Any, vault: str) -> Any:
     if not db.execute("SELECT 1 FROM sqlite_master WHERE name='vault_operations'").fetchone():
         return None
-    for row in db.execute(
-        "SELECT * FROM vault_operations WHERE kind='vault_relocation' AND vault_id=?",
-        (vault,),
-    ):
-        if row["state"] not in TERMINAL:
-            return row
-    return None
+    # Authorization needs the active barrier identity, never full recovery evidence.
+    return db.execute(
+        "SELECT id,vault_id,kind,state FROM vault_operations "
+        "WHERE kind='vault_relocation' AND vault_id=? "
+        "AND state NOT IN (?,?,?,?) LIMIT 1",
+        (vault, *sorted(TERMINAL)),
+    ).fetchone()
 
 
 def check(db: Any, vault: str) -> None:

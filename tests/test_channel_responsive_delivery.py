@@ -71,7 +71,7 @@ def test_delivery_preparation_keeps_checks_and_source_changes_in_background(
 ):
     value, _ = channel
     bind(config, value)
-    assert dispatch.capture(config, value["id"], 1, "responsive", "ou_synthetic", "查询本库：压力")
+    assert dispatch.capture(config, value["id"], 1, "responsive", "ou_synthetic", "查询：压力")
     dispatch.advance(config, value["id"], 1)
     original = dispatch.query.recheck
     threads = []

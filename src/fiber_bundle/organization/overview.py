@@ -8,13 +8,20 @@ from . import catalog, jobs, maintenance, manual_resolution, package_discovery, 
 from .manual_relations import ManualRelations
 
 
-def progress(config: Config, db: sqlite3.Connection, client: str, vault: str) -> Any:
+def progress(
+    config: Config,
+    db: sqlite3.Connection,
+    client: str,
+    vault: str,
+    *,
+    validate_previews: bool = False,
+) -> Any:
     packages.context(config, db, client, vault)
     work = [j for j in store.rows(config, "jobs", vault) if j["client_id"] == client]
     return {
         "jobs": [
             (
-                maintenance.public(j, config=config, db=db)
+                maintenance.public(j, config=config, db=db if validate_previews else None)
                 if j.get("maintenance")
                 else manual_resolution.project(config, j)
             )
@@ -75,7 +82,7 @@ def browse(
             }
         )
     return {
-        **progress(config, db, client, vault),
+        **progress(config, db, client, vault, validate_previews=True),
         "policy": jobs.policy(config, vault),
         "items": results[offset : offset + 100],
         "total": len(results),

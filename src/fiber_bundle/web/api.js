@@ -1,3 +1,6 @@
+import { requestErrors, retryableReadFailure } from "./request_errors.js";
+import { createSupplierApi } from "./suppliers_api.js";
+import { waitForReadRetry } from "./read_retry.js";
 import { createChannelServicesApi } from "./channel_services_api.js";
 import { createBackupAutomationApi } from "./backup_automation_api.js";
 import {
@@ -186,7 +189,9 @@ export function createAdminApi(
             ? 35000
             : path === "/admin/models/discover"
               ? 30000
-              : path.startsWith("/admin/vault-") ||
+              : path.startsWith("/admin/organization") ||
+                  path.startsWith("/admin/note-index/status") ||
+                  path.startsWith("/admin/vault-") ||
                   path.startsWith("/admin/knowledge-graph/")
                 ? 60000
                 : 10000,
@@ -268,12 +273,10 @@ export function createAdminApi(
                 vaultPlacementErrorText(body.error);
             if (record(body) && path.startsWith("/admin/note-index"))
               detail = noteIndexErrorText(body.error);
-            if (record(body) && body.error === "backup_snapshot_busy")
-              detail = "正在创建一致性备份，请稍后重试。";
+            if (Object.hasOwn(requestErrors, code))
+              detail = requestErrors[code][0];
             if (record(body) && body.error === "event_conflict")
               detail = "事件内容冲突。";
-            if (record(body) && body.error === "organization_progress_busy")
-              detail = "后台正在处理文件，稍后自动更新整理进度。";
             if (
               record(body) &&
               typeof body.message === "string" &&
@@ -312,6 +315,18 @@ export function createAdminApi(
           }
           if (revision !== session.revision)
             throw new ApiError("会话已变化，请刷新后重试。", 409);
+        }
+        if (
+          retryableReadFailure({ status: response.status, code }) &&
+          method === "GET" &&
+          options.retryBusy !== false
+        ) {
+          if (!(await waitForReadRetry(options.signal)))
+            throw new ApiError("读取已取消。", 0, "cancelled");
+          return request(path, method, body, validate, {
+            ...options,
+            retryBusy: false,
+          });
         }
         throw new ApiError(
           detail || errors[response.status] || "操作未完成，请刷新后重试。",
@@ -379,6 +394,7 @@ export function createAdminApi(
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   return {
+    suppliers: createSupplierApi(request, pathId),
     modelsApi: createModelsApi(request),
     video: createVideoApi(request),
     ...createSystemApi(request),
@@ -696,7 +712,8 @@ export function createAdminApi(
       request("/admin/documents/" + pathId(id) + "/reviews", "POST", body),
     publishDocument: (id) =>
       request("/admin/documents/" + pathId(id) + "/publish", "POST"),
-    health: () => request("/health"),
+    health: (options = {}) =>
+      request("/health", "GET", undefined, record, options),
     session: () => request("/admin/session"),
     login: (password) => request("/admin/login", "POST", { password }),
     logout: () => request("/admin/logout", "POST"),

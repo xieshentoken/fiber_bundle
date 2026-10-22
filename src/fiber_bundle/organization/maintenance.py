@@ -145,6 +145,13 @@ def validate(config: Any, db: Any, job: Any, *, sources: bool = True) -> Any:
 
 def action(config: Any, db: Any, job: Any, operation: str, expected: str | None) -> Any:
     packages.context(config, db, job["client_id"], job["vault_id"], write=True)
+    from . import execution_control
+
+    if execution_control.active(config, job["id"]):
+        if operation != "pause":
+            raise InvalidInput("organization_execution_pause_required")
+        execution_control.request(config, job)
+        return job
     if operation == "recover_cache":
         from . import cache_recovery
 
@@ -257,6 +264,11 @@ def public(job: Any, *, config: Any = None, db: Any = None) -> Any:
         "analysis_history",
     }
     value = {k: v for k, v in job.items() if k not in hidden | {"expires_at"}}
+    if config is not None:
+        from .execution_control import requested
+
+        value["pause_requested"] = requested(config, job)
+
     if config is not None and db is not None and job["state"] == "preview":
         from .preview_validity import status
 

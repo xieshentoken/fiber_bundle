@@ -208,3 +208,64 @@ test("cache write failure applies the current theme but retains the old default 
     rmSync(moved, { recursive: true, force: true });
   }
 });
+
+test("Atlas native mode survives restart and classic previews preserve the saved Atlas mode", () => {
+  const dir = mkdtempSync(join(tmpdir(), "fiber-atlas-mode-"));
+  try {
+    const state = createAppearanceState(dir, backend);
+    assert(
+      validAppearance({
+        theme: "atlas",
+        defaultTheme: "atlas",
+        presentationMode: "dark",
+      }),
+    );
+    for (const value of [
+      { theme: "clay", defaultTheme: "atlas", presentationMode: "dark" },
+      { theme: "atlas", defaultTheme: "atlas", presentationMode: "system" },
+    ])
+      assert.equal(validAppearance(value), false);
+    state.apply({
+      theme: "atlas",
+      defaultTheme: "atlas",
+      presentationMode: "dark",
+    });
+    state.apply({ theme: "clay", defaultTheme: "atlas" });
+    assert.deepEqual(createAppearanceState(dir, backend).snapshot(), {
+      theme: "atlas",
+      defaultTheme: "atlas",
+      presentationMode: "dark",
+    });
+    assert.deepEqual(themePresentation("atlas", "dark"), {
+      themeSource: "dark",
+      backgroundColor: "#0e0e11",
+    });
+    state.apply({
+      theme: "atlas",
+      defaultTheme: "atlas",
+      presentationMode: "light",
+    });
+    assert.equal(
+      createAppearanceState(dir, backend).snapshot().presentationMode,
+      "light",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+test("Atlas hash routing retains presentation IPC trust only on the exact backend document", () => {
+  const mainFrame = { url: backend + "#/settings" },
+    window = { webContents: { mainFrame } };
+  const event = { sender: window.webContents, senderFrame: mainFrame };
+  trustedAppearance(event, window, backend, offline, true);
+  for (const url of [
+    backend + "static/atlas/index.html#/settings",
+    backend + "?other=1#/settings",
+    otherBackend + "#/settings",
+  ]) {
+    mainFrame.url = url;
+    assert.throws(() =>
+      trustedAppearance(event, window, backend, offline, true),
+    );
+  }
+});

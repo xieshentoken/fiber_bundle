@@ -20,6 +20,11 @@ class AnalysisGuard:
             or current["stage"] != "planning"
         ):
             raise InvalidInput("maintenance_cancelled")
+        from . import execution_control
+
+        execution_control.settle(self.config, current)
+        if current["state"] == "paused":
+            raise InvalidInput("maintenance_cancelled")
         maintenance.validate(self.config, db, current, sources=False)
         if current["fixed"] != self.job["fixed"]:
             raise IntegrityError("maintenance_authorization_or_policy_changed")

@@ -8,6 +8,27 @@ from fiber_bundle.auth import Denied
 
 WEB_ROOT = Path(__file__).parent / "web"
 STATIC_ASSETS = {
+    "ui_entry.css": "text/css",
+    "ui_entry.js": "text/javascript",
+    "theme_entry.js": "text/javascript",
+    "inbox_status.js": "text/javascript",
+    "read_retry.js": "text/javascript",
+    "request_errors.js": "text/javascript",
+    "suppliers_api.js": "text/javascript",
+    "suppliers_view.js": "text/javascript",
+    "suppliers_components.js": "text/javascript",
+    "suppliers_labels.js": "text/javascript",
+    "suppliers.css": "text/css",
+    **{
+        f"atlas/{p.name}": {
+            ".js": "text/javascript",
+            ".css": "text/css",
+            ".svg": "image/svg+xml",
+            ".html": "text/html",
+        }[p.suffix]
+        for p in (WEB_ROOT / "atlas").iterdir()
+        if p.is_file() and p.suffix in {".js", ".css", ".svg", ".html"}
+    },
     "vault_relocation.css": "text/css; charset=utf-8",
     "style.css": "text/css",
     "backup_automation.css": "text/css",
@@ -29,6 +50,7 @@ STATIC_ASSETS = {
     "reading_layout.css": "text/css",
     "usage.css": "text/css",
     "channels.css": "text/css",
+    "channel_query_scope.css": "text/css",
     "models.css": "text/css",
     "fonts.css": "text/css",
     "dm-sans.ttf": "font/ttf",
@@ -42,6 +64,7 @@ STATIC_ASSETS = {
             "organization_members.js",
             "organization_maintenance.js",
             "organization_progress.js",
+            "organization_refresh_request.js",
             "organization_task_controls.js",
             "organization_settings.js",
             "view_sections.js",
@@ -167,6 +190,7 @@ STATIC_ASSETS = {
             "channel_status.js",
             "channel_actions.js",
             "channel_card.js",
+            "channel_query_scope.js",
             "channel_expert_intents.js",
             "channel_intake.js",
             "channel_intake_records.js",
