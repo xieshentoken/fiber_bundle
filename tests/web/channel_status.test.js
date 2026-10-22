@@ -4,6 +4,7 @@ import {
   channelStatusText,
   channelLabel,
   intakeStatusText,
+  receiptStatusText,
 } from "../../src/fiber_bundle/web/channel_status.js";
 import { createChannelApi } from "../../src/fiber_bundle/web/channel_api.js";
 
@@ -117,4 +118,50 @@ test("Weixin receive diagnostics distinguish recovery from local save failures",
     channelLabel("channel_weixin_poll_rejected"),
     /请重新登录/,
   );
+});
+
+test("ambiguous receipts stay visible without claiming new batches are blocked", () => {
+  const value = entry();
+  value.receipts = {
+    enabled: true,
+    pending_batches: 3,
+    needs_review_batches: 1,
+    sending_batches: 1,
+  };
+  const text = String(receiptStatusText(value));
+  assert.match(text, /1 批回执待核对/);
+  assert.match(text, /不会自动重发/);
+  assert.match(text, /1 批回执发送待确认/);
+  assert.match(text, /3 批回执待发送或更新/);
+  assert.match(text, /新批次回执独立发送/);
+  assert.match(String(receiptStatusText(value, true)), /状态已过期/);
+  value.receipts.enabled = false;
+  assert.match(String(receiptStatusText(value)), /新回执已关闭/);
+  assert.doesNotMatch(String(receiptStatusText(value)), /独立发送/);
+  value.transport = "disconnected";
+  value.receipts.enabled = true;
+  assert.match(String(receiptStatusText(value)), /连接恢复后/);
+});
+
+test("channel API rejects malformed receipt counters and accepts older servers", async () => {
+  const value = {
+    schema: "channel-overview/v1",
+    observed_at: 100,
+    channels: [entry()],
+    issues: [],
+  };
+  const api = createChannelApi(async (_path, _method, _body, validate) => {
+    if (!validate(value)) throw Error("invalid receipt contract");
+    return value;
+  });
+  await api.channelOverview();
+  value.channels[0].receipts = {
+    enabled: true,
+    pending_batches: -1,
+    needs_review_batches: 0,
+    sending_batches: 0,
+  };
+  await assert.rejects(api.channelOverview(), /invalid receipt/);
+  value.channels[0].receipts.pending_batches = 0;
+  await api.channelOverview();
 });

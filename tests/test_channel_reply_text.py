@@ -52,7 +52,7 @@ def answer():
 
 def test_ordinary_model_reply_hides_notes_and_citations_without_changing_evidence(answer):
     before = copy.deepcopy(answer)
-    body = query.render(answer, "vault")
+    body = query.render(answer, "L2_vault")
     assert "材料的响应速度" in body
     for value in ["[1]", "材料响应笔记", "Resource/", "原文片段", "模型草稿", "知识库："]:
         assert value not in body
@@ -61,21 +61,21 @@ def test_ordinary_model_reply_hides_notes_and_citations_without_changing_evidenc
 
 def test_requested_sources_return_human_locators(answer):
     answer["question"] += "请注明来源。"
-    body = query.render(answer, "vault")
+    body = query.render(answer, "L2_vault")
     assert "[1]" in body and "材料响应笔记" in body and "Resource/材料响应.md" in body
     assert "原文片段" not in body
 
 
 def test_original_passages_are_only_added_when_requested(answer):
     answer["question"] += "请展示原文，不用出处。"
-    body = query.render(answer, "vault")
+    body = query.render(answer, "L2_vault")
     assert "原文片段不应" in body
     assert "Resource/" not in body and "[1]" not in body
 
 
 def test_evidence_only_reply_is_prose_without_note_locators(answer):
     answer.update(mode="extractive", claims=[])
-    body = query.render(answer, "vault")
+    body = query.render(answer, "L2_vault")
     assert body == answer["sources"][0]["snippet"]
     assert "Resource/" not in body and "[1]" not in body
 
@@ -93,7 +93,7 @@ def test_expert_text_fallback_hides_ids_and_preserves_missing_image_reason(answe
         }
     ]
     before = copy.deepcopy(answer)
-    body = query.render(answer, "vault", "text")
+    body = query.render(answer, "L2_vault", "text")
     assert "出口仅支持文字" in body and "相关图片" in body
     assert not any(v in body for v in ["expert:", "ko-secret", "ev-secret", "vo-secret", "a" * 64])
     assert "不要重复的专家文字" not in body

@@ -1,6 +1,7 @@
 import { joinText, phrase, setText, uiText } from "./i18n/index.js";
 // Organization view: scope-bound policy drafts, exceptions and native Skill membership.
 import { el } from "./ui.js";
+import { scopedRead } from "./organization_refresh_request.js";
 import { maintenanceSection } from "./organization_maintenance.js";
 import { control } from "./record_ui.js";
 import { organizationSettings } from "./organization_settings.js";
@@ -10,6 +11,7 @@ import {
   maintenancePhase,
   maintenanceSummary,
   previewInvalidated,
+  mergeProgress,
 } from "./organization_progress.js";
 
 const states = {
@@ -26,14 +28,19 @@ const states = {
   cancelled: "已取消",
   blocked: "处理暂停",
 };
-export function createOrganizationView(api, scope) {
+export function createOrganizationView(
+  api,
+  scope,
+  { onReadError = () => {}, onReadSuccess = () => {} } = {},
+) {
   const maintenanceDraft = { mode: "quick", title: "", topic: "" };
   const host = el("section", null, "record-card"),
     message = el("p"),
+    freshness = el("p", "", "muted"),
     body = el("div");
   message.setAttribute("role", "status");
   host.classList.add("organization-workspace");
-  host.append(message, body);
+  host.append(message, freshness, body);
   const analysisHost = el("div"),
     mocHost = el("div");
   const parking = el("div");
@@ -53,6 +60,10 @@ export function createOrganizationView(api, scope) {
     retryCount = 0,
     deferredPaint = false,
     catalogChanged = false,
+    catalogReady = false,
+    catalogRetry = 0,
+    catalogAfter = 0,
+    readGeneration = 0,
     memberPending = 0;
   function interacting() {
     return (
@@ -62,7 +73,33 @@ export function createOrganizationView(api, scope) {
         document.activeElement.matches("input,textarea,select,[role=combobox]"))
     );
   }
-  async function refresh({ automatic = false } = {}) {
+  const requestRead = scopedRead(refreshNow);
+  function refresh(options = {}) {
+    return requestRead({
+      ...options,
+      key: JSON.stringify(scope()) + ":" + readGeneration,
+    });
+  }
+  function paint(result, fixed) {
+    retainView(body, () => {
+      if (catalogReady) render(result, fixed);
+      else
+        body.replaceChildren(
+          maintenanceSection(
+            {
+              ...result,
+              jobs: result.jobs.filter((job) => job.state !== "preview"),
+              mocs: [],
+            },
+            fixed,
+            api,
+            refresh,
+            maintenanceDraft,
+          ),
+        );
+    });
+  }
+  async function refreshNow({ automatic = false } = {}) {
     const fixed = scope(),
       key = JSON.stringify(fixed),
       revision = ++epoch;
@@ -81,6 +118,7 @@ export function createOrganizationView(api, scope) {
       selectedSection = "maintenance";
       lastResult = "";
       lastData = null;
+      catalogReady = false;
       maintenanceDraft.views = {};
       dirty = false;
       offset = 0;
@@ -91,10 +129,22 @@ export function createOrganizationView(api, scope) {
       return;
     }
     try {
-      let result =
-        automatic && lastData
-          ? { ...lastData, ...(await api.progress(fixed)) }
-          : await api.list(fixed, offset, query, exceptions);
+      let result;
+      if (automatic && lastData) {
+        result = mergeProgress(lastData, await api.progress(fixed));
+      } else {
+        // A failed catalog must not hide an already-running task or its pause control.
+        try {
+          result = await api.list(fixed, offset, query, exceptions);
+          catalogReady = true;
+        } catch (error) {
+          if ([401, 403, 404].includes(error.status)) throw error;
+          const ledger = await api.progress(fixed);
+          result = lastData ? mergeProgress(lastData, ledger) : ledger;
+          catalogChanged = true;
+          onReadError(error);
+        }
+      }
       // Refresh the catalog once after an actual application; progress polling stays ledger-only.
       if (
         automatic &&
@@ -110,12 +160,6 @@ export function createOrganizationView(api, scope) {
                   prior.index_state !== job.index_state),
             ),
         )
-      )
-        catalogChanged = true;
-      if (
-        automatic &&
-        lastData &&
-        result.package_scan?.checked_at !== lastData.package_scan?.checked_at
       )
         catalogChanged = true;
       retryCount = 0;
@@ -141,9 +185,27 @@ export function createOrganizationView(api, scope) {
         schedule(result);
         return;
       }
-      if (catalogChanged) {
-        result = await api.list(fixed, offset, query, exceptions);
-        catalogChanged = false;
+      if (catalogChanged && Date.now() >= catalogAfter) {
+        // Publish the ledger result before any slower catalog request can fail.
+        paint(result, fixed);
+        lastData = result;
+        try {
+          result = await api.list(fixed, offset, query, exceptions);
+          catalogReady = true;
+          catalogChanged = false;
+          catalogRetry = 0;
+          catalogAfter = 0;
+        } catch (error) {
+          if ([401, 403, 404].includes(error.status)) throw error;
+          onReadError(error);
+          catalogAfter =
+            Date.now() +
+            Math.min(10000, 1500 * 2 ** Math.min(catalogRetry++, 3));
+          setText(
+            message,
+            uiText("进度已更新；目录读取暂不可用，稍后自动重试。"),
+          );
+        }
       }
       if (revision !== epoch || JSON.stringify(scope()) !== key) return;
       // A request started before the user opened a control must not replace it.
@@ -160,22 +222,31 @@ export function createOrganizationView(api, scope) {
           .filter((job) => previewInvalidated(job))
           .map((job) => job.id),
       ]);
-      if (!automatic || stamp !== lastResult)
-        retainView(body, () => render(result, fixed));
+      if (!automatic || stamp !== lastResult) paint(result, fixed);
       else
         setText(
           message,
-          phrase("{p0}：{p1} 项", {
-            p0: exceptions ? uiText("待分类与异常") : uiText("全部知识"),
-            p1: result.total,
-          }),
+          catalogReady
+            ? phrase("{p0}：{p1} 项", {
+                p0: exceptions ? uiText("待分类与异常") : uiText("全部知识"),
+                p1: result.total,
+              })
+            : uiText("进度已更新；目录读取暂不可用，稍后自动重试。"),
         );
+      if (catalogReady && !catalogChanged) onReadSuccess();
       lastResult = stamp;
       lastData = result;
+      setText(
+        freshness,
+        catalogChanged
+          ? uiText("进度已更新；目录读取暂不可用，稍后自动重试。")
+          : phrase("更新于 {p0}", { p0: new Date().toLocaleTimeString() }),
+      );
       deferredPaint = false;
       schedule(result);
     } catch (error) {
       if (revision !== epoch) return;
+      onReadError(error);
       if ([401, 403, 404].includes(error.status)) {
         parking.append(analysisHost, mocHost);
         body.replaceChildren();
@@ -186,7 +257,7 @@ export function createOrganizationView(api, scope) {
         message,
         phrase("归类状态读取失败：{p0}", { p0: uiText(error.message) }),
       );
-      if (![401, 403, 404].includes(error.status) && (automatic || lastData)) {
+      if (![401, 403, 404].includes(error.status)) {
         clearTimeout(poll);
         poll = setTimeout(
           () => refresh({ automatic: true }),
@@ -457,7 +528,7 @@ export function createOrganizationView(api, scope) {
               result,
               fixed,
               api,
-              () => refresh(),
+              (options) => refresh(options),
               maintenanceDraft,
             ),
             past,
@@ -480,6 +551,7 @@ export function createOrganizationView(api, scope) {
   function schedule(result) {
     clearTimeout(poll);
     const working =
+      catalogChanged ||
       result.package_scan?.state === "queued" ||
       result.jobs.some(
         (j) =>
@@ -501,6 +573,10 @@ export function createOrganizationView(api, scope) {
       );
   }
   function clear() {
+    readGeneration++;
+    catalogReady = false;
+    catalogRetry = 0;
+    catalogAfter = 0;
     lastData = null;
     epoch++;
     clearTimeout(poll);
@@ -510,6 +586,7 @@ export function createOrganizationView(api, scope) {
     parking.append(analysisHost, mocHost);
     body.replaceChildren();
     setText(message, uiText(""));
+    setText(freshness, "");
     dirty = false;
     fixedKey = "";
     Object.assign(maintenanceDraft, {
@@ -531,6 +608,7 @@ export function createOrganizationView(api, scope) {
     host,
     refresh,
     clear,
+    dirty: () => dirty || memberPending > 0,
     attachAnalysis: (nodes) => analysisHost.append(...nodes),
     attachMoc: (nodes) => mocHost.append(...nodes),
   };

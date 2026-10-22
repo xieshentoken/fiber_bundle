@@ -4,12 +4,16 @@ import { setText, uiText } from "./i18n/index.js";
 import { availableOptions, nextOption, findOption } from "./select_state.js";
 
 let sequence = 0;
-export function enhanceSelects(root = document.body) {
+export function enhanceSelects(
+  root = document.body,
+  { dialogs = false, popupClass = "" } = {},
+) {
   const controls = new Map();
   let opened = null;
   function attach(select) {
     // Native dialog owns its top layer; a body-level custom popup would be inert.
-    if (select.closest("dialog")) return;
+    const dialog = select.closest("dialog");
+    if (dialog && !dialogs) return;
     if (controls.has(select) || select.multiple || select.size > 1) return;
     const wrapper = document.createElement("span");
     wrapper.className = "select-field";
@@ -27,7 +31,9 @@ export function enhanceSelects(root = document.body) {
     button.append(text, caret);
     const list = document.createElement("div");
     list.id = `select-options-${++sequence}`;
-    list.className = "select-options";
+    list.className = "select-options" + (popupClass ? " " + popupClass : "");
+    const popover = dialogs && typeof list.showPopover === "function";
+    if (popover) list.setAttribute("popover", "manual");
     list.setAttribute("role", "listbox");
     list.hidden = true;
     button.setAttribute("aria-controls", list.id);
@@ -40,7 +46,7 @@ export function enhanceSelects(root = document.body) {
     const originalAria = select.getAttribute("aria-hidden");
     select.before(wrapper);
     wrapper.append(select, button, error);
-    document.body.append(list);
+    (dialog || document.body).append(list);
     select.classList.add("select-native");
     select.tabIndex = -1;
     select.setAttribute("aria-hidden", "true");
@@ -61,7 +67,7 @@ export function enhanceSelects(root = document.body) {
               .forEach((child) => child.remove());
             return copy.textContent.trim();
           })
-          .join(" ") || "选择选项"
+          .join(" ") || String(uiText("选择选项"))
       );
     }
     function position() {
@@ -104,6 +110,7 @@ export function enhanceSelects(root = document.body) {
       } else button.removeAttribute("aria-activedescendant");
     }
     function close(focus = true) {
+      if (popover && list.matches(":popover-open")) list.hidePopover();
       list.hidden = true;
       button.setAttribute("aria-expanded", "false");
       button.removeAttribute("aria-activedescendant");
@@ -177,6 +184,7 @@ export function enhanceSelects(root = document.body) {
       list.scrollTop = scrollTop;
     }
     function sync() {
+      wrapper.hidden = select.hidden;
       if (!error.hidden && select.validity.valid) error.hidden = true;
       const selected = select.options[select.selectedIndex];
       const value = selected?.textContent ?? String(uiText("请选择"));
@@ -214,6 +222,7 @@ export function enhanceSelects(root = document.body) {
       opened = control;
       renderOptions();
       list.hidden = false;
+      if (popover) list.showPopover();
       button.setAttribute("aria-expanded", "true");
       position();
       const eligible = availableOptions(select.options);

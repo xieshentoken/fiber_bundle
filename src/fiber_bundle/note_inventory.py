@@ -15,6 +15,7 @@ from . import (
     vaults,
 )
 from .config import Config, IntegrityError
+from .storage_read_scope import audited
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class Inventory:
     locations: dict[str, str]
 
 
+@audited
 def read(
     config: Config,
     db: sqlite3.Connection,

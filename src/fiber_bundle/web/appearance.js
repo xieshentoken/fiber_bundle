@@ -45,7 +45,7 @@ export function createAppearance({
       current = ++revision;
     const root = document.documentElement;
     root.dataset.theme = clean.theme;
-    syncDesktop(clean);
+    syncDesktop({ ...clean, presentationMode: root.dataset.mode });
     root.dataset.density = clean.density;
     root.dataset.motion = clean.motion;
     root.style.setProperty("--ui-base-size", `${clean.latinSize}px`);

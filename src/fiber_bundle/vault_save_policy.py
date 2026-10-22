@@ -25,9 +25,16 @@ def pending(db: sqlite3.Connection, identity: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-def _scope_binding(expected: Any, current: dict[str, object], root: Path) -> bool:
+def _scope_binding(
+    expected: Any,
+    current: dict[str, object],
+    root: Path,
+    *,
+    catalog_exclude: tuple[str, ...] = (),
+) -> bool:
     """Accept only the built-in protection added after a legacy policy was saved.
 
+    A relocated root may carry that same protection explicitly in its catalog.
     No settings are rewritten and no permission is widened. User policy changes,
     grant changes and directory identity changes still invalidate the binding.
     """
@@ -42,7 +49,15 @@ def _scope_binding(expected: Any, current: dict[str, object], root: Path) -> boo
         return False
     if not all(isinstance(p, str) for v in (before, after) for p in v):
         return False
-    implicit = {"01-Projects/PROTECTED_PROJECT"} if root.name == "L2" else set()
+    protection = "01-Projects/GF_supply_chain"
+    if (
+        protection in catalog_exclude
+        and protection in before
+        and protection not in after
+        and set(before) == set(after) | {protection}
+    ):
+        return True
+    implicit = {"01-Projects/GF_supply_chain"} if root.name == "L2" else set()
     if root in vault_scope.PROTECTED.parents:
         implicit.add(vault_scope.PROTECTED.relative_to(root).as_posix())
     return bool(implicit) and set(after) == set(before) | implicit
@@ -65,6 +80,7 @@ def get(config: Config, db: sqlite3.Connection, identity: str) -> dict[str, Any]
                     fingerprint,
                     vault_scope.effective(root / parent, {"include": [""], "exclude": []}).wire(),
                     root / parent,
+                    catalog_exclude=scope.exclude if parent == "" else (),
                 )
                 for parent, fingerprint in value["parent_scopes"].items()
             )

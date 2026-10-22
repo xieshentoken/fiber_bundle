@@ -10,6 +10,7 @@ from ..config import Config, IntegrityError, InvalidInput
 from ..inputs import canonical
 from ..objects import digest
 from ..publication_file_io import read
+from ..storage_read_scope import audited
 from . import store
 
 CATALOG = "references/runtime/catalog.json"
@@ -30,7 +31,7 @@ def context(
         from dataclasses import replace
 
         allowed = replace(
-            allowed, exclude=tuple(sorted(set(allowed.exclude) | {"01-Projects/PROTECTED_PROJECT"}))
+            allowed, exclude=tuple(sorted(set(allowed.exclude) | {"01-Projects/GF_supply_chain"}))
         )
     return root, allowed
 
@@ -41,6 +42,7 @@ def scoped_read(root: Any, allowed: Any, path: Any) -> Any:
     return read(root, path)[0]
 
 
+@audited
 def inspect(config: Config, db: sqlite3.Connection, client: str, vault: str, relative: str) -> Any:
     root, allowed = context(config, db, client, vault, write=True)
     raw = scoped_read(root, allowed, relative + "/manifest.json")

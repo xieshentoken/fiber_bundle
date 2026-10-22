@@ -9,7 +9,7 @@ export function trusted(event, window, backend) {
     !window ||
     event.sender !== window.webContents ||
     event.senderFrame !== window.webContents.mainFrame ||
-    event.senderFrame.url !== backend
+    event.senderFrame.url.split("#")[0] !== backend.split("#")[0]
   )
     throw new Error("Untrusted native request");
 }
@@ -26,9 +26,16 @@ async function request(window, url, options = {}) {
   });
   if (!response.ok) {
     let code = "request_denied";
-    try { const body = await response.json();
-      if (typeof body?.error === "string" && /^[a-z][a-z0-9_]{0,95}$/.test(body.error)) code = body.error;
-    } catch { /* Unknown remote content is never forwarded. */ }
+    try {
+      const body = await response.json();
+      if (
+        typeof body?.error === "string" &&
+        /^[a-z][a-z0-9_]{0,95}$/.test(body.error)
+      )
+        code = body.error;
+    } catch {
+      /* Unknown remote content is never forwarded. */
+    }
     const error = new Error("本机操作未完成，请刷新后核对状态。");
     error.nativeStatus = response.status;
     error.nativeCode = code;
@@ -118,21 +125,25 @@ export async function trashIntent(window, backend, value) {
     value.csrf.length > 256
   )
     throw new Error("Invalid reviewed Trash intent");
-  try { return await request(
-    window,
-    backend + `admin/vault-catalog/trash/${value.id}/confirm`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-Token": value.csrf,
-        Origin: new URL(backend).origin,
+  try {
+    return await request(
+      window,
+      backend + `admin/vault-catalog/trash/${value.id}/confirm`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": value.csrf,
+          Origin: new URL(backend).origin,
+        },
+        body: JSON.stringify({ confirmed_root: value.confirmedRoot }),
       },
-      body: JSON.stringify({ confirmed_root: value.confirmedRoot }),
-    },
-  ); } catch (error) {
+    );
+  } catch (error) {
     if (Number.isInteger(error.nativeStatus))
-      return { native_error: { status: error.nativeStatus, code: error.nativeCode } };
+      return {
+        native_error: { status: error.nativeStatus, code: error.nativeCode },
+      };
     throw error;
   }
 }

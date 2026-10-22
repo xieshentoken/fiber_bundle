@@ -176,7 +176,7 @@ def test_cleaned_media_tombstone_is_preserved(config, store, request_data):
     assert result["assets"] == {"retained": 2, "cleaned_after_publication": 1}
 
 
-@pytest.mark.parametrize("name", list(backup_preflight.DATABASES)[1:])
+@pytest.mark.parametrize("name", [n for n in backup_preflight.DATABASES if n != "metadata.sqlite3"])
 def test_sidecar_included_and_unsupported_version_refused(config, store, name):
     path = config.state_root / name
     db = sqlite3.connect(path)
@@ -400,3 +400,25 @@ def test_cli_report_cannot_write_into_scope(config, store, monkeypatch, capsys):
 def test_invalid_digest_refused(config, store, value):
     with pytest.raises(InvalidInput, match="backup_digest_invalid"):
         backup_preflight.recheck(config, value)
+
+
+def test_primary_schema_is_not_treated_as_a_version_one_sidecar(config, store):
+    with sqlite3.connect(config.state_root / "metadata.sqlite3") as db:
+        db.execute("PRAGMA user_version=1")
+    with pytest.raises(IntegrityError, match="backup_unsupported_schema"):
+        backup_preflight.inspect(config)
+
+
+def test_durable_organization_pause_is_in_backup_scope(config, store):
+    from uuid import uuid4
+
+    from fiber_bundle.organization import execution_control
+
+    job = {"id": str(uuid4()), "generation": 3}
+    execution_control.request(config, job)
+    result = backup_preflight.inspect(config)
+    assert result["state"] == "PASS"
+    assert any(
+        e["path"] == f"organization-execution/{job['id']}.pause.json" for e in result["entries"]
+    )
+    assert execution_control.requested(config, job)

@@ -3,6 +3,7 @@ const paths = {
   home: ["M3 11l9-8 9 8M5 10v11h14V10M10 21v-7h4v7"],
   imports: ["M4 4h16v16H4zM12 7v10M8 13l4 4 4-4"],
   worklist: ["M5 4h14v17H5zM8 9h8M8 13h8M8 17h5"],
+  suppliers: ["M3 7h18v13H3z", "M6 7V4h12v3M8 12h8"],
   vaults: ["M3 7h18v13H3z", "M6 7V4h12v3M8 12h8"],
   clients: ["M12 3l8 4v5c0 5-8 9-8 9s-8-4-8-9V7z", "M9 12l2 2 4-4"],
   pending: ["M5 4h14v17H5z", "M9 4V2h6v2M8 13l3 3 5-6"],

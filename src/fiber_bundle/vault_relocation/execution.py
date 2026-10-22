@@ -33,7 +33,7 @@ def start(config: Config, identity: str, sha: str) -> dict[str, Any]:
                 files.reject("preview_expired")
             plan.conflicts(db, p["vault"]["id"])
             plan.current(config, db, value, Path(p["source"]))
-            files.target(config, db, p["vault"], p["destination"])
+            files.target(config, db, p["vault"], p["destination"], icloud=bool(p.get("icloud")))
             if plan.busy(config, db, p["vault"]["id"]):
                 files.reject("busy")
             value["phase"] = "quiescing"
@@ -63,6 +63,7 @@ def _step(config: Config, identity: str) -> dict[str, Any]:
     if state not in ACTIVE:
         return view(config, identity)
     p = value["plan"]
+    p = value["plan"]
     path = plan.where(value)
     with database.locked(config), database.connect(config.state_root) as db:
         plan.current(config, db, value, path)
@@ -71,24 +72,45 @@ def _step(config: Config, identity: str) -> dict[str, Any]:
             store.save(db, identity, value, state)
             return store.view(db, identity)
     if state == "quiescing":
-        if files.inventory(path) != p["files"]:
+        if (
+            files.inventory(
+                path,
+                icloud=bool(p.get("icloud")),
+                excluded=tuple(p.get("effective_scope", {}).get("exclude", [])),
+            )
+            != p["files"]
+        ):
             files.reject("preview_changed")
         following = "checkpointing"
     elif state == "checkpointing":
         value["checkpoint"] = evidence.checkpoint(config, path, p, identity)
-        if files.inventory(path) != p["files"]:
+        if (
+            files.inventory(
+                path,
+                icloud=bool(p.get("icloud")),
+                excluded=tuple(p.get("effective_scope", {}).get("exclude", [])),
+            )
+            != p["files"]
+        ):
             files.reject("source_changed")
         following = "moving"
     elif state == "moving":
         if not value.get("checkpoint", {}).get("verified"):
             files.reject("checkpoint_invalid")
         evidence.verify_checkpoint(value["checkpoint"], p)
-        if files.inventory(path) != p["files"]:
+        if (
+            files.inventory(
+                path,
+                icloud=bool(p.get("icloud")),
+                excluded=tuple(p.get("effective_scope", {}).get("exclude", [])),
+            )
+            != p["files"]
+        ):
             files.reject("source_changed")
         if str(path) == p["source"]:
             with database.locked(config), database.connect(config.state_root) as db:
                 plan.current(config, db, value, path)
-                files.target(config, db, p["vault"], p["destination"])
+                files.target(config, db, p["vault"], p["destination"], icloud=bool(p.get("icloud")))
                 files.move(
                     path,
                     Path(p["destination"]),
@@ -108,8 +130,12 @@ def _step(config: Config, identity: str) -> dict[str, Any]:
             ).fetchone()[0]
             with database.transaction(db):
                 db.execute(
-                    "UPDATE vaults SET absolute_root=? WHERE id=?",
-                    (p["destination"], p["vault"]["id"]),
+                    "UPDATE vaults SET absolute_root=?,scope_json=? WHERE id=?",
+                    (
+                        p["destination"],
+                        p.get("destination_scope_json", p["vault"]["scope_json"]),
+                        p["vault"]["id"],
+                    ),
                 )
                 if previous_root != p["destination"]:
                     value["location_revision"] += 1
@@ -119,17 +145,39 @@ def _step(config: Config, identity: str) -> dict[str, Any]:
                 store.save(db, identity, value, "verifying")
         return view(config, identity)
     elif state == "verifying":
-        if str(path) != p["destination"] or files.inventory(path) != p["files"]:
+        if (
+            str(path) != p["destination"]
+            or files.inventory(
+                path,
+                icloud=bool(p.get("icloud")),
+                excluded=tuple(p.get("effective_scope", {}).get("exclude", [])),
+            )
+            != p["files"]
+        ):
             files.reject("source_changed")
         following = "complete"
     elif state == "restoring":
-        if files.inventory(path) != p["files"]:
+        if (
+            files.inventory(
+                path,
+                icloud=bool(p.get("icloud")),
+                excluded=tuple(p.get("effective_scope", {}).get("exclude", [])),
+            )
+            != p["files"]
+        ):
             files.reject("source_changed")
         if str(path) != p["source"]:
             files.move(
                 path, Path(p["source"]), p["target_parent"], p["source_parent"], p["root_key"]
             )
-        if files.inventory(Path(p["source"])) != p["files"]:
+        if (
+            files.inventory(
+                Path(p["source"]),
+                icloud=bool(p.get("icloud")),
+                excluded=tuple(p.get("effective_scope", {}).get("exclude", [])),
+            )
+            != p["files"]
+        ):
             files.reject("source_changed")
         value["current_path"] = p["source"]
         with database.locked(config), database.connect(config.state_root) as db:
@@ -139,7 +187,8 @@ def _step(config: Config, identity: str) -> dict[str, Any]:
             ).fetchone()[0]
             with database.transaction(db):
                 db.execute(
-                    "UPDATE vaults SET absolute_root=? WHERE id=?", (p["source"], p["vault"]["id"])
+                    "UPDATE vaults SET absolute_root=?,scope_json=? WHERE id=?",
+                    (p["source"], p["vault"]["scope_json"], p["vault"]["id"]),
                 )
                 if previous_root != p["source"]:
                     value["location_revision"] += 1
@@ -185,12 +234,20 @@ def recovery_preview(config: Config, identity: str) -> dict[str, Any]:
             files.reject("state_changed")
         decision: dict[str, Any] = {"resume": False, "restore": False, "reason": None}
         try:
+            p = value["plan"]
             path = plan.where(value)
             with database.locked(config), database.connect(config.state_root) as db:
                 plan.current(config, db, value, path)
                 if plan.busy(config, db, value["plan"]["vault"]["id"]):
                     files.reject("busy")
-            if files.inventory(path) != value["plan"]["files"]:
+            if (
+                files.inventory(
+                    path,
+                    icloud=bool(p.get("icloud")),
+                    excluded=tuple(p.get("effective_scope", {}).get("exclude", [])),
+                )
+                != value["plan"]["files"]
+            ):
                 files.reject("source_changed")
             p = value["plan"]
             decision.update(
@@ -229,8 +286,16 @@ def recover(config: Config, identity: str, action: str, sha: str) -> dict[str, A
             files.reject("recovery_unavailable")
         if decision.get("sha256") != sha or decision.get("expires_at", 0) < time.time():
             files.reject("preview_expired")
+        p = value["plan"]
         path = plan.where(value)
-        if files.inventory(path) != value["plan"]["files"]:
+        if (
+            files.inventory(
+                path,
+                icloud=bool(p.get("icloud")),
+                excluded=tuple(p.get("effective_scope", {}).get("exclude", [])),
+            )
+            != value["plan"]["files"]
+        ):
             files.reject("source_changed")
         with database.locked(config), database.connect(config.state_root) as db:
             plan.current(config, db, value, path)

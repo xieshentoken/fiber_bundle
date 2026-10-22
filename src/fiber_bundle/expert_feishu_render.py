@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from .channels.reply_text import caption
 from .expert_presentation import image_bytes, reason, table_rows
-from .objects import digest
+from .feishu_delivery import response_evidence
 
 
 def send(
@@ -35,8 +35,7 @@ def send(
                     [
                         {
                             "tag": "text",
-                            "text": "表格内容：\n"
-                            + "\n".join(" | ".join(row) for row in rows),
+                            "text": "表格内容：\n" + "\n".join(" | ".join(row) for row in rows),
                         }
                     ]
                 )
@@ -99,13 +98,6 @@ def send(
     recheck()
     try:
         response = client.im.v1.message.create(request)
-        if response is None:
-            return {"category": "missing_response"}
-        if not response.success():
-            return {"category": "negative_ack"}
-        identity = getattr(getattr(response, "data", None), "message_id", None)
-        if not isinstance(identity, str) or not 0 < len(identity) <= 400:
-            return {"category": "missing_message_id"}
-        return {"category": "confirmed", "message_id_sha256": digest(identity.encode())}
+        return response_evidence(response)
     except Exception:
         return {"category": "transport_exception"}

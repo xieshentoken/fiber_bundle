@@ -88,3 +88,14 @@ test("offline language uses only the read-only locale mirror", async () => {
   assert.match(page.status.textContent, /15 seconds/);
   page.pagehide();
 });
+test("offline preserves the validated Atlas dark presentation", async () => {
+  const page = offline(async () => ({
+    theme: "atlas",
+    defaultTheme: "atlas",
+    presentationMode: "dark",
+  }));
+  await setImmediate();
+  assert.equal(page.root.dataset.theme, "atlas");
+  assert.equal(page.root.dataset.mode, "dark");
+  page.pagehide();
+});

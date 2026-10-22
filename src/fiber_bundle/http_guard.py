@@ -1,15 +1,16 @@
 """Loopback-only HTTP boundary, bounded bodies, safe errors and serialized delivery."""
 
 import re
-from contextlib import nullcontext
+import time
+from collections.abc import Awaitable
 from dataclasses import dataclass
 
 import anyio
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from fiber_bundle import database
-from fiber_bundle.config import Config, InvalidInput, StorageError
+from fiber_bundle.config import Config, InvalidInput
+from fiber_bundle.http_observation import Observations
 
 
 @dataclass(frozen=True)
@@ -47,9 +48,20 @@ class Settings:
 
 
 class Guard:
-    def __init__(self, app: ASGIApp, config: Config, settings: Settings):
+    def __init__(
+        self,
+        app: ASGIApp,
+        config: Config,
+        settings: Settings,
+        observations: Observations | None = None,
+        lifecycle: object = None,
+    ):
         self.app, self.config, self.settings = app, config, settings
+        self.lifecycle = lifecycle
         self.serial = anyio.Lock()
+        self.display_limiter = anyio.CapacityLimiter(2)
+        self.control_limiter = anyio.CapacityLimiter(4)
+        self.observations = observations or Observations()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -111,9 +123,24 @@ class Guard:
             replayed = True
             return {"type": "http.request", "body": bytes(body), "more_body": False}
 
+        started = time.monotonic()
+        timing: dict[str, object] = {}
+        response_status = 0
+
         async def safe_send(message: Message) -> None:
+            nonlocal response_status
             if message["type"] == "http.response.start":
+                response_status = message["status"]
+                elapsed = (time.monotonic() - started) * 1000
+                queue = timing.get("queue_ms", 0)
+                storage = timing.get("storage_ms", 0)
                 message["headers"] = list(message.get("headers", [])) + [
+                    (
+                        b"server-timing",
+                        (
+                            f"queue;dur={queue}, storage;dur={storage}, total;dur={elapsed:.1f}"
+                        ).encode(),
+                    ),
                     (b"cache-control", b"no-store"),
                     (b"x-content-type-options", b"nosniff"),
                     (b"referrer-policy", b"no-referrer"),
@@ -127,6 +154,18 @@ class Guard:
             with anyio.fail_after(10):
                 await send(message)
 
+        async def observe(operation: Awaitable[None]) -> None:
+            try:
+                await operation
+            finally:
+                self.observations.record(scope, response_status, time.monotonic() - started, timing)
+
+        # Public code/static health data has no storage/authentication dependency.
+        if scope["method"] in {"GET", "HEAD"} and (
+            path in {"/health", "/"} or path.startswith("/static/")
+        ):
+            await observe(self.app(scope, replay, safe_send))
+            return
         # This endpoint checks authorization under its own short leases per chunk.
         # Holding the outer lease across a slow stream would block revocation/imports.
         if (
@@ -163,31 +202,55 @@ class Guard:
                 )
             )
         ):
-            await self.app(scope, replay, safe_send)
+            await observe(self.app(scope, replay, safe_send))
             return
-        if path == "/admin/organization/progress" and scope["method"] == "GET":
-            from .organization.progress_http import respond
+        if (
+            scope["method"] == "GET"
+            and path
+            in {
+                "/admin/organization/progress",
+                "/admin/backend",
+                "/admin/vaults",
+                "/admin/clients",
+                "/admin/session",
+            }
+        ) or (
+            scope["method"] == "POST"
+            and re.fullmatch(r"/admin/organization/maintenance/[a-fA-F0-9-]{36}/pause", path)
+        ):
+            from .admin_control_http import respond as control
 
-            await respond(self.app, self.serial, self.config, scope, replay, safe_send)
+            await observe(
+                control(
+                    self.config,
+                    self.control_limiter,
+                    scope,
+                    bytes(body),
+                    replay,
+                    safe_send,
+                    timing,
+                    self.lifecycle,
+                )
+            )
             return
-        # Acquire off the event loop. The same M1 file lock covers authentication,
-        # database/object operations AND bounded ASGI delivery, including revocations.
-        async with self.serial:
-            lock = database.locked(self.config)
-            try:
-                from .backup_automation.online import active as backup_active
+        from .display_http import PATHS, respond
 
-                with database.lock_wait(0.3) if backup_active(self.config) else nullcontext():
-                    await anyio.to_thread.run_sync(lock.__enter__)
-            except database.LockTimeout:
-                await JSONResponse(
-                    {"error": "backup_snapshot_busy"}, 503, headers={"retry-after": "1"}
-                )(scope, replay, safe_send)
-                return
-            except (StorageError, OSError):
-                await JSONResponse({"error": "storage_unavailable"}, 503)(scope, replay, safe_send)
-                return
-            try:
-                await self.app(scope, replay, safe_send)
-            finally:
-                lock.__exit__(None, None, None)
+        if scope["method"] == "GET" and path in PATHS:
+            await observe(
+                respond(
+                    self.app,
+                    self.serial,
+                    self.display_limiter,
+                    self.config,
+                    scope,
+                    replay,
+                    safe_send,
+                    timing,
+                )
+            )
+            return
+        from .http_admission import dispatch
+
+        await observe(
+            dispatch(self.app, self.serial, self.config, scope, replay, safe_send, timing)
+        )

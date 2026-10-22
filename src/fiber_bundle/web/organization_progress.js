@@ -83,7 +83,23 @@ export function orderedMaintenance(jobs) {
         (b.created_at || 0) - (a.created_at || 0),
     );
 }
+export function mergeProgress(previous, incoming) {
+  return {
+    ...previous,
+    ...incoming,
+    jobs: incoming.jobs.map((job) => {
+      const prior = previous.jobs.find((item) => item.id === job.id);
+      return job.state === "preview" &&
+        prior?.state === "preview" &&
+        job.plan_sha256 === prior.plan_sha256 &&
+        !job.preview_validity
+        ? { ...job, preview_validity: prior.preview_validity }
+        : job;
+    }),
+  };
+}
 export function maintenancePhase(job) {
+  if (job.pause_requested) return "正在暂停 · 等待当前安全步骤完成";
   if (job.state === "cancelled")
     return job.rollback_completed
       ? "已取消 · 本次变更已撤销"

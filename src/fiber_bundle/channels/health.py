@@ -67,6 +67,11 @@ def present(config: Config, main: sqlite3.Connection, channel: dict[str, Any]) -
             permissions[action] = True
         except auth.Denied:
             permissions[action] = False
+    from . import query_scope
+
+    scope_info = query_scope.describe(config, main, channel)
+    if "query_vaults" in value:
+        permissions["query"] = any(v["available"] for v in scope_info["vaults"])
     used: dict[str, int] = {"query": 0, "model": 0, "outbound": 0}
     last_received = None
     unresolved = 0
@@ -109,11 +114,20 @@ def present(config: Config, main: sqlite3.Connection, channel: dict[str, Any]) -
     query_enabled = value.get("query_enabled", False) if old else True
     selected_model = query_enabled if old else value["answer_mode"] != "evidence"
     policy_ready = True
+    policy_reason = "policy_changed"
     if not old and selected_model:
         try:
-            query_policy_store.checked(config, value["configuration_sha256"])
-        except (OSError, ValueError, InvalidInput):
+            if value["answer_mode"] == "model":
+                # Match model_answer: this mode resolves the app default per query.
+                from ..model_configuration import policy as model_policy
+
+                model_policy.resolve(config)
+            else:
+                query_policy_store.checked(config, value["configuration_sha256"])
+        except (OSError, ValueError, InvalidInput) as error:
             policy_ready = False
+            if str(error) in {"model_unconfigured", "model_disabled"}:
+                policy_reason = str(error)
     query_ready = (
         ready
         and permissions["query"]
@@ -132,7 +146,7 @@ def present(config: Config, main: sqlite3.Connection, channel: dict[str, Any]) -
         if unresolved
         else "permission_revoked"
         if not permissions["query"]
-        else "policy_changed"
+        else policy_reason
         if not policy_ready
         else "channel_paused"
         if state != "running"
@@ -172,6 +186,7 @@ def present(config: Config, main: sqlite3.Connection, channel: dict[str, Any]) -
         "app_id": value.get("app_id"),
         "owner_id": channel["owner"] if bound else None,
         "vault_id": value["vault_id"],
+        "query_scope": scope_info,
         "binding_state": binding_state,
         "runtime": runtime,
         "transport": transport(runtime),
@@ -307,6 +322,11 @@ def present(config: Config, main: sqlite3.Connection, channel: dict[str, Any]) -
             "used": intake["used"],
             "revision": intake["revision"],
         }
+        from .intake_receipt_health import summary as receipt_summary
+
+        result["receipts"] = receipt_summary(
+            config, channel["id"], intake["revision"], intake["settings"]["receipt"]
+        )
     return result
 
 

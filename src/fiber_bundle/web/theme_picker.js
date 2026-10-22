@@ -2,7 +2,14 @@ import { phrase, setText, uiText } from "./i18n/index.js";
 // One accessible modal shared by the logo and settings; no business API calls.
 import { THEMES, themeInfo } from "./themes.js";
 
-export function createThemePicker(appearance, { onSelected = () => {} } = {}) {
+export function createThemePicker(
+  appearance,
+  {
+    onSelected = () => {},
+    beforeSelected = () => true,
+    onRendererSelected = () => {},
+  } = {},
+) {
   const dialog = document.createElement("dialog");
   dialog.id = "theme-picker";
   dialog.className = "theme-picker";
@@ -56,10 +63,16 @@ export function createThemePicker(appearance, { onSelected = () => {} } = {}) {
   function select(id) {
     try {
       const changed = appearance.current.theme !== id;
+      if (changed && !beforeSelected(themeInfo(id))) return;
+      const previous = appearance.current.theme;
       appearance.selectTheme(id);
       error.hidden = true;
       setText(status, uiText("当前外观已切换；默认主题保持不变。"));
-      if (changed) onSelected(themeInfo(id));
+      if (changed) {
+        onSelected(themeInfo(id));
+        if ((previous === "atlas") !== (id === "atlas"))
+          onRendererSelected(themeInfo(id));
+      }
     } catch {
       setText(error, uiText("无法切换主题，请重试。未保存内容已保留。"));
       error.hidden = false;

@@ -164,6 +164,7 @@ def save(
         if vault is None:
             raise auth.Denied(404)
         vaults.checked_vault(config, vault)
+        from . import query_scope
         from .validation import ChannelValidationError
 
         client = main.execute("SELECT active FROM clients WHERE id=?", (cid,)).fetchone()
@@ -179,14 +180,36 @@ def save(
                 (identity or "", cid, vid),
             )
         ]
-        auth.set_grant(
-            main,
-            cid,
-            vid,
-            query=True,
-            original=value["original"] or any(v.get("original") for v in other),
-            add=value["add"] or any(v.get("add") for v in other),
-        )
+        for item in query_scope.entries(value):
+            selected = main.execute(
+                "SELECT * FROM vaults WHERE id=?", (item["vault_id"],)
+            ).fetchone()
+            if selected is None:
+                raise auth.Denied(404)
+            vaults.checked_vault(config, selected)
+        if "query_vaults" not in value:
+            auth.set_grant(
+                main,
+                cid,
+                vid,
+                query=True,
+                original=value["original"] or any(v.get("original") for v in other),
+                add=value["add"] or any(v.get("add") for v in other),
+            )
+        else:
+            for item in query_scope.entries(value):
+                prior_grant = main.execute(
+                    "SELECT * FROM client_vault_grants WHERE client_id=? AND vault_id=?",
+                    (cid, item["vault_id"]),
+                ).fetchone()
+                auth.set_grant(
+                    main,
+                    cid,
+                    item["vault_id"],
+                    query=True,
+                    original=bool(prior_grant and prior_grant["can_original"]),
+                    add=bool(prior_grant and prior_grant["can_add"]),
+                )
         identity = identity or str(uuid4())
         folder = home(config, identity)
         make_directory(folder)
@@ -210,18 +233,31 @@ def set_state(db: sqlite3.Connection, identity: str, state: str) -> None:
 def invalidate_vault(config: Config, vid: str) -> None:
     if not contained(config.state_root, "message-channels.sqlite3").exists():
         return
+    from . import query_scope
+
     with opened(config) as db:
-        db.execute(
-            "UPDATE channels SET state='paused',revision=revision+1 WHERE "
-            "json_extract(value,'$.vault_id')=? AND state!='removed'",
-            (vid,),
-        )
-        db.execute(
-            "UPDATE events SET state='cancelled' WHERE channel_id IN "
-            "(SELECT id FROM channels WHERE json_extract(value,'$.vault_id')=?) "
-            "AND state IN ('captured','processing','gui_processing','ready')",
-            (vid,),
-        )
+        identities = [
+            r["id"]
+            for r in db.execute("SELECT id,value FROM channels WHERE state!='removed'")
+            if vid in query_scope.referenced(json.loads(r["value"]))
+        ]
+        for identity in identities:
+            channel = get(db, identity)
+            if "query_vaults" not in channel["value"]:
+                db.execute(
+                    "UPDATE channels SET state='paused',revision=revision+1 WHERE id=?", (identity,)
+                )
+            for event in db.execute(
+                "SELECT event_id,value FROM events WHERE channel_id=? "
+                "AND state IN ('captured','processing','gui_processing','ready')",
+                (identity,),
+            ).fetchall():
+                scope = json.loads(event["value"]).get(query_scope.KEY)
+                if scope is None or any(v["vault_id"] == vid for v in scope["vaults"]):
+                    db.execute(
+                        "UPDATE events SET state='cancelled' WHERE channel_id=? AND event_id=?",
+                        (identity, event["event_id"]),
+                    )
 
 
 def capture(
@@ -231,6 +267,9 @@ def capture(
     owner: str,
     question: str,
     context: str = "",
+    *,
+    scope: dict[str, Any] | None = None,
+    response: dict[str, Any] | None = None,
 ) -> bool:
     if channel["state"] != "running" or channel["owner"] != owner:
         return False
@@ -240,6 +279,15 @@ def capture(
     ).fetchone()[0]
     if channel["value"].get("policy_version", 2) != 2 and count >= channel["value"]["query_limit"]:
         return False
+    from . import query_scope
+
+    payload = {
+        "question": question,
+        "context": context,
+        query_scope.KEY: scope or query_scope.snapshot(channel),
+    }
+    if response is not None:
+        payload["result"] = response
     return bool(
         db.execute(
             "INSERT OR IGNORE INTO events VALUES(?,?,?,?,?,?)",
@@ -247,8 +295,8 @@ def capture(
                 channel["id"],
                 event_id,
                 channel["revision"],
-                "captured",
-                canonical({"question": question, "context": context}),
+                "ready" if response is not None else "captured",
+                canonical(payload),
                 time.time(),
             ),
         ).rowcount

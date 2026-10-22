@@ -13,13 +13,15 @@ from fiber_bundle.channels import feishu, store
 
 
 @pytest.fixture
-def receiver(config, model_channel, monkeypatch):
+def receiver(config, model_channel, monkeypatch, request):
     value, _ = model_channel
     with store.readonly(config) as side:
         current = store.get(side, value["id"])
     # Enable the archival branch at the adapter boundary. Its capture spy below
     # records routing only; this query fixture never writes materials to a Vault.
     current["value"]["add"] = True
+    if getattr(request, "param", None):
+        current["value"]["purpose"] = request.param
     settings = SimpleNamespace(app_id="synthetic-app", owner_id="ou_synthetic", binding=object())
 
     class Base:
@@ -116,3 +118,15 @@ def test_new_requests_keep_owner_private_chat_boundary(config, receiver, owner, 
             ).fetchone()[0]
             == 0
         )
+
+
+@pytest.mark.parametrize("receiver", ["intake"], indirect=True)
+def test_intake_only_keeps_question_shaped_notes_on_saving_route(config, receiver):
+    value, adapter, intake = receiver
+    payload = message("列出常见材料的热导率")
+    adapter._on_message_event(payload)
+    assert intake == [payload]
+    with store.readonly(config) as side:
+        assert side.execute(
+            "SELECT count(*) FROM events WHERE channel_id=?", (value["id"],)
+        ).fetchone()[0] == 0

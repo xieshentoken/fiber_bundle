@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  mergeProgress,
   itemCategory,
   maintenanceSummary,
   orderedMaintenance,
@@ -161,4 +162,33 @@ test("dependency-invalidated previews stay in history while old unchanged previe
     false,
   );
   assert.deepEqual(jobs, before);
+});
+
+test("ledger progress preserves an invalidated preview only for the identical plan", () => {
+  const old = {
+    id: "old",
+    state: "preview",
+    plan_sha256: "a",
+    preview_validity: { state: "invalidated" },
+  };
+  const live = { id: "live", state: "running", completed: 2 };
+  const result = mergeProgress(
+    { jobs: [old, live] },
+    {
+      jobs: [
+        { ...old, preview_validity: undefined },
+        { ...live, completed: 3, pause_requested: true },
+      ],
+    },
+  );
+  assert(previewInvalidated(result.jobs[0]));
+  assert.equal(result.jobs[1].completed, 3);
+  assert.match(maintenancePhase(result.jobs[1]), /正在暂停/);
+  assert.equal(
+    mergeProgress(
+      { jobs: [old] },
+      { jobs: [{ id: "old", state: "preview", plan_sha256: "b" }] },
+    ).jobs[0].preview_validity,
+    undefined,
+  );
 });

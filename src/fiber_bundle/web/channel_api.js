@@ -27,6 +27,17 @@ function overview(value) {
             typeof item.capabilities[key]?.available === "boolean" &&
             typeof item.capabilities[key].enabled === "boolean",
         ) &&
+        (item.receipts === undefined ||
+          (typeof item.receipts?.enabled === "boolean" &&
+            [
+              "pending_batches",
+              "needs_review_batches",
+              "sending_batches",
+            ].every(
+              (key) =>
+                Number.isSafeInteger(item.receipts[key]) &&
+                item.receipts[key] >= 0,
+            ))) &&
         Number.isFinite(item.observed_at) &&
         (item.origin === "legacy" ||
           (typeof item.configuration?.id === "string" &&

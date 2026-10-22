@@ -56,6 +56,22 @@ export function allowedDownload(value, backend) {
     return url.search === "";
   if (new RegExp(`^/admin/documents/${uuid}/source$`).test(url.pathname))
     return url.search === "";
+  if (
+    /^\/admin\/suppliers\/original\/source-[a-f0-9]{24}$/.test(url.pathname)
+  ) {
+    const entries = [...url.searchParams];
+    return (
+      [2, 3].includes(entries.length) &&
+      new Set(entries.map(([key]) => key)).size === entries.length &&
+      url.searchParams.has("client_id") &&
+      url.searchParams.has("vault_id") &&
+      entries.every(
+        ([key, value]) =>
+          ["client_id", "vault_id", "asset_id"].includes(key) &&
+          new RegExp(`^${uuid}$`).test(value),
+      )
+    );
+  }
   const intake = `/admin/channels/${uuid}/intake/batches/${uuid}`;
   if (new RegExp(`^${intake}/originals/${uuid}$`).test(url.pathname))
     return url.search === "";

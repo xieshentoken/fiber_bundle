@@ -63,8 +63,15 @@ function fixture(initial = {}) {
 }
 
 test("all themes and explicit theme fonts normalize; invalid theme preserves valid other prefs", () => {
-  assert.deepEqual(THEME_IDS, ["oracle", "tesla", "cursor", "clay", "dark"]);
-  assert.equal(THEMES.length, 5);
+  assert.deepEqual(THEME_IDS, [
+    "oracle",
+    "tesla",
+    "cursor",
+    "clay",
+    "dark",
+    "atlas",
+  ]);
+  assert.equal(THEMES.length, 6);
   for (const theme of THEME_IDS)
     assert.equal(
       normalizeAppearance({ theme, latinFont: "theme", cjkFont: "theme" })

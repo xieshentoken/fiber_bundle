@@ -43,6 +43,9 @@ async def session(connection_file: Path) -> AsyncIterator[Any]:
                     "fiber_index_status",
                 }
                 optional = {
+                    "fiber_supplier_query",
+                    "fiber_compare_quotes",
+                    "fiber_supplier_evidence",
                     "fiber_knowledge_catalog",
                     "fiber_query_expert",
                     "fiber_read_evidence",

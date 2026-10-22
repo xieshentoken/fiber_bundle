@@ -3,7 +3,7 @@
 from typing import Any, Literal
 
 from fastapi import APIRouter, Request
-from pydantic import Field, field_validator
+from pydantic import Field, StrictBool, field_validator
 
 from ..config import Config
 from ..payloads import Identifier, Payload
@@ -14,6 +14,7 @@ from . import execution, plan, store
 class Preview(Payload):
     vault_id: Identifier
     destination: str = Field(min_length=1, max_length=4096)
+    icloud: StrictBool = False
 
 
 class Confirmation(Payload):
@@ -42,7 +43,7 @@ def router(config: Config) -> APIRouter:
     @routes.post("/preview")
     def preview(data: Preview, request: Request) -> dict[str, Any]:
         with access(config, request, admin=True):
-            return plan.preview(config, data.vault_id, data.destination)
+            return plan.preview(config, data.vault_id, data.destination, icloud=data.icloud)
 
     @routes.get("")
     def listing(request: Request, vault_id: str | None = None) -> list[dict[str, Any]]:

@@ -17,6 +17,8 @@ def server(connection_file: Path) -> Any:
     app = FastMCP("Fiber bundle", log_level="ERROR")
     client = Client(connection_file)
     annotations = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False)
+    from ..suppliers.mcp import install as supplier_tools
+    supplier_tools(app, client, annotations)
 
     @app.tool(annotations=annotations)
     def fiber_list_vaults() -> list[dict[str, Any]]:

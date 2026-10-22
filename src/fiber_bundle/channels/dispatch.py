@@ -3,13 +3,14 @@
 import asyncio
 import json
 import sqlite3
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from .. import auth, cloud_answer_tasks, database, local_query_tasks, query_jobs
 from ..config import Config, InvalidInput
 from ..inputs import canonical
-from . import query, store
+from . import query, query_scope, store
 from .services import policy as service_policy
 
 
@@ -50,15 +51,47 @@ def capture(
         try:
             from ..vault_relocation.guard import receiving
 
-            vault_id = store.get(db, identity)["value"]["vault_id"]
+            initial = store.get(db, identity)
+            vault_id = initial["value"]["vault_id"]
             with receiving(vault_id):
                 channel = current(config, main, db, identity, revision)
             if "query" not in service_policy.roles(channel):
                 return False
-            question = query.question(body, channel["value"].get("natural_questions", False))
-            if question is None:
+            question, alias, diagnostic = query_scope.parse(
+                body,
+                channel["value"].get("natural_questions", False),
+                standalone=not channel["value"].get("add"),
+            )
+            if question is None and diagnostic is None:
                 return False
-            return store.capture(db, channel, event_id, owner, question, context)
+            scope = query_scope.snapshot(channel)
+            if diagnostic is None:
+                try:
+                    scope = query_scope.snapshot(channel, alias)
+                    # Freeze metadata only: raw admission must not inspect Vault files.
+                    for item in scope["vaults"]:
+                        with receiving(item["vault_id"]):
+                            auth.grant(
+                                main, channel["value"]["client_id"], item["vault_id"], "query"
+                            )
+                except InvalidInput as error:
+                    diagnostic = (
+                        str(error)
+                        if str(error) == "channel_query_alias_unknown"
+                        else "channel_query_scope_unavailable"
+                    )
+                except auth.Denied:
+                    diagnostic = "channel_query_scope_unavailable"
+            return store.capture(
+                db,
+                channel,
+                event_id,
+                owner,
+                question or body,
+                context,
+                scope=scope,
+                response=query_scope.hint(channel, diagnostic) if diagnostic else None,
+            )
         finally:
             main.close()
 
@@ -82,7 +115,9 @@ def advance(config: Config, identity: str, revision: int, *, independent: bool =
             from ..vault_relocation.guard import operation
 
             selected = store.get(db, identity)
-            if operation(main, selected["value"]["vault_id"]):
+            if "query_vaults" not in selected["value"] and operation(
+                main, selected["value"]["vault_id"]
+            ):
                 return
             channel = current(config, main, db, identity, revision, processing=independent)
             event = db.execute(
@@ -97,6 +132,11 @@ def advance(config: Config, identity: str, revision: int, *, independent: bool =
                     (identity, event["event_id"]),
                 )
                 value = json.loads(event["value"])
+                channel = query_scope.bind(channel, value.get(query_scope.KEY))
+                if any(
+                    operation(main, v["vault_id"]) for v in query_scope.selected(channel)["vaults"]
+                ):
+                    return
                 settings = channel["value"]
                 calls = 2 if settings["answer_mode"] == "local_cloud" else 1
                 used = db.execute(
@@ -147,6 +187,7 @@ def advance(config: Config, identity: str, revision: int, *, independent: bool =
                     continue
                 job = query_jobs.get(main, channel["value"]["client_id"], value["job_id"])
                 if job["state"] == "succeeded":
+                    channel = query_scope.bind(channel, value.get(query_scope.KEY))
                     value["result"] = (
                         cloud_answer_tasks.deliver(
                             config, main, channel["value"]["client_id"], job["cloud_run_id"]
@@ -156,6 +197,7 @@ def advance(config: Config, identity: str, revision: int, *, independent: bool =
                             config, main, channel["value"]["client_id"], value["task_id"]
                         )
                     )
+                    query_scope.annotate(config, main, channel, value["result"])
                     db.execute(
                         "UPDATE events SET state='ready',value=? WHERE channel_id=? AND event_id=?",
                         (canonical(value), identity, event["event_id"]),
@@ -181,7 +223,9 @@ def prepare_delivery(
             from ..vault_relocation.guard import operation
 
             selected = store.get(db, identity)
-            if operation(main, selected["value"]["vault_id"]):
+            if "query_vaults" not in selected["value"] and operation(
+                main, selected["value"]["vault_id"]
+            ):
                 return "waiting_for_vault_relocation"
             channel = current(config, main, db, identity, revision)
             if db.execute(
@@ -207,16 +251,20 @@ def prepare_delivery(
             ):
                 return "budget_exhausted"
             data = json.loads(event["value"])
+            if data["result"].get("status") != "query_hint":
+                scoped = query_scope.bind(channel, data.get(query_scope.KEY))
+                if any(
+                    operation(main, v["vault_id"]) for v in query_scope.selected(scoped)["vaults"]
+                ):
+                    return "waiting_for_vault_relocation"
             query.recheck(config, main, channel, data["result"])
-            vault = auth.grant(
-                main, channel["value"]["client_id"], channel["value"]["vault_id"], "query"
-            )
+            vault_name = data["result"].get("vault_name", "")
             from .. import expert_media
 
             capability = channel["value"].get("expert_media", "unknown")
             body = query.render(
                 data["result"],
-                vault["name"],
+                vault_name,
                 capability,
                 lambda module, version, resource: expert_media.read(
                     config, main, channel["value"]["client_id"], module, version, resource
@@ -289,6 +337,7 @@ async def deliver(
 
         attach(config, identity, event["event_id"], guard)
 
+    delivery_failure = None
     try:
         success = await sender(channel["owner"], body, data.get("context", ""), guard)
         state = (
@@ -296,14 +345,31 @@ async def deliver(
             if checked and success
             else (getattr(guard, "delivery_state", "unknown") if checked else "cancelled")
         )
-    except Exception:
+    except Exception as error:
+        from .diagnostics import failure
+
+        delivery_failure = failure(error)
         state = "unknown" if checked else "cancelled"
 
     def settle() -> None:
         with database.locked(config), store.opened(config) as db:
+            saved = db.execute(
+                "SELECT state,value FROM events WHERE channel_id=? AND event_id=?",
+                (identity, event["event_id"]),
+            ).fetchone()
+            if saved is None or saved["state"] != "sending":
+                return
+            current_data = json.loads(saved["value"])
+            current_data["delivery_outcome"] = {
+                "state": state,
+                "observed_at": time.time(),
+                "evidence": getattr(guard, "delivery_evidence", None),
+                "failure": delivery_failure,
+            }
             db.execute(
-                "UPDATE events SET state=? WHERE channel_id=? AND event_id=? AND state='sending'",
-                (state, identity, event["event_id"]),
+                "UPDATE events SET state=?,value=? WHERE channel_id=? AND event_id=? "
+                "AND state='sending'",
+                (state, canonical(current_data), identity, event["event_id"]),
             )
 
     await asyncio.to_thread(settle)

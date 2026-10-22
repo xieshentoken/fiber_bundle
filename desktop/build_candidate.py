@@ -48,6 +48,7 @@ SUFFIXES = {
     ".swift",
     ".rst",
     ".png",
+    ".svg",
     ".pdf",
     ".docx",
     ".xlsx",

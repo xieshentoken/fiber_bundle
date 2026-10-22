@@ -110,10 +110,38 @@ test("Trash bridge sends an intent and confirmed root through authenticated CSRF
 });
 
 test("Trash preserves controlled 401 403 422 and 503 diagnostics without IPC exception text", async () => {
- for (const status of [401,403,422,503]) {
-  const w=windowFor(async()=>({ok:false,status,json:async()=>({error:"vault_trash_helper_required",detail:"synthetic-secret-must-not-leak"})}));
-  const result=await trashIntent(w,backend,{id,confirmedRoot:"/private/tmp/reviewed",csrf:"synthetic-csrf"});
-  assert.deepEqual(result,{native_error:{status,code:"vault_trash_helper_required"}});
-  assert(!JSON.stringify(result).includes("synthetic-secret"));
- }
+  for (const status of [401, 403, 422, 503]) {
+    const w = windowFor(async () => ({
+      ok: false,
+      status,
+      json: async () => ({
+        error: "vault_trash_helper_required",
+        detail: "synthetic-secret-must-not-leak",
+      }),
+    }));
+    const result = await trashIntent(w, backend, {
+      id,
+      confirmedRoot: "/private/tmp/reviewed",
+      csrf: "synthetic-csrf",
+    });
+    assert.deepEqual(result, {
+      native_error: { status, code: "vault_trash_helper_required" },
+    });
+    assert(!JSON.stringify(result).includes("synthetic-secret"));
+  }
+});
+test("Atlas hash routes keep native authorization on the same root document only", () => {
+  const w = windowFor(),
+    frame = w.webContents.mainFrame,
+    event = { sender: w.webContents, senderFrame: frame };
+  frame.url = backend + "#/vaults/connect";
+  trusted(event, w, backend);
+  for (const url of [
+    backend + "?other=1#/vaults",
+    backend + "static/atlas/index.html",
+    "http://127.0.0.1:8765/#/vaults",
+  ]) {
+    frame.url = url;
+    assert.throws(() => trusted(event, w, backend));
+  }
 });

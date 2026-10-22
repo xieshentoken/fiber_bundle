@@ -421,6 +421,9 @@ def notify(
 
 
 def tick(config: Config) -> None:
+    from .execution_control import reconcile
+
+    reconcile(config)
     # Read-only idle probe avoids creating a ledger or taking a global writer lease.
     pending = [
         j for j in store.rows(config, "jobs") if j["state"] in {"queued", "running", "cancelling"}
@@ -482,6 +485,11 @@ def tick(config: Config) -> None:
                 store.put(config, "jobs", current["id"], current["vault_id"], current)
         if pending[0].get("maintenance") and pending[0]["stage"] == "planning":
             return
+    if pending and pending[0].get("maintenance") and pending[0]["stage"] != "planning":
+        from .execution import run as execute
+
+        execute(config, pending[0]["id"])
+        return
     with database.locked(config), database.connect(config.state_root) as db:
         if pending:
             job = store.get(config, "jobs", pending[0]["id"])

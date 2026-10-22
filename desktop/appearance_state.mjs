@@ -13,7 +13,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { backendURL } from "./policy.mjs";
 
-const themes = new Set(["oracle", "tesla", "cursor", "clay", "dark"]);
+const themes = new Set(["oracle", "tesla", "cursor", "clay", "dark", "atlas"]);
 const defaultTheme = "clay";
 
 export function validAppearance(value) {
@@ -21,7 +21,12 @@ export function validAppearance(value) {
     value &&
     typeof value === "object" &&
     !Array.isArray(value) &&
-    Object.keys(value).sort().join() === "defaultTheme,theme" &&
+    ["defaultTheme,theme", "defaultTheme,presentationMode,theme"].includes(
+      Object.keys(value).sort().join(),
+    ) &&
+    (value.presentationMode === undefined ||
+      (value.theme === "atlas" &&
+        ["light", "dark"].includes(value.presentationMode))) &&
     themes.has(value.theme) &&
     themes.has(value.defaultTheme),
   );
@@ -38,17 +43,21 @@ export function trustedAppearance(
     !window ||
     event.sender !== window.webContents ||
     event.senderFrame !== window.webContents.mainFrame ||
-    (event.senderFrame.url !== backend &&
+    (event.senderFrame.url.split("#")[0] !== backend.split("#")[0] &&
       (write || event.senderFrame.url !== offline))
   )
     throw new Error("Untrusted appearance request");
 }
 
-export function themePresentation(theme) {
+export function themePresentation(theme, mode = "light") {
   if (!themes.has(theme)) throw new Error("Invalid presentation theme");
   return {
-    themeSource: theme === "dark" ? "dark" : "light",
+    themeSource:
+      theme === "dark" || (theme === "atlas" && mode === "dark")
+        ? "dark"
+        : "light",
     backgroundColor: {
+      atlas: mode === "dark" ? "#0e0e11" : "#f5f5f7",
       oracle: "#fbf9f8",
       tesla: "#ffffff",
       cursor: "#f7f7f4",
@@ -74,27 +83,35 @@ function loadDefault(path, origin, warn) {
     const value = JSON.parse(readFileSync(file, "utf8"));
     if (
       !value ||
-      Object.keys(value).sort().join() !==
-        "backendOrigin,defaultTheme,version" ||
+      ![
+        "backendOrigin,defaultTheme,version",
+        "backendOrigin,defaultTheme,presentationMode,version",
+      ].includes(Object.keys(value).sort().join()) ||
+      (value.presentationMode !== undefined &&
+        (value.defaultTheme !== "atlas" ||
+          !["light", "dark"].includes(value.presentationMode))) ||
       value.version !== 1 ||
       value.backendOrigin !== origin ||
       !themes.has(value.defaultTheme)
     )
       throw new Error("invalid_cache");
-    return value.defaultTheme;
+    return {
+      theme: value.defaultTheme,
+      mode: value.presentationMode || "light",
+    };
   } catch (error) {
     if (error.code !== "ENOENT")
       warn(
         "Desktop appearance cache unavailable",
         error.code || "invalid_cache",
       );
-    return defaultTheme;
+    return { theme: defaultTheme, mode: "light" };
   } finally {
     if (file !== undefined) closeSync(file);
   }
 }
 
-function saveDefault(path, origin, theme, warn) {
+function saveDefault(path, origin, theme, mode, warn) {
   const temporary = `${path}.${randomUUID()}.tmp`;
   let file;
   try {
@@ -105,6 +122,7 @@ function saveDefault(path, origin, theme, warn) {
         version: 1,
         backendOrigin: origin,
         defaultTheme: theme,
+        ...(theme === "atlas" ? { presentationMode: mode } : {}),
       }),
     );
     closeSync(file);
@@ -131,18 +149,35 @@ function saveDefault(path, origin, theme, warn) {
 export function createAppearanceState(profile, backend, warn = console.warn) {
   const origin = new URL(backendURL(backend)).origin;
   const path = appearancePath(profile, backend);
-  let saved = loadDefault(path, origin, warn),
-    current = saved;
-  const snapshot = () => ({ theme: current, defaultTheme: saved });
+  const initial = loadDefault(path, origin, warn);
+  let saved = initial.theme,
+    savedMode = initial.mode,
+    current = saved,
+    currentMode = savedMode;
+  const snapshot = () => ({
+    theme: current,
+    defaultTheme: saved,
+    ...(current === "atlas" ? { presentationMode: currentMode } : {}),
+  });
   return Object.freeze({
     snapshot,
     apply(value) {
       if (!validAppearance(value)) throw new Error("Invalid appearance state");
       current = value.theme;
+      currentMode = value.presentationMode || "light";
+      const nextMode =
+        value.defaultTheme === "atlas"
+          ? current === "atlas"
+            ? currentMode
+            : savedMode
+          : "light";
       const defaultSaved =
-        value.defaultTheme === saved ||
-        saveDefault(path, origin, value.defaultTheme, warn);
-      if (defaultSaved) saved = value.defaultTheme;
+        (value.defaultTheme === saved && nextMode === savedMode) ||
+        saveDefault(path, origin, value.defaultTheme, nextMode, warn);
+      if (defaultSaved) {
+        saved = value.defaultTheme;
+        savedMode = nextMode;
+      }
       return { ...snapshot(), defaultSaved };
     },
   });

@@ -41,7 +41,7 @@ export default [
   },
   {
     files: [
-      "src/fiber_bundle/web/*.js",
+      "src/fiber_bundle/web/**/*.js",
       "src/fiber_bundle/web/i18n/*.js",
       "frontend/graph/*.js",
       "tests/web/*.js",
@@ -68,7 +68,7 @@ export default [
           "cancelAnimationFrame",
           "clearInterval",
           "URLSearchParams",
-          "performance",
+          "performance", "CSS", "DOMParser", "Node", "crypto", "navigator", "structuredClone",
         ].map((name) => [name, "readonly"]),
       ),
     },

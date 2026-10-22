@@ -68,7 +68,9 @@ class PolicySave(Payload):
 def access(
     config: Config, request: Request, *, admin: bool = False
 ) -> Iterator[tuple[sqlite3.Connection, str | None]]:
-    db = database.connect(config.state_root)
+    from .display_observation import current as display_read
+
+    db = database.connect(config.state_root, readonly=display_read.get() is not None)
     try:
         if admin:
             auth.admin(

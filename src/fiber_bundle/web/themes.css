@@ -260,3 +260,36 @@ h3,
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
   --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6);
 }
+
+:root[data-theme="atlas"] {
+  --surface-base: #f5f5f7;
+  --surface-panel: #fff;
+  --surface-raised: #fff;
+  --text: #20212b;
+  --muted: #70717f;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eef0ff;
+  --on-accent: #fff;
+  --line: #e4e4eb;
+  --nav-selected: #eef0ff;
+  --nav-selected-ink: #4f46e5;
+  --nav-selected-line: transparent;
+}
+
+html[data-theme="atlas"][data-mode="dark"] {
+  color-scheme: dark;
+  --surface-base: #0e0e11;
+  --surface-panel: #16161b;
+  --text: #ededf3;
+  --line: #30303b;
+  --button-text: #ededf3;
+  --on-accent: #18181b;
+  --bg: #0e0e11;
+  --surface: #16161b;
+  --surface-raised: #1c1c23;
+  --fg: #ededf3;
+  --muted: #9b9baa;
+  --border: #30303b;
+  --accent: #a59bff;
+}

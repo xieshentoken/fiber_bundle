@@ -6,7 +6,7 @@ import threading
 import time
 from typing import Any
 
-from ..config import Config
+from ..config import Config, StorageError
 from . import runner, scheduler, store
 
 
@@ -16,9 +16,14 @@ class Runtime:
         self.observation_cache: dict[str, Any] = {}
         self.stop = threading.Event()
         self.thread: threading.Thread | None = None
+        self.recovered = False
 
     def start(self) -> None:
-        runner.recover(self.config)
+        try:
+            runner.recover(self.config)
+            self.recovered = True
+        except (StorageError, OSError, ValueError):
+            logging.getLogger(__name__).error("Backup recovery blocked; ledger retained")
         self.thread = threading.Thread(target=self.loop, name="backup-queue", daemon=True)
         self.thread.start()
 
@@ -30,6 +35,9 @@ class Runtime:
     def loop(self) -> None:
         while not self.stop.wait(2):
             try:
+                if not self.recovered:
+                    runner.recover(self.config)
+                    self.recovered = True
                 runner.execute(self.config)
                 scheduler.tick(self.config, observation_cache=self.observation_cache)
             except Exception as exc:

@@ -33,7 +33,7 @@ assert(+new URL(base).port >= 18000 && +new URL(base).port <= 19000);
     await page.waitForFunction(() => window.fixture?.ready);
     assert.match(await page.title(), /Fiber bundle · 保存规则验证/);
     await page
-      .getByRole("heading", { name: "vault · 保存规则", exact: true })
+      .getByRole("heading", { name: "L2_vault · 保存规则", exact: true })
       .waitFor();
   }
   async function select(name, value) {

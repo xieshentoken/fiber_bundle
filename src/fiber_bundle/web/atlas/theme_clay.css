@@ -1,0 +1,267 @@
+/* Clay theme refinements. Everything here applies only while
+   :root[data-accent="clay"] is active, so the other accents keep their look.
+   Tokens live in tokens.css; this file carries the component-level part of the
+   Claude-style visual language: warm sidebar layer, hairlines, radius ladder,
+   hover/press physics, focus glow, status dots and skeleton sweep.
+   Motion stays CSS-only and is switched off by the shared
+   prefers-reduced-motion / data-motion="reduce" rules in base.css. */
+
+/* Sidebar becomes the darkest paper layer, cards float on the canvas. */
+:root[data-accent="clay"] .a-sidebar {
+  background: #f9f9f7;
+}
+:root[data-mode="dark"][data-accent="clay"] .a-sidebar {
+  background: #0b0b0a;
+}
+
+/* Search trigger and navigation. */
+:root[data-accent="clay"] .a-search-trigger {
+  background: var(--surface-2);
+  border-color: var(--border);
+  border-radius: 8px;
+}
+:root[data-accent="clay"] .a-search-trigger:hover {
+  background: var(--surface-3);
+  border-color: var(--border-strong);
+}
+:root[data-accent="clay"] .a-nav-link {
+  border-radius: 8px;
+}
+:root[data-accent="clay"] .a-nav-link:hover {
+  background: rgba(21, 21, 21, 0.05);
+}
+:root[data-mode="dark"][data-accent="clay"] .a-nav-link:hover {
+  background: rgba(255, 253, 250, 0.05);
+}
+:root[data-accent="clay"] .a-nav-link {
+  transition:
+    background-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+:root[data-accent="clay"] .a-conn[data-state="connected"] i {
+  animation: clay-breathe 2.4s ease-in-out infinite;
+}
+
+/* Buttons: 8px radius, hairline rest state, fast press physics. */
+:root[data-accent="clay"] .a-button {
+  border-color: var(--border);
+  border-radius: 8px;
+}
+:root[data-accent="clay"] .a-button {
+  transition:
+    background-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 160ms cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+:root[data-accent="clay"] .a-button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+:root[data-accent="clay"] .a-button:active:not(:disabled),
+:root[data-accent="clay"] .a-icon-button:active,
+:root[data-accent="clay"] button.a-stat:active,
+:root[data-accent="clay"] .a-segmented button:active {
+  transform: scale(0.98);
+  transition-duration: 60ms;
+}
+:root[data-accent="clay"] .a-button.is-primary {
+  border-color: var(--accent);
+}
+:root[data-accent="clay"] .a-button.is-ghost:hover:not(:disabled) {
+  background: rgba(21, 21, 21, 0.05);
+}
+:root[data-mode="dark"][data-accent="clay"]
+  .a-button.is-ghost:hover:not(:disabled) {
+  background: rgba(255, 253, 250, 0.05);
+}
+:root[data-accent="clay"] .a-icon-button {
+  border-radius: 8px;
+  transition:
+    background-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 160ms cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+:root[data-accent="clay"] .a-icon-button:hover {
+  background: rgba(21, 21, 21, 0.05);
+}
+:root[data-mode="dark"][data-accent="clay"] .a-icon-button:hover {
+  background: rgba(255, 253, 250, 0.05);
+}
+
+/* Focus: 1.5px terracotta ring with a soft glow (inputs and controls). */
+:root[data-accent="clay"] .a-input {
+  border-radius: 8px;
+}
+:root[data-accent="clay"] .a-input:focus,
+:root[data-accent="clay"] .a-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 1.5px var(--accent),
+    0 0 6px 1px rgba(217, 119, 87, 0.25);
+}
+:root[data-accent="clay"]
+  :is(
+    .a-button,
+    .a-icon-button,
+    .a-nav-link,
+    .a-row-button,
+    summary,
+    .a-chip
+  ):focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 1.5px var(--accent),
+    0 0 6px 1px rgba(217, 119, 87, 0.25);
+}
+:root[data-accent="clay"] .a-nav-link:focus-visible {
+  border-radius: 8px;
+}
+
+/* Native <select> would fall back to the macOS popup chrome (grey rounded box)
+   which ignores the theme. Draw the closed control in theme colours with a
+   chevron; the opened menu itself stays native. */
+:root[data-accent="clay"] select.a-input {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236d6963' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px 14px;
+  cursor: pointer;
+}
+:root[data-mode="dark"][data-accent="clay"] select.a-input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238e8e88' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+:root[data-accent="clay"] select.a-input:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+:root[data-accent="clay"] select.a-input:disabled {
+  cursor: default;
+}
+
+/* Cards, stats and rows. */
+:root[data-accent="clay"] .a-card {
+  border-radius: 12px;
+}
+:root[data-accent="clay"] button.a-stat {
+  border-radius: 12px;
+  transition:
+    transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 200ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+:root[data-accent="clay"] button.a-stat:hover {
+  transform: translateY(-1.5px);
+  box-shadow: var(--shadow);
+}
+:root[data-accent="clay"] .a-row-button {
+  transition: background-color 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+:root[data-accent="clay"] .a-row-button:hover {
+  background: rgba(21, 21, 21, 0.04);
+}
+:root[data-mode="dark"][data-accent="clay"] .a-row-button:hover {
+  background: rgba(255, 253, 250, 0.04);
+}
+:root[data-accent="clay"] .a-row-icon {
+  border: 1px solid var(--border);
+}
+:root[data-accent="clay"] .a-row-chevron {
+  transition: transform 120ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+:root[data-accent="clay"] .a-row-button:hover .a-row-chevron {
+  transform: translateX(2px);
+}
+
+/* Status dots: 6px, running blink and idle breathing follow the CDS timings. */
+:root[data-accent="clay"] .a-badge-dot {
+  width: 6px;
+  height: 6px;
+}
+:root[data-accent="clay"] .a-badge[data-tone="waiting"] .a-badge-dot {
+  animation: clay-dot-blink 1.2s ease-in-out infinite;
+}
+
+/* Segmented control: pill track with a white thumb snapping in 120ms. */
+:root[data-accent="clay"] .a-segmented {
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(21, 21, 21, 0.06);
+}
+:root[data-mode="dark"][data-accent="clay"] .a-segmented {
+  background: rgba(255, 253, 250, 0.08);
+}
+:root[data-accent="clay"] .a-segmented button {
+  height: calc(var(--control-h) - 10px);
+  padding: 0 14px;
+  border-radius: 999px;
+  transition:
+    background-color 120ms cubic-bezier(0.32, 0.72, 0, 1),
+    color 120ms cubic-bezier(0.32, 0.72, 0, 1),
+    box-shadow 120ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* Architecture map nodes sit one step above the canvas. */
+:root[data-accent="clay"] .a-arch-node {
+  border-radius: 10px;
+  transition:
+    border-color 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 150ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+:root[data-accent="clay"] .a-arch-node:hover {
+  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+}
+
+/* Skeleton: 105° sweep over warm fills. */
+:root[data-accent="clay"] .a-skeleton span {
+  background: linear-gradient(
+    105deg,
+    var(--surface-2) 30%,
+    var(--surface-3) 50%,
+    var(--surface-2) 70%
+  );
+  background-size: 200% 100%;
+  animation: clay-skeleton-sweep 2s linear infinite;
+}
+
+@keyframes clay-breathe {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.86);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+@keyframes clay-dot-blink {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes clay-skeleton-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* Retina hairline compensation on list dividers. */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 2dppx) {
+  :root[data-accent="clay"] .a-row {
+    border-top-width: 0.5px;
+  }
+  :root[data-accent="clay"] .a-card.is-flush > .a-card-head {
+    border-bottom-width: 0.5px;
+  }
+}

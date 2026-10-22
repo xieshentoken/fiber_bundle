@@ -1,3 +1,69 @@
+## Supplier intelligence（2026-10-21）
+
+供应商业务位于 `suppliers/`，主库 schema35不变，独立 `supplier-intelligence.sqlite3` schema1，首次明确写入才创建。profiles为按库显式策略；records保存供应商/别名/联系人/产品/报价/来源/问题、任务/模型调用/修正及不可变历史快照；operations保留请求摘要和幂等结果。旧SUP/SRC身份保留，历史原件缺失和事实未核验分开标记；不重建或伪造旧PDF/微信原文。原独占管理标记及原人工区不改写，重复历史导入保留人工覆盖/修正引用，移出当前范围的历史记录只退出当前投影，快照保留。
+
+管理接口均要求既有管理员会话、CSRF、当前身份/库权限与活动目录绑定：
+
+| 路径（/admin/suppliers） | 行为 |
+| --- | --- |
+| GET /?client_id=&vault_id= | 工作区记录、版本与策略，不调用模型 |
+| POST /legacy/preview、/legacy/import | 只读目录/Markdown预览；通过expected_sha256和request_id显式导入旁库，不写原笔记 |
+| POST /policy | expected_revision CAS；enabled默认false、cloud_allowed默认false、review_mode manual/automatic、model_configuration_id（app-default或已登记编号） |
+| POST /manual、/correction | 原始录入/修正先进入Store知识级原件，稳定请求号及摘要防重复；修正不覆盖原值，保留独立理由与版本 |
+| POST /document | run_id已完成且已发布或通过原审核；生成持久任务，不在HTTP调用模型 |
+| POST /jobs/{id}/{approve,resume,cancel} | 版本CAS及原所有者；候选明确确认、已知结果恢复、取消后续；发送未知的模型调用不可重发 |
+| GET /evidence/{source}、/original/{source}、/markdown/{supplier} | 带范围的依据、原件或只读Markdown投影；原件独立original授权，可指定asset_id，不返回不属于该版本的附件 |
+| POST /query、/compare、/classification-preview | 确定性条件查询、保守比较和只读业务/MOC预览；不发送模型、不写MOC或归档 |
+
+新供应商提取在既有原件保留/文档或消息发布后观察，不作为Inbox前置。启用时记录水位，仅新资料自动接入；旧历史不自动外发。后台按库检查发布元数据，有变化且达到30秒节流才读取笔记清单，空闲不反复扫描。正文/文档使用现有完整提取与审核合同，图片/OCR/PDF/Word按既有资料导入配置；供应商模型使用统一配置、Key共享预算与model_configuration_calls用途supplier_extraction。完整文本分窗覆盖，最多8窗，超限发送前失败；逐字段原文/公司头/型号行/币种单位/税运证据校验，未知不补齐。每个窗口绑定固定模型摘要及持久发送记录，已知响应可复用、未知响应保留预留消费且禁止重发。原件保留、笔记已发布、结构化完成是三个独立状态。取消不伪装远端调用已撤回，已返回用量仍记账。
+
+Condition支持kind offers/products/suppliers、库/供应商、关键词（含联系人）、分类、精确型号、币种和价格区间/单位、报价日期、valid_on、税费、规格数组(field, equals 或 minimum/maximum及unit)、历史/待归属开关。金额Decimal，仅明确量纲转换，不推断汇率、目数标准、税运或无限有效期。价格范围必须提供币种及单位；日期/区间严格校验。offset/limit分页返回total/next_offset/snapshot，后续页可指定expected_snapshot防混合版本；coverage明确仅已登记供应商来源，不能宣称全库扫描完整。原来源/权限/路径或笔记观察变化立即拒绝旧结果。比较只在产品规格和税运、时间、数量阶梯等明确相同口径分组，未知条件单列、不做跨口径最便宜结论。人工修正以独立correction_ids及value_basis呈现。
+
+Agent只读 POST `/v1/agent-knowledge/suppliers/{query,compare,evidence}`；MCP增加 `fiber_supplier_query(conditions)`、`fiber_compare_quotes(vault_id,quote_ids)`、`fiber_supplier_evidence(vault_id,source_id,expected_sha256,offset,length)`。每次核对连接enabled/配置库/当前query权限；不接收任意SQL、路径或调用身份参数，证据最长8000字符分页，原件权限不隐式扩张。质量标签始终保留。
+
+GUI：知识→供应商信息，先选操作身份与新独立供应商库；接入与处理中预览/明确导入历史，再选择已登记模型、允许云处理及人工/自动策略。新资料继续从资料导入或已配置消息入口进入目标库；手动报价可单独录入，待确认页提供候选、失败原因、取消及允许的恢复。产品/报价支持筛选、证据和原件，修正保留原值；分类预览只展示建议与现有MOC笔记，实际登记/写入/归档由用户在现有知识关联流程确认。未自动挂接真实Gsup或复活旧supplier库。
+
+备份：旁库纳入现有在线一致性、全量和共享加密增量快照及变化观察。恢复先校验原始字节，再暂停供应商策略，排队/运行任务标为需明确恢复，发送中模型结果标未知；事实、原件、人工修正和幂等历史保留，不自动发送模型或重放旧任务。
+
+---
+
+
+## 知识库与关联 MOC 展示读取（2026-10-21）
+
+`display_http` 仅对列明的 GET 投影开放锁外计算，最多两个并行读取；开始与交付时仍在既有存储租约内验证管理员会话、元数据和策略代次，交付前复核观察过的文件。权限或内容变化时拒绝旧结果。响应仅在内存中暂存，不跨会话复用。索引过期标记仍在最终租约内写入。
+
+`display_observation` 仅在本次展示请求内批量检查已授权目录中的 Markdown 文件，复用未变化文件的云状态观察；保护目录在枚举时排除。POST 预览、确认、执行与写回不启用该上下文，仍执行原完整检查。Atlas 导航复用短时库/身份列表并合并进行中的请求，手动刷新主动失效缓存；关联页各读取并行，展示读取最长等待60秒，写入超时与重试规则不变。
+
+## 消息入口的独立保存与显式查询范围（2026-10-21）
+
+保存入口沿用单目标及各自入库策略，查询范围不改变保存位置。查询用途入口可通过现有POST /admin/channels的settings新增可选query_vaults列表，每项为vault_id和唯一固定alias（1–32个字母/数字/下划线/连字符/中文，拒绝范围代词与重复别名/ID）；默认查询全部所选库，最多沿用底层20库限制。旧字段缺省不回填、不改变revision；显式null取消范围设置。多库仅用于无入库角色的入口。旧vault_id为既有传输合同锚点，显式范围保存时同步为列表首项，不能决定用户查询范围。配置查询库只增加query授权，已有original/add授权逐库保留，不新增这些权限。
+
+命令仅在消息开头解析：查询：问题（兼容ASCII冒号）查询全部配置范围；查询[库别名]：问题仅查该别名；独立查询入口启用natural_questions后普通自然语言/主题短语等同默认范围，兼用入口保留既有材料/问答区分。未知/失效别名、格式错误、空问题、“查询本库”只产生零模型用法提示，不退回全部、不作为材料入库。别名解绑后失效，新库不自动继承；单库选择不保留到下一条消息。
+
+每条新消息冻结channel-query-scope/v1（配置版本/范围摘要及所选ID/别名），使用既有events.value，不升级数据库schema或改写历史。model调用、成功响应缓存及发送复核绑定同一范围；失效/撤权/来源变化停止交付，不复用不符缓存，不自动重试付费调用或未知发送。原文/本地/本地云/默认模型入口共用范围解析。检索仍使用全局结果上限及现有模型步骤，专家图表逐来源核对库权限，跨库同名文件通过库ID区分。迁移访问屏障、解绑失效、相关入口识别与恢复证据覆盖次级查询库；显式健康单库不读取另一库。已有多库查询入口的别名不能由整库合并动作自动改指目标库，须显式重配。
+
+GUI消息页总览与入口卡片显示保存目标和查询范围；两界面共享范围编辑与别名检查。回复显示本次范围，引用请求显示库别名与笔记定位。发布不创建真实库/入口、不恢复旧记录；当前真实库和原配置保持，后续需管理员明确绑定目标库并保存查询范围才生效。
+
+## Atlas主题入口与收件箱历史（2026-10-20）
+
+Atlas品牌按钮 `#theme-toggle` 使用 `/static/logo-original.png` 的既有品牌裁切；`atlas/theme_choices.openThemePicker` 复用现有sheet生命周期和设置页themeChoices，不直接调用业务API，跨渲染器切换仍须ctx.confirmReload。Esc/关闭归还焦点，默认主题只在显式设置时改变。
+
+`web/inbox_status.isInboxComplete` 仅以已发布为完成证据，同时保留来源缺件、未发布链接和未完成/异常自动任务；原件保存或提取完成不算入库完成。`atlas/inbox_history.createInboxHistory` 仅在浏览器中过滤原响应，默认隐藏完成项；明确链接到历史记录时自动展开历史，不删除记录、不变更状态或去重。消息、文档、媒体复用此过滤，首页冻结批次计数使用相同完成判断。后端接口/数据库结构保持。
+
+## Atlas 入口与维护（2026-10-20）
+
+`web/ui_entry.js` 按校验后的默认主题或当前标签页一次性选择加载 classic/Atlas；`theme_entry.js` 仅存储呈现选择，不存会话。`web/atlas/main.js` 组装会话、路由和视图；`feature_controls` 为共用领域控件提供 Atlas 样式和生命周期，首页看板由 `home_architecture` 与纯状态投影 `architecture_model` 维护。Atlas 资源通过静态白名单、wheel package-data 和候选摘要共同验证；新增 SVG 也进入冻结清单。
+
+`fiber.atlas.v1` 仅含校验的模式/强调色等呈现偏好。主题默认仍由 `fiber.appearance.v1` 管理；原生缓存兼容 version 1，Atlas 可附 `presentationMode=light|dark`。恢复文本草稿只保存在当前标签页内存，密码/密钥/令牌/文件不会恢复。升级只更新程序/源码和发布元数据，不改数据库 schema、库路径或消息运行意图。
+
+## 消息入口回执观察与批次隔离（2026-10-20）
+
+`channels/intake_receipts.take` 在持有原storage lease和发送claim事务的前提下，跳过receipt_state为sending/unknown的当前批次，不再全入口返回。该批次后续通知也停止，须原有明确核对操作；其他批次按原策略/修订/服务水位/额度发送。不自动重发未知结果、不回填旧修订或停用期间的历史消息，不修改来源/去重键。
+
+`GET /admin/channels/overview` 的入口项可附加 `receipts`：enabled（回执策略开关）、pending_batches（当前修订和服务水位内等待首条/后续回执的批次数）、needs_review_batches（unknown）、sending_batches（sending）。后两项包含历史修订，pending不包含歧义批次；它们是只读观测，不触发恢复。旧客户端可忽略，新客户端兼容没有此字段的旧服务，并严格校验非负整数计数。`intake_receipt_health.py` 独立负责投影；原有处理状态和平台连接仍各自展示。
+
+`answer_mode=model` 的查询健康检查读取 `model_configuration.policy.resolve`，与model_answer执行路径一致；其他模型路由模式保留冻结路由校验。只检查配置，平台已连接/配置可用均不证明当前模型或回执端到端成功。
+
 ## 微信消息入口图文回复（2026-10-19）
 
 消息入口选择微信、L2知识库、模型回答/自然语言问题及专家图表能力，扫码后确认本人绑定；查询和原件权限足够，纯问答无需新增权限。普通笔记只发送文字；专家命中的图表经授权/版本/哈希校验后，图片单独发送、可靠表格以文字展示。微信使用独立发送器，不复用飞书post消息格式或上游自动重试。配置缺省仍为unknown，旧配置不自动启用图表。
@@ -21,6 +87,14 @@
 进程中断后保持本库屏障，重启只标记待恢复，不自动移动。回到迁移入口，先「重新核对现场」，取得有效期两分钟的恢复证明后选择继续或恢复原位置。通过原目录身份定位实际位置，绝不覆盖已占用目录；文件、授权、策略或父目录改变时拒绝恢复，保留现场。不会用旧共享数据库覆盖其他知识库的新记录。待恢复期间不要在 Finder 中手动挪动或修改目录。
 
 实现边界：vault_relocation/{plan,files,filesystem,evidence,execution,guard,runtime,routes}.py；web/vault_relocation{,_api,_view}.js 与独立 CSS。管理员端点 /admin/vault-relocations/preview、列表/状态、start、stop、recovery-preview、recover 复用现有会话和 CSRF；开始要求严格布尔 external_writers_stopped=true 与冻结 plan_sha256。合成测试覆盖真实同盘重命名、每阶段中断、回滚、重复提交、目标竞争、恢复点损坏、消息暂存、历史/身份/MOC 和关联查询。
+
+### Obsidian iCloud 显式迁移（2026-10-20）
+
+管理员预检额外接受严格布尔 `icloud: true`；默认 GUI/API 仍执行原本机规则。显式模式只接纳当前用户的 Obsidian iCloud Documents 容器和同一文件系统，不支持跨盘、覆盖目标或复制后删除。仅允许完整范围及既有 GF_supply_chain 保护，保护子树出现则在读取其元数据前停止；旧 L2 的有效保护随目录更名显式保留在 catalog scope。目录身份、业务与策略记录不重建。旧保存规则的根父目录观察允许同一保护由 catalog 显式承接，须同时通过原 inode、策略摘要、范围与各目录校验，不修改设置或扩大权限。
+
+cloud-status 的 `--tree-excluding` 在 lstat 前排除保护名称；整库元数据超时为 180 秒，普通单项为 20 秒，超时单独诊断。`--items` 从标准输入接受最多 256 个已授权直接子名称，不递归、不下载；索引指纹按目录批量核对相关 Markdown 和发布标记，实际证据/图片读取继续独立复核。内容与索引文本不因批量检查改变。此次迁移后按原清单与缓存摘要逐篇验证 643 篇笔记，只更新派生 observation 的 ctime 与 generation 指纹，所有 notes/FTS 分块不变；保留原未定位登记。
+
+本机迁移与 Obsidian 可读验证不代表其他设备已完成云同步。仅知识库文件放入 iCloud，数据库、凭据和处理运行状态继续使用原本机 fiber-data。
 
 ## X文章JSON数据封装（2026-10-18）
 
@@ -309,8 +383,23 @@ flowchart LR
 | 409 | `event_conflict` 或专项代码 | 幂等冲突、索引须更新、无法安全分片等 |
 | 422 | `invalid_input` | 类型/字段/业务合同不符；部分专项接口保留安全错误代码 |
 | 503 | `storage_unavailable` | 存储/文件访问故障；不输出私有异常正文 |
+| 503 | `storage_busy` | 普通请求尚未进入业务处理，排队或存储租约等待超时；不是文件/校验错误。GET 最多重试一次，写操作不自动重送 |
+| 503 | `display_busy` | 展示读取并发名额或返回租约暂忙；可能已经完成计算，不声明业务尚未开始。GET 最多重试一次 |
+| 503 | `display_changed` | 展示依赖或已观察源文件在读取中变化，旧响应丢弃；GET 最多重试一次 |
+| 503 | `display_limit_exceeded` | 超过单次展示读取安全上限；不自动重试 |
+| 503 | `backup_snapshot_busy` / `organization_progress_busy` | 分别表示一致性备份期间的租约等待、整理进度读取等待；不视为存储损坏 |
 
 出处：[http_guard.py](../src/fiber_bundle/http_guard.py)、[api.py](../src/fiber_bundle/api.py)。前端保留安全错误与 HTTP 状态，不能从这些有界代码推断未经核实的供应商/网络根因。
+
+### 3.3 请求等待与 Atlas 状态
+
+普通受保护请求的全局排队和存储租约等待分别最多 1 秒；在线备份期间租约等待保持 0.3 秒。取得租约后，原授权检查至响应发送的保护范围不变。`/health`、根页面及静态程序资源不依赖业务存储租约，业务繁忙不会再阻塞健康探测。既有长任务路由继续使用其专属租约合同；等待上限不是业务执行时限。
+
+`GET /admin/http-diagnostics` 要求管理员会话，返回 `scope: "current_process"`、`limit: 64` 与 `requests`。仅在当前进程内保留最近 64 条慢请求（≥500ms）或 5xx；字段为时间、规范化路由、方法、状态、总耗时、排队/存储等待耗时及阶段；展示读取额外包含 `display_phase`（capacity/prepare/compute/deliver）。进入路由处理前的拒绝也按已注册模板归属，路径参数统一为 `{id}`。未知路径归为 `/other`，不记录参数、正文、Cookie 或密钥；重启清空，不新增数据库。响应 `Server-Timing` 提供同次请求的排队、存储等待与总耗时。
+
+Atlas 的 `connection.js` 串行探测健康接口，首次失败显示正在核对，连续两次失败才显示断开；业务接口失败只影响对应页面。隐藏页面停止探测并忽略迟到结果。`read_retry.js` 的一次繁忙 GET 重试可取消，写请求不重放。
+
+Atlas 与复用的经典功能面板共用 `i18n/index.js` 语言状态；偏好与导航准备成功后才切换，失败保留原语言。`select_controls.js` 可通过 `{dialogs:true,popupClass:"a-select-popup"}` 将原生单选框投影为 Atlas 菜单，保留原生值、校验、键盘、重置与草稿合同；弹窗内使用自身容器和 Popover 顶层。`vault_visibility.js` 在列表及首页数据边界排除 `detached/trashed` 库，历史与去重账本不删除，重新接入须原有明确操作。
 
 ## 4. 主要接入流程与请求合同
 
@@ -1404,6 +1493,10 @@ Admin API: POST `/admin/organization/maintenance` accepts client_id/vault_id/mod
 
 `maintenance_archive.py` delegates managed publications to existing note placement; plain notes and registered native Drafts reuse the same exclusive rename/CAS exchanges, MOC link projection, publication baselines and stable identity reconciliation. Interrupted operations are journaled under vault_operations(kind=maintenance_archive); recovery resumes the unfinished phase and never repeats extraction/classification/model use. Canonical package internals are not rewritten; ambiguous inbound links, missing moved dependencies, collisions, policy or human changes stop that item. New MOCs are explicit approved proposals created in moc_dir and adopted through the existing registration journal.
 
+整理执行并发：`organization/execution.py`为已确认任务保留独立进程执行租约，在经审查的笔记清单、文件遍历、整包检查和文件读取边界释放全局存储锁。锁外读取结束后重新核对存储版本、授权和知识库绑定；相关输入变化即停止采用该结果，保留部分执行与恢复证据。实际关系写入、原子文件操作和事务仍持全局锁，原摘要、文件身份、目标冲突及写前完整校验不省略；事务中不释放锁。目录云状态使用完整批量检查，写前文件读取仍重新检查可用性，不跨任务缓存。当前阶段单独发布，未封存恢复日志的单项不提前计为完成。
+
+`GET /admin/organization/progress`只读取授权范围内的任务账本和扫描状态，不复查历史预览或遍历知识库。GUI对相同plan_sha256保留已知的预览失效状态；完整列表刷新和确认仍验证预览。执行中的pause返回pause_requested=true，私有暂停意图绑定任务代次并持久化；当前安全步骤完成后转为paused，原归档操作ID、已完成条目、文件交换与撤销日志保留。暂停等待期间不重复提交控制操作；其他更改任务的操作须先等暂停完成。恢复只处理原任务的未完成阶段，不重新确认、重新分类或重复模型调用。新organization-execution私有目录纳入备份预检；锁文件不依赖持久PID判断所有权。
+
 GUI: 知识关联→整理笔记→快速整理/全量补充/深度重整→生成整理预览→核对差异并勾选→确认并执行本次整理. Existing 策略/专家包/消息指令 remain independent. Task details distinguish analysis, membership, archive and index states; cancel stops remaining items, resume only continues unfinished work, index failure retries only indexing. A reliable new classification is required before deep removes old membership; uncertainty preserves old relations.
 
 Release acceptance: real notes and Draft copies are used only for classification/preview; actual confirmation/MOC writes/archival are reserved to the user. Synthetic isolated fixtures test execution and crash recovery. No production organization task is submitted, confirmed or replayed during deployment.
@@ -1475,6 +1568,21 @@ Initial independent activation freezes a timestamp and source watermarks. Histor
 
 backup_preflight.capacity仅枚举同一允许范围的文件元数据，提前执行条目/单文件/逻辑总量限制；不读取源正文、获取恢复密钥或持有数据库写保留，结果不是一致性证书。实际冻结读取再次检查范围和内容。backup_automation/database_lease.py通过stdin生命周期持有所有SQLite写保留，与原始文件读取进程分离，防止同进程close释放POSIX记录锁；父进程仍持有全局存储锁。WAL检查点和写保留之间出现提交则拒绝；守护进程异常时不可发布完成标记。SQLite写保留仅用于捕获所有已登记数据库的一致独立副本；APFS使用clonefile共享未修改数据块，其他文件系统有两秒复制预算，超时安全失败。副本位于本机OS私有临时目录fiber-database-snapshot-*/，目录0700、文件0600，与原文件不是硬链接；副本为既有明文数据库的私有临时副本，绝不创建明文笔记归档，作用域退出和Python异常会清理本次副本；强制终止可能留下本机私有临时副本。释放SQLite保留后扫描、校验、加密均读取该固定副本，消息数据库可继续接收新事件；不把后续事件混入已捕获的恢复时点。恢复格式不变，新/删数据库集合或原物理身份变化仍拒绝。
 
-GET /admin/backup-automation 的job增加started_at、finished_at、preflight（files/bytes/entries）、progress和stages。阶段为capacity/scanning/encrypting/verifying；计数为files_done/files_total、bytes_done/bytes_total，complete及updated_at描述当前阶段，不代表整个备份可恢复。verification原full/incremental语义保持。进度保存在.backup-automation/progress-[job-id].json，按attempt隔离、每秒限频、独立于策略账本；完成/失败仍以原作业账本为准。failure_details仅提供变动项的section和相对path，不返回恢复密钥或源内容。旧作业/配置向后兼容，不修改Policy或数据库schema。
+GET /admin/backup-automation 的job增加started_at、finished_at、preflight（files/bytes/entries）、progress和stages。阶段为capacity/scanning/encrypting/verifying；计数为files_done/files_total、bytes_done/bytes_total，complete及updated_at描述当前阶段，不代表整个备份可恢复。verification原full/incremental语义保持。进度保存在.backup-automation/progress-<job-id>.json，按attempt隔离、每秒限频、独立于策略账本；完成/失败仍以原作业账本为准。failure_details仅提供变动项的section和相对path，不返回恢复密钥或源内容。旧作业/配置向后兼容，不修改Policy或数据库schema。
 
 GUI可见时活动任务2秒、空闲10秒串行轮询，只重绘状态区。隐藏时不读、离页注销、忽略迟到响应；恢复密钥输入、容量/目录草稿和焦点保留，读失败不提交或重试备份。实际失败任务需要用户明确重试；自动策略原有限重试边界保持。增量首次仍需建立完整基线；容量上限统计完整逻辑范围，并非仅新增密文。真实容量限制、备份目录、恢复密钥和策略由用户配置。
+
+### 已完成索引的历史任务核对
+
+`automatic_index_recovery.acknowledge`由管理员显式`POST .../automatic-jobs/{job}/reconcile`调用，在索引阶段先核对现有结果：当前查询/原件/新增权限、已提交发布位置、当前索引代次及各正文文件的身份和摘要。证据齐全时返回`state: complete, existing_index_verified: true, new_model_attempt: false, post_processing_started: false`，原失败原因进入`failure_history`，核对证据进入`index_reconciliation`。即使旧自动策略已变化，也只结算已完成结果，不沿用旧授权执行新工作；不重建索引、不通知整理、不调用额外摘要或模型。不适用的旧格式或未就绪索引沿用原冻结授权恢复检查；撤权、取消、已完成和仍活动任务不允许此核对。读取列表不自动结算。无schema变化。
+
+
+### 整理进度、暂停及轻量管理读取
+
+`GET /admin/organization/progress` 只投影授权任务账本，不遍历笔记正文。`POST /admin/organization/maintenance/{identity}/pause` 在核对登录、CSRF、身份、知识库访问与写入权限后，持久保存同任务、同代次的暂停意图；执行器在安全步骤和恢复日志封存后暂停。空闲任务的即时暂停仍在原全局写入纪律下通过版本比较提交，不能覆盖并发确认或执行。暂停未被提交时返回独立的 `organization_control_busy`，客户端不自动重发写请求。
+
+进度、暂停以及会话恢复、身份清单、知识库清单和后台状态的已审查轻量读取采用独立 SQLite 授权返回租约：回滚日志模式用读事务阻止撤权提交穿越响应；WAL 模式保留短写入预留，保证相同边界。会话恢复不延长登录期限。索引遍历和云状态采集不持全局写锁，返回后核对实际业务版本、权限和完整指纹，变化则放弃候选；笔记写入前完整校验、事务和文件 CAS 保持。
+
+界面先显示已取得的任务进度，目录暂不可读时保留任务控制与已有内容，并有界退避重试；首次读取失败同样可恢复。未读取的目录数量不作为零或正常状态显示，已确认失效预览保持失效；仅清除已经恢复的对应读取错误。整理完成与索引更新阶段分别显示。暂停不会立即中断正在写入的安全步骤，恢复沿用原任务及已完成记录。
+
+备份恢复故障隔离：自动备份账本读取/恢复失败不再阻止管理后台启动；恢复完成前不执行备份队列，保留既有读取上限、账本、配置及失败信息，不自动删减历史。

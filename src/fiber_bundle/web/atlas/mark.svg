@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Fiber bundle">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6e6af0"/>
+      <stop offset="1" stop-color="#3a37b8"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="16" fill="url(#g)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="3.6" stroke-linecap="round">
+    <path d="M14 44c10 0 12-24 22-24s10 6 14 6" opacity=".95"/>
+    <path d="M14 32c10 0 12-12 22-12" opacity=".6"/>
+    <path d="M14 20c10 0 12 24 22 24s10-6 14-6" opacity=".95"/>
+  </g>
+</svg>

@@ -1,3 +1,4 @@
+import { navigateTheme, themeRenderer } from "./theme_entry.js";
 import { createVaultRelocationView } from "./vault_relocation.js";
 import { createUpdateNotice } from "./ui_updates.js";
 import { bindStatic, phrase, setText, uiText } from "./i18n/index.js";
@@ -50,6 +51,7 @@ import { createModelsView } from "./models.js";
 import { createKnowledgeGraphView } from "./knowledge_graph.js";
 import { createInventoryView } from "./management.js";
 import { createExecutionView } from "./execution.js";
+import { createSupplierView } from "./suppliers_view.js";
 import { decorateNavigation, selectPage } from "./navigation.js";
 import { createSidebar } from "./sidebar.js";
 import { enhanceSelects } from "./select_controls.js";
@@ -62,8 +64,16 @@ createLanguageControls();
 decorateNavigation();
 const pageHeader = createPageHeader();
 const appearance = createAppearance();
+if (window.fiberEntryTheme) appearance.selectTheme(window.fiberEntryTheme);
 const sidebar = createSidebar();
 const themePicker = createThemePicker(appearance, {
+  beforeSelected: (theme) => {
+    if (themeRenderer(theme.id) === "classic") return true;
+    if (!draftGuard.confirmLeave()) return false;
+    draftGuard.clear();
+    return true;
+  },
+  onRendererSelected: (theme) => navigateTheme(theme.id),
   onSelected: (theme) =>
     message(phrase("已切换为{p0}。", { p0: uiText(theme.name) })),
 });
@@ -136,6 +146,7 @@ const managementViews = {
   vaults: createVaultCatalogView(api),
   channels: createChannelsView(api),
   inventory: createInventoryView(api),
+  suppliers: createSupplierView(api,$("suppliers-panel")),
   graph: createKnowledgeGraphView(api),
   execution: createExecutionView(api),
   settings: createSettingsView(api, appearance, session, themePicker),

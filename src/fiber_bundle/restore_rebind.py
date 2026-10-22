@@ -130,6 +130,10 @@ def _quarantine_sidecars(config: Config) -> dict[str, int]:
                 "UPDATE events SET state='cancelled' "
                 "WHERE state IN ('captured','processing','gui_processing','ready')"
             ).rowcount
+    from .suppliers.restore import quarantine as quarantine_suppliers
+
+    if (config.state_root / "supplier-intelligence.sqlite3").exists():
+        changed["supplier-intelligence"] = quarantine_suppliers(config)
     return changed
 
 

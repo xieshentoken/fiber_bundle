@@ -87,8 +87,10 @@ def preservation(config: Config, db: Any, vault: str) -> dict[str, Any]:
                     dict(r)
                     for r in side.execute(
                         "SELECT * FROM channels WHERE json_extract(value,'$.vault_id')=? "
-                        "ORDER BY id",
-                        (vault,),
+                        "OR EXISTS(SELECT 1 FROM json_each("
+                        "json_extract(channels.value,'$.query_vaults')) q "
+                        "WHERE json_extract(q.value,'$.vault_id')=?) ORDER BY id",
+                        (vault, vault),
                     )
                 ]
             if rows:

@@ -13,6 +13,28 @@ from .config import IntegrityError, InvalidInput
 
 # Apple sys/stat.h SF_DATALESS. Check each ancestor before stat of a child can materialize it.
 SF_DATALESS = 0x40000000
+FILE_STATUS_TIMEOUT = 20
+TREE_STATUS_TIMEOUT = 180
+
+
+def _checked_status(raw: bytes) -> None:
+    if len(raw) > 4096:
+        raise ValueError()
+    value = json.loads(raw)
+    if not isinstance(value, dict) or value.get("schema") != "cloud-status/v1":
+        raise ValueError()
+    if value.get("available") is not True:
+        unknown = value.get("metadata_unavailable")
+        if (
+            type(unknown) is int
+            and 0 < unknown <= 20000
+            and value.get("errors") == unknown
+            and all(
+                value.get(key) == 0 for key in ("pending", "stale", "conflicts", "excluded_present")
+            )
+        ):
+            raise IntegrityError("cloud_metadata_unavailable")
+        raise ValueError()
 
 
 def require_local(path: Path) -> None:
@@ -37,10 +59,43 @@ def require_local(path: Path) -> None:
             raise IntegrityError("cloud_item_not_downloaded")
 
 
-def require_available(path: Path, *, tree: bool = False) -> None:
+def require_available(path: Path, *, tree: bool = False, exclude: tuple[str, ...] = ()) -> None:
     require_local(path)
-    if "Mobile Documents" not in path.parts:
+    from . import display_observation as display
+
+    observed = display.current.get() is not None and not tree
+    if observed and display.reusable(path):
         return
+    before = display.signature(path) if observed else None
+    if "Mobile Documents" not in path.parts:
+        if before is not None:
+            display.remember(path, before)
+        return
+    helper = _helper()
+    try:
+        arguments = [str(helper), "--tree" if tree else "--file", str(path)]
+        if exclude:
+            from .vault_scope import prefix
+
+            if not tree or any(prefix(value) != value or not value for value in exclude):
+                raise InvalidInput("cloud_scope_invalid")
+            arguments = [str(helper), "--tree-excluding", str(path), json.dumps(list(exclude))]
+        result = subprocess.run(
+            arguments,
+            capture_output=True,
+            timeout=TREE_STATUS_TIMEOUT if tree else FILE_STATUS_TIMEOUT,
+            check=True,
+        )
+        _checked_status(result.stdout)
+        if before is not None:
+            display.remember(path, before)
+    except subprocess.TimeoutExpired as exc:
+        raise IntegrityError("cloud_status_check_timeout") from exc
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        raise IntegrityError("cloud_item_pending_stale_or_conflicted") from exc
+
+
+def _helper() -> Path:
     helper = Path(os.environ.get("FIBER_CLOUD_HELPER", ""))
     expected = os.environ.get("FIBER_CLOUD_HELPER_SHA256", "")
     if (
@@ -53,21 +108,47 @@ def require_available(path: Path, *, tree: bool = False) -> None:
         raise InvalidInput("cloud_status_helper_required")
     if hashlib.sha256(helper.read_bytes()).hexdigest() != expected:
         raise IntegrityError("cloud_status_helper_changed")
-    try:
-        result = subprocess.run(
-            [str(helper), "--tree" if tree else "--file", str(path)],
-            capture_output=True,
-            timeout=20,
-            check=True,
-        )
-        if len(result.stdout) > 4096:
-            raise ValueError()
-        value = json.loads(result.stdout)
-        if (
-            not isinstance(value, dict)
-            or value.get("schema") != "cloud-status/v1"
-            or value.get("available") is not True
-        ):
-            raise ValueError()
-    except (OSError, ValueError, subprocess.SubprocessError) as exc:
-        raise IntegrityError("cloud_item_pending_stale_or_conflicted") from exc
+    return helper
+
+
+def require_available_many(parent: Path, names: tuple[str, ...]) -> None:
+    """Check only already-authorized children, in bounded native metadata batches."""
+    if any(
+        not name or name in {".", ".."} or "/" in name or "\\" in name or "\0" in name
+        for name in names
+    ):
+        raise InvalidInput("cloud_path_invalid")
+    from . import display_observation as display
+
+    if display.current.get() is not None:
+        names = tuple(name for name in names if not display.reusable(parent / name))
+    for name in names:
+        require_local(parent / name)
+    if not names or "Mobile Documents" not in parent.parts:
+        return
+    observations = (
+        {parent / name: display.signature(parent / name) for name in names}
+        if display.current.get() is not None
+        else {}
+    )
+    helper = _helper()
+    for offset in range(0, len(names), 256):
+        payload = json.dumps(names[offset : offset + 256]).encode()
+        if len(payload) > 262144:
+            raise InvalidInput("cloud_scope_invalid")
+        try:
+            response = subprocess.run(
+                [str(helper), "--items", str(parent)],
+                input=payload,
+                capture_output=True,
+                timeout=TREE_STATUS_TIMEOUT,
+                check=True,
+            )
+            _checked_status(response.stdout)
+        except subprocess.TimeoutExpired as exc:
+            raise IntegrityError("cloud_status_check_timeout") from exc
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            raise IntegrityError("cloud_item_pending_stale_or_conflicted") from exc
+
+    for path, before in observations.items():
+        display.remember(path, before)

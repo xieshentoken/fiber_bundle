@@ -45,14 +45,14 @@ def test_query_stop_and_backend_recovery_leave_intake_process_and_history(
             (json.dumps({**ch["value"], "add": True}), identity),
         )
     before = (root / "a.md").read_bytes()
-    assert dispatch.capture(config, identity, 1, "old-held", ch["owner"], "查询本库：压力")
+    assert dispatch.capture(config, identity, 1, "old-held", ch["owner"], "查询：压力")
     try:
         control.start(config, identity, "query", 0)
         control.start(config, identity, "intake", 0)
         wait_until(lambda: control.status(config, identity, "intake").get("heartbeat_fresh"))
         intake_home = control.home(config, identity, "intake")
         pid = json.loads((intake_home / "status.json").read_text())["pid"]
-        assert dispatch.capture(config, identity, 1, "new", ch["owner"], "查询本库：压力")
+        assert dispatch.capture(config, identity, 1, "new", ch["owner"], "查询：压力")
 
         def state(event):
             with store.readonly(config) as db:

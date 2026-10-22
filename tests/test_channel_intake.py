@@ -123,7 +123,7 @@ def test_mixed_disallowed_link_holds_whole_batch_and_query_never_archives(config
     receive(config, entry, text="来源 https://mp.weixin.qq.com/s/one https://outside.org/a")
     processing.advance(config, entry[0]["id"])
     assert records(config, entry)[0]["reason"] == "intake_site_not_allowed"
-    receive(config, entry, text="查询本库：青松", identity="query")
+    receive(config, entry, text="查询：青松", identity="query")
     processing.advance(config, entry[0]["id"])
     assert records(config, entry)[-1]["reason"] == "intake_command_requires_routing"
     assert count(config, "receipts") == 0

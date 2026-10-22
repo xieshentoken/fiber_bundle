@@ -1,5 +1,35 @@
+import { requestErrors } from "../request_errors.js";
 // UI message catalog; parameters preserve source data.
 export default {
+  "organization.catalog.wait": [
+    "进度已更新；目录读取暂不可用，稍后自动重试。",
+    "Progress updated; catalog temporarily unavailable. Retrying shortly.",
+  ],
+  "suppliers.nav": ["供应商信息", "Suppliers"],
+  ...Object.fromEntries(
+    Object.entries(requestErrors).map(([code, pair]) => [`api.${code}`, pair]),
+  ),
+  "read.busy": ["读取暂忙", "Read temporarily busy"],
+  "read.changed": ["读取期间数据已变化", "Data changed during the read"],
+  "atlas.theme.description": [
+    "独立界面 · 知识、连接与系统",
+    "Complete interface · knowledge, connections and system",
+  ],
+  "atlas.role.unknown": [
+    "尚无独立服务状态",
+    "Independent service status not recorded",
+  ],
+  "atlas.role.unconfirmed": ["状态尚未确认", "Status not confirmed"],
+  "atlas.receipt.held": [
+    "{p0} 批回执待核对",
+    "{p0} receipt batches need reconciliation",
+  ],
+  "atlas.receipt.pending": [
+    "{p0} 批回执待发送或更新",
+    "{p0} receipt batches awaiting send or update",
+  ],
+  "atlas.receipt.empty": ["无待发送回执", "No pending receipts"],
+  "atlas.receipt.off": ["新回执已关闭", "New receipts disabled"],
   "operation.directory.wait": [
     "{p0}：请在系统窗口中选择文件夹或取消；尚未保存设置。",
     "{p0}: choose a folder or cancel in the system window. Settings have not been saved.",

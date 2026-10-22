@@ -15,6 +15,24 @@ from .weixin_delivery_state import ensure_resolved
 from .weixin_events import Binding
 
 
+def response_evidence(response: Any) -> dict[str, str]:
+    """Only finite provider codes and a hashed receipt; never SDK messages or headers."""
+    if response is None:
+        return {"category": "missing_response"}
+    if not response.success():
+        code = getattr(response, "code", None)
+        return {
+            "category": "negative_ack",
+            **({"provider_code": str(code)} if type(code) is int and abs(code) <= 2**31 else {}),
+        }
+    identity = getattr(getattr(response, "data", None), "message_id", None)
+    if not isinstance(identity, str) or not 0 < len(identity) <= 400:
+        return {"category": "missing_message_id"}
+    from .objects import digest
+
+    return {"category": "confirmed", "message_id_sha256": digest(identity.encode())}
+
+
 def sdk_send(
     sdk: Any, client: Any, target: str, body: str, guard: Callable[[], None]
 ) -> dict[str, str]:
@@ -36,16 +54,7 @@ def sdk_send(
     guard()
     try:
         response = client.im.v1.message.create(request)
-        if response is None:
-            return {"category": "missing_response"}
-        if not response.success():
-            return {"category": "negative_ack"}
-        identity = getattr(getattr(response, "data", None), "message_id", None)
-        if not isinstance(identity, str) or not 0 < len(identity) <= 400:
-            return {"category": "missing_message_id"}
-        from .objects import digest
-
-        return {"category": "confirmed", "message_id_sha256": digest(identity.encode())}
+        return response_evidence(response)
     except Exception:
         return {"category": "transport_exception"}
 

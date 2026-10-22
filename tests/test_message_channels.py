@@ -84,11 +84,11 @@ def test_save_is_masked_private_and_queries_do_not_need_add(config, channel, mon
 def test_identity_dedup_budget_and_actual_evidence_delivery(config, channel):
     value, _ = channel
     binding = bind(config, value)
-    assert not dispatch.capture(config, value["id"], 1, "foreign", "ou_other", "查询本库：压力")
-    assert dispatch.capture(config, value["id"], 1, "one", "ou_synthetic", "查询本库：压力")
-    assert not dispatch.capture(config, value["id"], 1, "one", "ou_synthetic", "查询本库：压力")
-    assert dispatch.capture(config, value["id"], 1, "two", "ou_synthetic", "查询本库：压力")
-    assert not dispatch.capture(config, value["id"], 1, "three", "ou_synthetic", "查询本库：压力")
+    assert not dispatch.capture(config, value["id"], 1, "foreign", "ou_other", "查询：压力")
+    assert dispatch.capture(config, value["id"], 1, "one", "ou_synthetic", "查询：压力")
+    assert not dispatch.capture(config, value["id"], 1, "one", "ou_synthetic", "查询：压力")
+    assert dispatch.capture(config, value["id"], 1, "two", "ou_synthetic", "查询：压力")
+    assert not dispatch.capture(config, value["id"], 1, "three", "ou_synthetic", "查询：压力")
     dispatch.advance(config, value["id"], 1)
     sent = []
 
@@ -110,7 +110,7 @@ def test_identity_dedup_budget_and_actual_evidence_delivery(config, channel):
 def test_source_change_revocation_and_unlink_prevent_delivery(config, channel):
     value, root = channel
     bind(config, value)
-    dispatch.capture(config, value["id"], 1, "one", "ou_synthetic", "查询本库：压力")
+    dispatch.capture(config, value["id"], 1, "one", "ou_synthetic", "查询：压力")
     dispatch.advance(config, value["id"], 1)
     (root / "a.md").write_text("# changed\nnew contents")
 
@@ -131,7 +131,7 @@ def test_source_change_revocation_and_unlink_prevent_delivery(config, channel):
 def test_unknown_send_stops_without_replay_and_cooperative_pause(config, channel):
     value, _ = channel
     bind(config, value)
-    dispatch.capture(config, value["id"], 1, "one", "ou_synthetic", "查询本库：压力")
+    dispatch.capture(config, value["id"], 1, "one", "ou_synthetic", "查询：压力")
     dispatch.advance(config, value["id"], 1)
     calls = []
 
@@ -210,7 +210,7 @@ def test_model_admission_reuses_policy_and_pause_cancels_it(config, channel, rou
     bind(config, configuration.public(config, changed))
     launched = []
     monkeypatch.setattr(query_job_launch, "launch", lambda config, cid, jid: launched.append(jid))
-    assert dispatch.capture(config, value["id"], 2, "model", "ou_synthetic", "查询本库：压力")
+    assert dispatch.capture(config, value["id"], 2, "model", "ou_synthetic", "查询：压力")
     dispatch.advance(config, value["id"], 2)
     assert len(launched) == 1
     task = main.execute("SELECT * FROM local_query_tasks").fetchone()

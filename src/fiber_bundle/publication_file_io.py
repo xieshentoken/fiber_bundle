@@ -8,8 +8,10 @@ from typing import Any
 from . import cloud_files, file_exchange, vault_directories, vault_scope
 from .config import IntegrityError, contained
 from .objects import digest
+from .storage_read_scope import audited
 
 
+@audited
 def read(root: Path, relative: str) -> tuple[bytes, list[Any]]:
     path = contained(root, relative)
     cloud_files.require_available(path)
@@ -34,6 +36,7 @@ def read(root: Path, relative: str) -> tuple[bytes, list[Any]]:
         return data, [info.st_dev, info.st_ino, float(birth if birth is not None else 0).hex()]
 
 
+@audited
 def tree(root: Path, relative: str, scope: vault_scope.Scope) -> dict[str, bytes]:
     """Read a managed package only; reject excluded children before inspecting them."""
     files: dict[str, bytes] = {}

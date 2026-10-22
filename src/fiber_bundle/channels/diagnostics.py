@@ -4,7 +4,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from ..config import InvalidInput
+from ..config import IntegrityError, InvalidInput
 
 KNOWN = frozenset(
     {
@@ -17,13 +17,23 @@ KNOWN = frozenset(
         "channel_weixin_response_invalid",
         "channel_delivery_requires_reconciliation",
         "channel_capture_failed",
+        "cloud_item_pending_stale_or_conflicted",
+        "cloud_status_check_timeout",
+        "cloud_metadata_unavailable",
+        "cloud_item_not_downloaded",
+        "channel_source_changed",
+        "channel_expert_media_binding_changed",
     }
 )
 
 
 def failure(error: Exception) -> dict[str, Any]:
-    if isinstance(error, InvalidInput) and str(error) in KNOWN:
+    from ..database import LockTimeout
+
+    if isinstance(error, (InvalidInput, IntegrityError)) and str(error) in KNOWN:
         code = str(error)
+    elif isinstance(error, LockTimeout):
+        code = "channel_storage_busy"
     elif isinstance(error, sqlite3.Error):
         code = "channel_storage_failed"
     elif isinstance(error, TimeoutError):

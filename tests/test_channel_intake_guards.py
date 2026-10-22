@@ -28,7 +28,7 @@ def test_platform_backlog_captured_after_enable_is_still_manual(config, entry):
 
 def test_command_with_disallowed_link_never_becomes_manual_material(config, entry):
     policy = enable(config, entry, materials=["image"])
-    batch = receive(config, entry, text="查询本库：压力 https://unapproved.org/a")
+    batch = receive(config, entry, text="查询：压力 https://unapproved.org/a")
     intake_processing.advance(config, entry[0]["id"])
     assert records(config, entry)[0]["reason"] == "intake_command_requires_routing"
     with pytest.raises(InvalidInput, match="command_requires_routing"):

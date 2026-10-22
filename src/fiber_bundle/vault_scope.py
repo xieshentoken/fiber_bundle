@@ -5,7 +5,7 @@ import json
 import os
 import sqlite3
 import stat
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,7 +14,7 @@ from .inputs import canonical
 
 POLICY = ".knowledge-organizer-policy.json"
 PROTECTED = Path.home() / (
-    "Library/Mobile Documents/iCloud~md~obsidian/Documents/L2/01-Projects/PROTECTED_PROJECT"
+    "Library/Mobile Documents/iCloud~md~obsidian/Documents/L2/01-Projects/GF_supply_chain"
 )
 
 
@@ -83,7 +83,7 @@ def effective(root: Path, value: object) -> Scope:
     base = parse(value)
     denied = list(base.exclude)
     if root.name == "L2":
-        denied.append("01-Projects/PROTECTED_PROJECT")
+        denied.append("01-Projects/GF_supply_chain")
     evidence = []
     if root == PROTECTED or PROTECTED in root.parents:
         raise InvalidInput("vault_scope_protected")
@@ -152,7 +152,43 @@ def for_vault(root: Path, row: sqlite3.Row) -> Scope:
 
 
 def entries(
-    root: Path, scope: Scope, *, maximum: int = 10000, depth: int = 32, hidden: bool = False
+    root: Path,
+    scope: Scope,
+    *,
+    maximum: int = 10000,
+    depth: int = 32,
+    hidden: bool = False,
+    file_filter: Callable[[Path], bool] | None = None,
+    batch: bool = False,
+) -> Iterator[tuple[Path, os.stat_result]]:
+    from . import storage_read_scope
+
+    def scan() -> Iterator[tuple[Path, os.stat_result]]:
+        return _entries(
+            root,
+            scope,
+            maximum=maximum,
+            depth=depth,
+            hidden=hidden,
+            file_filter=file_filter,
+            batch=batch or storage_read_scope.current.get() is not None,
+        )
+
+    if storage_read_scope.current.get() is not None:
+        yield from storage_read_scope.read(lambda: list(scan()))
+    else:
+        yield from scan()
+
+
+def _entries(
+    root: Path,
+    scope: Scope,
+    *,
+    maximum: int = 10000,
+    depth: int = 32,
+    hidden: bool = False,
+    file_filter: Callable[[Path], bool] | None = None,
+    batch: bool = False,
 ) -> Iterator[tuple[Path, os.stat_result]]:
     """Filter names before counting, stat, placeholder checks or recursion."""
     count = 0
@@ -162,8 +198,8 @@ def entries(
         if level > depth:
             raise IntegrityError("vault index depth limit exceeded")
         names = []
-        with os.scandir(parent) as children:
-            for child in children:
+        with os.scandir(parent) as scanned:
+            for child in scanned:
                 path = parent / child.name
                 relative = path.relative_to(root).as_posix()
                 if not scope.reachable(relative) or (
@@ -178,14 +214,28 @@ def entries(
                 if count > maximum:
                     raise IntegrityError("vault index entry limit exceeded")
                 names.append(path)
-        for path in sorted(names):
-            from .cloud_files import require_available
 
-            # lstat avoids following links; availability checks only authorized objects.
-            info = path.lstat()
-            if stat.S_ISLNK(info.st_mode):
-                continue
-            require_available(path)
+        def observed() -> Iterator[tuple[Path, os.stat_result]]:
+            for path in sorted(names):
+                info = path.lstat()
+                if stat.S_ISLNK(info.st_mode):
+                    continue
+                if file_filter and not stat.S_ISDIR(info.st_mode) and not file_filter(path):
+                    continue
+                yield path, info
+
+        children = observed()
+        if batch:
+            from .cloud_files import require_available_many
+
+            gathered = list(children)
+            require_available_many(parent, tuple(p.name for p, _ in gathered))
+            children = iter(gathered)
+        for path, info in children:
+            if not batch:
+                from .cloud_files import require_available
+
+                require_available(path)
             yield path, info
             if stat.S_ISDIR(info.st_mode):
                 yield from walk(path, level + 1)

@@ -1,0 +1,51 @@
+.channel-query-relations,
+.channel-query-scope {
+  border: 1px solid var(--border, var(--line, #ccc));
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-block: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.channel-query-relations ul {
+  padding-inline-start: 20px;
+  display: grid;
+  gap: 8px;
+}
+.channel-query-relations p,
+.channel-query-scope p {
+  font-size: 0.88em;
+  line-height: 1.6;
+  opacity: 0.8;
+}
+.channel-query-scope-rows {
+  display: grid;
+  gap: 10px;
+}
+.channel-query-scope-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) minmax(100px, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+.channel-query-scope-row input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border, var(--line, #ccc));
+  border-radius: 6px;
+  background: var(--surface, transparent);
+  color: inherit;
+  font: inherit;
+}
+.channel-query-scope input[type="checkbox"] {
+  accent-color: var(--accent, auto);
+}
+@media (max-width: 480px) {
+  .channel-query-scope-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .channel-query-scope-row input[type="text"] {
+    grid-column: 2;
+  }
+}

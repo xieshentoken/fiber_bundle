@@ -1,22 +1,52 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-ui="loading">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title data-i18n="shell.d69ff56ab8">Fiber bundle · 本机管理</title>
     <link rel="icon" type="image/png" href="/static/logo-original.png" />
-    <link rel="stylesheet" href="/static/style.css" />
-    <link rel="stylesheet" href="/static/vault_save.css" />
-    <link rel="stylesheet" href="/static/unified_workflow.css" />
-    <link rel="stylesheet" href="/static/home.css" />
-    <link rel="stylesheet" href="/static/themes.css" />
-    <link rel="stylesheet" href="/static/theme_picker.css" />
-    <link rel="stylesheet" href="/static/appearance_overrides.css" />
-    <link rel="stylesheet" href="/static/workspace_clarity.css" />
-    <link rel="stylesheet" href="/static/reading_layout.css" />
+    <link data-ui-style="classic" rel="stylesheet" href="/static/style.css" />
+    <link
+      data-ui-style="classic"
+      rel="stylesheet"
+      href="/static/vault_save.css"
+    />
+    <link
+      data-ui-style="classic"
+      rel="stylesheet"
+      href="/static/unified_workflow.css"
+    />
+    <link data-ui-style="classic" rel="stylesheet" href="/static/home.css" />
+    <link data-ui-style="classic" rel="stylesheet" href="/static/themes.css" />
+    <link
+      data-ui-style="classic"
+      rel="stylesheet"
+      href="/static/theme_picker.css"
+    />
+    <link
+      data-ui-style="classic"
+      rel="stylesheet"
+      href="/static/appearance_overrides.css"
+    />
+    <link
+      data-ui-style="classic"
+      rel="stylesheet"
+      href="/static/workspace_clarity.css"
+    />
+    <link
+      data-ui-style="classic"
+      rel="stylesheet"
+      href="/static/reading_layout.css"
+    />
     <script src="/static/appearance_bootstrap.js"></script>
-    <script type="module" src="/static/app.js"></script>
-    <link rel="stylesheet" href="/static/vault_relocation.css" />
+    <link rel="stylesheet" href="/static/ui_entry.css" />
+    <script type="module" src="/static/ui_entry.js"></script>
+    <link
+      data-ui-style="classic"
+      rel="stylesheet"
+      href="/static/vault_relocation.css"
+    />
+    <link data-ui-style="classic" rel="stylesheet" href="/static/suppliers.css" />
   </head>
   <body>
     <header>
@@ -137,6 +167,7 @@
         <button type="button" data-tab="vaults" data-i18n="shell.975b35f9c2">
           知识库
         </button>
+        <button type="button" data-tab="suppliers" data-i18n="suppliers.nav">供应商信息</button>
         <button type="button" data-tab="imports" data-i18n="shell.3619939e3d">
           资料导入
         </button>
@@ -336,6 +367,7 @@
             <div id="worklist-content"></div>
           </div>
         </section>
+        <section id="suppliers-panel" hidden></section>
         <section id="imports-panel" hidden>
           <p class="intro">
             <span data-i18n="shell.157c4a86a1"
@@ -1264,7 +1296,7 @@
               <label
                 ><input id="channel-natural-questions" type="checkbox" /><span
                   data-i18n="shell.a98250279a"
-                  >自然语言提问（无需“查询本库：”前缀）</span
+                  >允许直接用自然语言提问（默认查询所选范围）</span
                 ></label
               >
               <p>

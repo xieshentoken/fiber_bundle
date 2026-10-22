@@ -18,6 +18,7 @@ from .config import Config, IntegrityError, InvalidInput, contained
 from .inputs import canonical
 
 DATABASES = {
+    "supplier-intelligence.sqlite3": 1,
     "metadata.sqlite3": database.SCHEMA_VERSION,
     "weixin-inbox.sqlite3": 1,
     "document-creation.sqlite3": 1,
@@ -68,6 +69,7 @@ STATE_DIRECTORIES = frozenset(
         "moc-files",
         "moc-note-files",
         "maintenance-undo-blobs",
+        "organization-execution",
         "channel-query-results",
         "query-policies",
         "configs",

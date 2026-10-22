@@ -11,7 +11,7 @@ from fiber_bundle.vault_scope import PROTECTED, effective
 def test_protected_l2_follows_owner_home():
     assert PROTECTED == Path.home() / (
         "Library/Mobile Documents/iCloud~md~obsidian/Documents/L2/"
-        "01-Projects/PROTECTED_PROJECT"
+        "01-Projects/GF_supply_chain"
     )
 
 

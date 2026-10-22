@@ -5,23 +5,31 @@ import json
 import threading
 import time
 
-from fiber_bundle import database
+from fiber_bundle import auth, database
 from fiber_bundle.http_guard import Guard, Settings
+from fiber_bundle.organization import overview
 
 
-def test_busy_progress_is_bounded_then_recovers_without_running_mutations(config, store):
+def test_metadata_transaction_contention_is_bounded_and_recovers(config, store, monkeypatch):
+    auth.set_password(config, "synthetic-progress-password")
+    with database.connect(config.state_root) as db:
+        token = auth.login(db, "synthetic-progress-password", 3600)[0]
     entered = threading.Event()
     released = threading.Event()
 
     def owner():
-        with database.locked(config):
+        with database.connect(config.state_root) as db:
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("BEGIN IMMEDIATE")
             entered.set()
             released.wait(5)
+            db.rollback()
 
     thread = threading.Thread(target=owner)
     thread.start()
     assert entered.wait(2)
     calls = []
+    monkeypatch.setattr(overview, "progress", lambda *a: calls.append("GET") or {})
 
     async def app(scope, receive, send):
         calls.append(scope["method"])
@@ -34,7 +42,11 @@ def test_busy_progress_is_bounded_then_recovers_without_running_mutations(config
             "type": "http",
             "method": "GET",
             "path": "/admin/organization/progress",
-            "headers": [(b"host", b"127.0.0.1:8765")],
+            "headers": [
+                (b"host", b"127.0.0.1:8765"),
+                (b"cookie", ("fiber_session=" + token).encode()),
+            ],
+            "query_string": b"client_id=synthetic&vault_id=synthetic",
             "client": ("127.0.0.1", 1),
         }
 
@@ -71,8 +83,8 @@ def test_busy_progress_is_bounded_then_recovers_without_running_mutations(config
         try:
             output.clear()
             await guard(scope, receive, send)
-            assert output[0]["status"] == 503
-            assert calls == ["GET"]
+            assert output[0]["status"] == 200
+            assert calls == ["GET", "GET"]
         finally:
             serial_release.set()
             await owned

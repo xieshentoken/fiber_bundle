@@ -121,3 +121,15 @@ test("resolved manual items never trigger model supplement or retry from histori
   };
   assert(taskActions(pending).some((a) => a.operation === "retry_unknown"));
 });
+
+test("accepted pause prevents repeated controls while the current unit finishes", () => {
+  assert.deepEqual(
+    taskActions({
+      state: "running",
+      pause_requested: true,
+      confirmed: true,
+      items: [],
+    }),
+    [],
+  );
+});

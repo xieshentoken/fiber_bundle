@@ -242,3 +242,31 @@ def test_forced_exit_old_connected_file_is_unavailable(tmp_path):
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
+
+
+def test_admitted_delivery_keeps_local_wait_outside_event_loop(config, store):
+    fd = os.open(config.state_root / "storage.lock", os.O_RDWR)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    release = threading.Timer(1.4, lambda: fcntl.flock(fd, fcntl.LOCK_UN))
+    writes = []
+
+    def work():
+        with database.locked(config):
+            writes.append("one send checkpoint")
+
+    async def check():
+        task = asyncio.create_task(feishu_sync.delivery(work))
+        ticks = 0
+        while not task.done():
+            await asyncio.sleep(0.02)
+            ticks += 1
+        await task
+        assert ticks > 30
+
+    try:
+        release.start()
+        asyncio.run(check())
+    finally:
+        release.join()
+        os.close(fd)
+    assert writes == ["one send checkpoint"]

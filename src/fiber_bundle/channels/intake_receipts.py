@@ -19,15 +19,12 @@ def take(
     if not policy["settings"]["receipt"]:
         return None
     with database.locked(config), store.opened(config) as side:
-        if side.execute(
-            "SELECT 1 FROM channel_intake_records WHERE channel_id=? AND "
-            "json_extract(value,'$.receipt_state') IN ('sending','unknown')",
-            (identity,),
-        ).fetchone():
-            return None
+        # An ambiguous send freezes only its own batch, never unrelated receipts.
+        # The storage lease and committed "sending" claim still prevent duplicates.
         rows = side.execute(
             "SELECT * FROM channel_intake_records WHERE channel_id=? AND revision=? "
-            "AND created>=? AND (state='stored' OR (state='needs_review' "
+            "AND created>=? AND coalesce(json_extract(value,'$.receipt_state'),'') "
+            "NOT IN ('sending','unknown') AND (state='stored' OR (state='needs_review' "
             "AND json_type(value,'$.failure')='object')) "
             "AND (json_extract(value,'$.receipt_state') IS NULL OR "
             "(json_extract(value,'$.receipt_tracking.version')=2 AND "
