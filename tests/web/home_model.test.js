@@ -200,7 +200,7 @@ test("home excludes trashed/detached vault history from cards and index counts",
       status: "active",
       attachment_state: "detached",
     },
-    { id: "l", name: "L2", status: "active", attachment_state: "attached" },
+    { id: "l", name: "ExampleVaultRoot", status: "active", attachment_state: "attached" },
     {
       id: "r",
       name: "recover",

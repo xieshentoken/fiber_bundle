@@ -59,6 +59,11 @@ MESSAGES = {
     "layout_directory_changed": "发布目录的身份发生变化，已停止写入；请核对保存规则后恢复原任务。",
     "layout_policy_changed": "保存规则已变化，原发布计划保留；请核对冻结规则，避免覆盖已有资料。",
     "layout_name_conflict": "预留文件名均已被占用，已保留原文件；请核对目标目录中的同名资料。",
+    "placement_reconciliation_required": (
+        "本库存在未完成核对的归档操作；已有正文和附件保留。请先在关联与 MOC 页面"
+        "恢复原整理任务，再继续发布，无需重新转发或提取。"
+    ),
+    "automatic_publication_only_unavailable": "当前任务不支持仅恢复缓存发布，请核对原任务阶段。",
     "automatic_stage_requires_reconciliation": (
         "当前处理阶段未完成，已有结果保留；请核对失败阶段与诊断后恢复原任务。"
     ),
@@ -455,5 +460,56 @@ MESSAGES.update(
         "video_asr_budget_required": "转写 API 尚未配置 Key 预算，请先在执行与费用中配置。",
         "video_asr_audio_invalid": "待转写音频格式或分片大小不符合要求，原件保留，请核对后恢复。",
         "video_asr_api_failed": "音频转写 API 未完成，成功片段和已有费用保留，请核对后恢复。",
+    }
+)
+
+MESSAGES.update(
+    {
+        "intake_video_source_timeout": "视频短链连接超时，可明确重试；尚未提取视频或保存笔记。",
+        "intake_video_source_dns_failed": "视频短链域名解析失败，可明确重试。",
+        "intake_video_source_tls_interrupted": "视频短链安全连接中断，可明确重试。",
+        "intake_video_source_connection_interrupted": "视频短链连接中断，可明确重试。",
+        "intake_video_source_certificate_invalid": (
+            "视频短链证书校验失败，请检查系统时间及网络证书。"
+        ),
+        "intake_video_refresh_not_safe": "任务已开始提取，请沿用原快照恢复；旧产物和调用记录保留。",
+    }
+)
+
+MESSAGES["video_skill_note_output_truncated"] = (
+    "视频转写和画面结果已保留；笔记生成达到模型输出上限，尚未保存笔记。"
+    "请明确确认新的笔记生成尝试；不会重新下载、转写或分析已完成画面。"
+)
+
+MESSAGES["video_skill_note_context_exceeded"] = (
+    "视频转写和画面结果已保留；笔记生成超出预留上下文容量，尚未保存笔记。"
+    "请核对配置后明确确认新的笔记生成尝试；既有调用费用及完成的提取结果保留。"
+)
+
+MESSAGES.update(
+    {
+        "video_skill_visual_output_truncated": (
+            "图片模型达到输出上限，尚未返回完整分析；已完成帧保留，可恢复失败帧。笔记尚未保存。"
+        ),
+        "video_skill_visual_response_empty": (
+            "图片模型未返回分析内容；已完成帧保留，可明确恢复。笔记尚未保存。"
+        ),
+    }
+)
+
+MESSAGES.update(
+    {
+        "video_skill_call_limit_reached": (
+            "本次恢复的模型调用额度已用完，处理已暂停；已有结果保留，笔记尚未保存。"
+        ),
+        "video_skill_call_allowance_invalid": (
+            "恢复调用上限必须是0至1000的整数，且仅适用于视频任务。"
+        ),
+        "video_skill_token_budget_exhausted": (
+            "本视频剩余 Token 预算不足以下一次调用预留，已暂停；"
+            "历史消耗和已有结果保留，笔记尚未保存。"
+        ),
+        "video_skill_token_budget_invalid": "视频 Token 总上限必须是0至1,000,000,000的整数。",
+        "video_skill_recovery_already_queued": "此视频恢复已在排队或执行，请等待当前尝试结束。",
     }
 )

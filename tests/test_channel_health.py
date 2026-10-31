@@ -203,3 +203,53 @@ def test_model_mode_health_uses_current_default_not_legacy_route(
     assert result["transport"] == "connected"
     assert result["capabilities"]["query"]["available"] == (model_error is None)
     assert result["capabilities"]["query"]["reason"] == model_error
+
+
+@pytest.mark.parametrize(
+    ("failure", "reason"),
+    [
+        ("cloud_item_pending_stale_or_conflicted", "channel_cloud_not_ready"),
+        ("cloud_status_check_timeout", "channel_cloud_check_timeout"),
+        ("unrecognized private path", "channel_vault_unavailable"),
+    ],
+)
+def test_unavailable_vault_keeps_http_status_observable_and_reads_blocked(
+    http, config, channel, monkeypatch, failure, reason
+):
+    from fiber_bundle import vaults
+    from fiber_bundle.channels import query_scope
+    from fiber_bundle.config import IntegrityError
+
+    current = bind(config, channel[0])
+
+    def unavailable(*args):
+        raise IntegrityError(failure)
+
+    monkeypatch.setattr(vaults, "checked_vault", unavailable)
+    home = store.home(config, current["id"])
+    with feishu_runtime.Instance(home) as instance:
+        instance.status("connected", {})
+        feishu_runtime.write(
+            home / "channel-status.json",
+            {
+                "instance_id": instance.identity,
+                "revision": current["revision"],
+                "nonce": "synthetic",
+                "state": "query_ready",
+                "platform": "feishu",
+            },
+        )
+        response = http.get("/admin/channels/overview")
+        assert response.status_code == 200
+        result = next(c for c in response.json()["channels"] if c["id"] == current["id"])
+        assert result["transport"] == "connected"
+        assert result["capabilities"]["query"] == {
+            "enabled": True,
+            "available": False,
+            "reason": reason,
+        }
+        assert result["query_scope"]["vaults"][0]["reason"] == reason
+        assert "unrecognized private path" not in response.text
+        with database.connect(config.state_root) as main:
+            with pytest.raises(IntegrityError, match=failure):
+                query_scope.checked(config, main, current)

@@ -5,8 +5,8 @@ from typing import Any
 from uuid import uuid4
 
 from ..config import IntegrityError, InvalidInput
+from . import maintenance_admission, manual_resolution, packages, store
 from . import maintenance_plan as plans
-from . import manual_resolution, packages, store
 
 
 def submit(
@@ -18,8 +18,12 @@ def submit(
     new_mocs: Any = None,
     *,
     recovery: Any = None,
+    unavailable_action: str = "moc_only",
 ) -> Any:
+    if unavailable_action not in {"moc_only", "defer_links"}:
+        raise InvalidInput("maintenance_unavailable_action_invalid")
     es, ms, fixed = plans.snapshot(config, db, client, vault, mode)
+    fixed["unavailable_action"] = unavailable_action
     fresh = plans.virtual_mocs(vault, fixed["save_policy"]["settings"], ms, new_mocs or [])
     context = plans.plan_context(config, vault, ms + fresh)
     root, allowed = packages.context(config, db, client, vault, write=True)
@@ -119,6 +123,8 @@ def validate(config: Any, db: Any, job: Any, *, sources: bool = True) -> Any:
             raise IntegrityError("maintenance_authorization_or_policy_changed")
         return [], []
     es, ms, fixed = plans.snapshot(config, db, job["client_id"], job["vault_id"], job["mode"])
+    if "unavailable_action" in job["fixed"]:
+        fixed["unavailable_action"] = job["fixed"]["unavailable_action"]
     if fixed != job["fixed"]:
         raise IntegrityError("maintenance_authorization_or_policy_changed")
     if sources:
@@ -152,15 +158,22 @@ def action(config: Any, db: Any, job: Any, operation: str, expected: str | None)
             raise InvalidInput("organization_execution_pause_required")
         execution_control.request(config, job)
         return job
+    if operation == "finish_preview":
+        return {**job, "close_preview": maintenance_admission.close_evidence(config, db, job)}
+    if operation == "finish":
+        return maintenance_admission.close(config, db, job, expected)
+    if job["state"] == "closed":
+        raise InvalidInput("maintenance_not_resumable")
+    if operation == "resume" and job.get("confirmed"):
+        if maintenance_admission.hold(config, job):
+            return job
+    if operation == "confirm" and job.get("confirmed") and expected == job.get("confirmed_sha256"):
+        return job
     if operation == "recover_cache":
         from . import cache_recovery
 
         return cache_recovery.submit(config, db, job)
-    if (
-        operation == "resume"
-        and job.get("index_state") == "failed"
-        and job["state"] in {"completed", "partial"}
-    ):
+    if operation == "resume" and job.get("index_state") == "failed" and job["state"] == "completed":
         job["index_state"] = "pending"
         job.pop("index_error", None)
         store.put(config, "jobs", job["id"], job["vault_id"], job)
@@ -176,10 +189,28 @@ def action(config: Any, db: Any, job: Any, operation: str, expected: str | None)
             or expected != plans.seal(job)
         ):
             raise InvalidInput("maintenance_preview_confirmation_required")
+        if maintenance_admission.hold(config, job, preview=True):
+            return job
         from .maintenance_timing import measure
 
         with measure(job, "confirmation_check"):
             validate(config, db, job)
+        from ..partial_notes import for_job as read_omissions
+
+        read_omissions(job)  # Reject truncated or invalid omission scope before any write.
+        if (
+            job["fixed"].get("coverage")
+            and any(i["target"] for i in job["items"])
+            and job["fixed"].get("unavailable_action") != "defer_links"
+        ):
+            # Moving files also rewrites inbound links. Unknown source bodies must not
+            # silently disappear from that proof or fail after memberships were written.
+            from .catalog_inventory import Unavailable
+
+            raise Unavailable(
+                "organization_archive_scope_incomplete",
+                {i["path"]: i["reason"] for i in job["fixed"]["coverage"]["unavailable"]},
+            )
         from .maintenance_moc_recovery import preflight
 
         preflight(config, db, job)
@@ -243,12 +274,22 @@ def run(config: Any, db: Any, job: Any) -> Any:
         return job
     if not job["confirmed"]:
         raise InvalidInput("maintenance_preview_confirmation_required")
+    if maintenance_admission.hold(config, job):
+        return job
     from .maintenance_apply import run as apply
 
     return apply(config, db, job)
 
 
-def public(job: Any, *, config: Any = None, db: Any = None) -> Any:
+def public(
+    job: Any,
+    *,
+    config: Any = None,
+    db: Any = None,
+    admission: Any = None,
+    membership_observation: Any = None,
+    validate_preview: bool = True,
+) -> Any:
     if config is not None:
         from .manual_resolution import project
 
@@ -264,12 +305,28 @@ def public(job: Any, *, config: Any = None, db: Any = None) -> Any:
         "analysis_history",
     }
     value = {k: v for k, v in job.items() if k not in hidden | {"expires_at"}}
+    if job["fixed"].get("coverage"):
+        value["coverage"] = job["fixed"]["coverage"]
+        value["application_blocked"] = (
+            "organization_archive_scope_incomplete"
+            if any(i["target"] for i in job["items"])
+            and job["fixed"].get("unavailable_action") != "defer_links"
+            else None
+        )
+    value["unavailable_action"] = job["fixed"].get("unavailable_action", "legacy")
+    value["deferred_archives"] = sum(bool(i.get("deferred_target")) for i in job["items"])
+    value["links_pending"] = any(i.get("links_pending") for i in job["items"])
     if config is not None:
         from .execution_control import requested
 
         value["pause_requested"] = requested(config, job)
+        value["blocking_task"] = maintenance_admission.blocker(config, job, admission=admission)
+    from .maintenance_waiting import pending_sources
 
-    if config is not None and db is not None and job["state"] == "preview":
+    value["waiting_sources"] = pending_sources(job)
+    value["archive_mode"] = job["fixed"]["save_policy"]["settings"].get("moc_archive_mode", "off")
+
+    if config is not None and db is not None and validate_preview and job["state"] == "preview":
         from .preview_validity import status
 
         value["preview_validity"] = status(config, db, job)
@@ -277,5 +334,11 @@ def public(job: Any, *, config: Any = None, db: Any = None) -> Any:
         {k: v for k, v in i.items() if k not in {"source", "decisions", "fingerprint", "intent"}}
         for i in job["items"]
     ]
+    if config is not None and db is not None:
+        from .maintenance_membership_validation import Observation
+
+        observation = membership_observation or Observation(config, db, [job])
+        for item in value["items"]:
+            item["membership_observation"] = observation.project(item)
     value["new_mocs"] = [{k: m[k] for k in ("id", "path", "title")} for m in job["new_mocs"]]
     return value

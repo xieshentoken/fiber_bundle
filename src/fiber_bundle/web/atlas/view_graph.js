@@ -1,5 +1,7 @@
 // Links & MOC: pick notes → bounded analysis task → review suggestions → MOC write-back.
 // Suggestions help find material; accepting one never verifies facts.
+import { loadGraphScope } from "../knowledge_graph_loading.js";
+import { coverageNotice } from "../organization_coverage.js";
 import { createGraphSetup } from "../knowledge_graph_setup.js";
 import { createOrganizationView } from "../organization.js";
 import { featureControls } from "./feature_controls.js";
@@ -253,6 +255,7 @@ export function createView(ctx) {
     filter = "moc",
     mode = "list",
     fixedScope = null,
+    notesCoverage = null,
     notesData = [];
   const selected = new Map();
   const pendingStarts = new Set();
@@ -491,6 +494,10 @@ export function createView(ctx) {
     );
     clear(
       notesHost,
+      coverageNotice(notesCoverage, "atlas-notes-coverage", false, {
+        scope: scope(),
+        api: ctx.api.organization,
+      }),
       h("p.a-subtle", t("notesHelp")),
       h(
         "div.a-toolbar",
@@ -886,6 +893,7 @@ export function createView(ctx) {
     selected.clear();
     pendingStarts.clear();
     notesData = [];
+    notesCoverage = null;
     notesHost.replaceChildren();
     jobsHost.replaceChildren();
     suggestionsHost.replaceChildren();
@@ -925,11 +933,8 @@ export function createView(ctx) {
     try {
       organizationReadError = null;
       const organizationRead = organization.refresh();
-      const [notes, suggestions, tasks] = await Promise.all([
-        graph.notes(fixed.client_id, fixed.vault_id),
-        graph.suggestions(fixed.client_id, fixed.vault_id),
-        graph.jobs(fixed.client_id, fixed.vault_id),
-      ]);
+      const { notes, coverage, suggestions, tasks, warnings } =
+        await loadGraphScope(graph, fixed);
       await organizationRead;
       if (revision !== epoch) return;
       if (
@@ -950,10 +955,11 @@ export function createView(ctx) {
       fixedScope = fixed;
       listing = suggestions;
       notesData = notes;
+      notesCoverage = coverage;
       if (organizationReadError)
         showRecovery(organizationReadError, "organization");
       else {
-        setup.loaded();
+        setup.loaded(warnings);
         clearRecovery();
       }
       loadReady.hidden = true;

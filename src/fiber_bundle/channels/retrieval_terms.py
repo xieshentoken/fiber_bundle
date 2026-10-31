@@ -12,14 +12,23 @@ CHINESE = re.compile(r"[\u3400-\u9fff]+\Z")
 MAX_ATTEMPTS = 12
 
 
-def authorized_titles(config: Any, db: Any, channel: Any) -> list[str]:
+def authorized_titles(config: Any, db: Any, channel: Any, snapshot: Any = None) -> list[str]:
     from .. import note_search_inventory
     from . import query_scope
 
     titles: list[str] = []
     for vault in query_scope.checked(config, db, channel):
-        inventory = note_search_inventory.read(config, db, vault, selected=set())
-        titles.extend(fold(note.title[:200]) for note in inventory.notes)
+        if snapshot is not None:
+            titles.extend(fold(title[:200]) for title in snapshot.titles(vault))
+        else:
+            inventory = note_search_inventory.read(config, db, vault, selected=set())
+            titles.extend(fold(note.title[:200]) for note in inventory.notes)
+        from ..organization import packages
+
+        titles.extend(
+            fold(p["title"][:200])
+            for p in packages.listing(config, db, channel["value"]["client_id"], vault["id"])
+        )
     return titles
 
 

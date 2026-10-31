@@ -34,6 +34,7 @@ def snapshot(
     include: list[str] | None = None,
     exclude: list[str] | None = None,
     scope_packages: bool = False,
+    partial: bool = False,
 ) -> Any:
     root, allowed = packages.context(config, db, client, vault)
     row = auth.grant(db, client, vault, "query")
@@ -59,9 +60,15 @@ def snapshot(
             }
         )
         row = cast(sqlite3.Row, narrowed)
-    inventory = note_inventory.read(
-        config, db, row, exclude_path=lambda path: text_features.excluded(path, settings)
-    )
+    coverage: dict[str, Any] = {"complete": True, "unavailable_count": 0, "unavailable": []}
+    if partial:
+        from . import catalog_inventory
+
+        inventory, coverage = catalog_inventory.read(config, db, row, settings)
+    else:
+        inventory = note_inventory.read(
+            config, db, row, exclude_path=lambda path: text_features.excluded(path, settings)
+        )
     bindings = moc_registration.bindings(config, vault)
     records = note_placement.records(config, vault)
     mocs = []
@@ -122,6 +129,7 @@ def snapshot(
                 "version": note.sha256,
             }
         )
+    package_errors = []
     for item in packages.listing(config, db, client, vault):
         if scope_packages:
             from ..vault_scope import inside
@@ -132,9 +140,13 @@ def snapshot(
                 continue
         try:
             module = packages.load(config, db, client, item["id"], item["version"], text_only=True)
-        except (StorageError, OSError):
+        except (StorageError, OSError) as error:
             # Retain the registered version; the Book scanner reports the broken package.
             # One incomplete copy must not take the ordinary-note workspace down.
+            if partial:
+                from ..vault_sync.problems import reason
+
+                package_errors.append({"path": item["path"], "reason": reason(error)})
             continue
         features = text_features.expert(module)
         entities.append(
@@ -220,6 +232,14 @@ def snapshot(
         model = model_review.route(config, db, vault).digest
     except InvalidInput:
         pass
+    if package_errors:
+        coverage = {
+            "complete": False,
+            "unavailable_count": coverage["unavailable_count"] + len(package_errors),
+            "unavailable": sorted(
+                coverage["unavailable"] + package_errors, key=lambda item: item["path"]
+            )[:100],
+        }
     return (
         entities,
         mocs,
@@ -228,6 +248,7 @@ def snapshot(
             "scope": allowed.wire(),
             "semantic_policy": graph.digest if graph else None,
             "model_policy": model,
+            **({"coverage": coverage} if partial else {}),
         },
     )
 

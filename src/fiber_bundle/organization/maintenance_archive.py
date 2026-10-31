@@ -11,9 +11,10 @@ from .. import (
     auth,
     moc_placement_projection,
     note_identity_store,
-    note_inventory,
     note_placement,
+    partial_notes,
     publication_file_io,
+    publication_location_selection,
 )
 from .. import (
     note_placement_execution as execution,
@@ -37,7 +38,9 @@ def prepare(config: Any, db: Any, job: Any, item: Any) -> str:
     source, target = item["path"], item["target"]
     if not target or not allowed.allows(target) or (root / target).exists():
         raise IntegrityError("maintenance_archive_target_conflict")
-    inventory = note_inventory.read(config, db, auth.grant(db, client, vault, "query"))
+    inventory = partial_notes.read(
+        config, db, auth.grant(db, client, vault, "query"), partial_notes.for_job(job)
+    )
     if item["kind"] == "expert":
         package = store.get(config, "packages", item["entity"].removeprefix("expert:"))
         if package is None:
@@ -93,6 +96,9 @@ def prepare(config: Any, db: Any, job: Any, item: Any) -> str:
             mid: asdict(r) for mid, r in note_placement.records(config, vault).items() if r
         },
     }
+    from .maintenance_deferred_links import attach
+
+    attach(config, db, job, value)
     db.execute(
         "INSERT INTO vault_operations VALUES(?,?,?,'prepared',?,?,?)",
         (operation, vault, "maintenance_archive", canonical(value), time.time(), time.time()),
@@ -103,11 +109,7 @@ def prepare(config: Any, db: Any, job: Any, item: Any) -> str:
 def apply(config: Any, db: Any, job: Any, item: Any) -> None:
     operation = item.get("archive_operation")
     if not operation:
-        locations = [
-            r
-            for r in note_placement.locations(db, job["vault_id"])
-            if r and (r["entry_note_path"] == item["path"] or r["package_root"] == item["path"])
-        ]
+        locations = publication_location_selection.at_path(db, job["vault_id"], item["path"])
         flat_maintenance = (
             not job["fixed"]["save_policy"]["publication_ready"]
             and item["kind"] == "note"
@@ -120,8 +122,11 @@ def apply(config: Any, db: Any, job: Any, item: Any) -> None:
         )
         if locations and not flat_maintenance:
             location = locations[0]
-            inventory = note_inventory.read(
-                config, db, auth.grant(db, job["client_id"], job["vault_id"], "query")
+            inventory = partial_notes.read(
+                config,
+                db,
+                auth.grant(db, job["client_id"], job["vault_id"], "query"),
+                partial_notes.for_job(job),
             )
             entry = next(
                 n for n in inventory.notes if n.relative_path == location["entry_note_path"]
@@ -138,7 +143,16 @@ def apply(config: Any, db: Any, job: Any, item: Any) -> None:
                 action="expert_archive" if item["kind"] == "expert" else "archive",
                 destination=str(PurePosixPath(item["target"]).parent),
                 inventory=inventory,
+                read_omissions=partial_notes.for_job(job),
             )
+            from .maintenance_deferred_links import attach
+
+            row = db.execute(
+                "SELECT payload FROM vault_operations WHERE id=?", (packet["operation_id"],)
+            ).fetchone()
+            value = json.loads(row[0])
+            attach(config, db, job, value)
+            execution.persist(db, packet["operation_id"], value, "prepared")
             item.update(archive_operation=packet["operation_id"], archive_kind="managed")
             store.put(config, "jobs", job["id"], job["vault_id"], job)
             operation = item["archive_operation"]
@@ -158,6 +172,7 @@ def apply(config: Any, db: Any, job: Any, item: Any) -> None:
             operation,
             reconcile=row["state"] not in {"prepared", "completed"},
         )
+        item["links_pending"] = bool(json.loads(payload).get("deferred_links"))
         item["phase"] = "archived"
         return
     if not operation:
@@ -206,4 +221,138 @@ def apply(config: Any, db: Any, job: Any, item: Any) -> None:
     moc_placement_projection.finalize(config, db, operation, value, root)
     if value["package"]:
         packages.register(config, db, job["client_id"], job["vault_id"], value["target_root"])
+    item["links_pending"] = bool(value.get("deferred_links"))
     item["phase"] = "archived"
+
+
+def projection_specs(db: Any, job: Any, item: Any) -> list[Any]:
+    operation = item.get("archive_operation")
+    if not operation:
+        return []
+    row = db.execute(
+        "SELECT payload FROM vault_operations WHERE id=? AND vault_id=?",
+        (operation, job["vault_id"]),
+    ).fetchone()
+    if row is None:
+        raise IntegrityError("maintenance_archive_journal_missing")
+    value = json.loads(row["payload"])
+    if value.get("client_id") != job["client_id"] or value.get("vault_id") != job["vault_id"]:
+        raise IntegrityError("maintenance_archive_binding_changed")
+    specs = value.get("moc_file_projections", [])
+    if not isinstance(specs, list):
+        raise IntegrityError("maintenance_archive_binding_changed")
+    return specs
+
+
+def own_projection(db: Any, job: Any, item: Any, mid: str, current: Any, expected: Any) -> bool:
+    """Recognize only this archive's exact projection, including interrupted exchange."""
+    return any(
+        spec["moc_id"] == mid
+        and expected["sha256"] in {spec["before_sha256"], spec["after_sha256"]}
+        and current["sha256"] == spec["after_sha256"]
+        and expected["revision"] == current["revision"] == spec["revision"]
+        and expected["members"] == current["members"]
+        for spec in projection_specs(db, job, item)
+    )
+
+
+def refresh_expected(config: Any, db: Any, job: Any, item: Any) -> None:
+    """Advance only Maps proved by the completed operation; never adopt other edits."""
+    from .maintenance_apply import observe
+
+    changes = {}
+    for spec in projection_specs(db, job, item):
+        mid = spec["moc_id"]
+        expected = job["moc_expected"].get(mid)
+        if expected is None:
+            continue
+        current = observe(config, db, job, mid)
+        if not own_projection(db, job, item, mid, current, expected):
+            raise IntegrityError("maintenance_membership_baseline_changed")
+        changes[mid] = current
+    job["moc_expected"].update(changes)
+
+
+def moved_source(
+    config: Any, db: Any, client: str, vault: str, item: Any
+) -> tuple[str, bytes] | None:
+    """Read an interrupted move's target only with its exact source/exchange evidence."""
+    operation = item.get("archive_operation")
+    if not operation:
+        return None
+    row = db.execute(
+        "SELECT payload FROM vault_operations WHERE id=? AND vault_id=?", (operation, vault)
+    ).fetchone()
+    if row is None:
+        raise IntegrityError("maintenance_archive_journal_missing")
+    value = json.loads(row["payload"])
+    source = item["path"]
+    target = value.get("moves", {}).get(source)
+    if (
+        value.get("client_id") != client
+        or value.get("vault_id") != vault
+        or not target
+        or target != item.get("target")
+        or source not in value.get("source_files", {})
+    ):
+        raise IntegrityError("maintenance_archive_binding_changed")
+    root, allowed = packages.context(config, db, client, vault)
+    if not allowed.allows(source) or not allowed.allows(target):
+        raise IntegrityError("maintenance_archive_scope_changed")
+    if (root / source).exists() or (root / source).is_symlink():
+        raise IntegrityError("maintenance_archive_target_conflict")
+    evidence = value["source_files"][source]
+    update = next((u for u in value.get("updates", []) if u["path"] == source), None)
+    expected_sha = update["after_sha256"] if update else evidence["sha256"]
+    expected_key = (
+        value.get("exchanges", {}).get(source, {}).get("after_key")
+        if update
+        else evidence["file_key"][:2]
+    )
+    raw, key = publication_file_io.read(root, target)
+    if digest(raw) != expected_sha or key[:2] != expected_key:
+        raise IntegrityError("maintenance_note_changed")
+    return target, raw
+
+
+def own_update(
+    config: Any, db: Any, job: Any, item: Any, mid: str, current: Any, expected: Any
+) -> bool:
+    """Allow this interrupted archive's proven human-link exchange, without rebasing."""
+    operation = item.get("archive_operation")
+    if not operation or item.get("phase") != "members_done":
+        return False
+    row = db.execute(
+        "SELECT state,payload FROM vault_operations WHERE id=? AND vault_id=?",
+        (operation, job["vault_id"]),
+    ).fetchone()
+    if row is None or row["state"] not in {"applying", "reconcile", "completed"}:
+        return False
+    value = json.loads(row["payload"])
+    if (
+        value.get("client_id") != job["client_id"]
+        or value.get("vault_id") != job["vault_id"]
+        or value.get("moves", {}).get(item["path"]) != item.get("target")
+    ):
+        return False
+    moc = next((m for m in job["mocs"] if m["id"] == mid), None)
+    if moc is None:
+        return False
+    path = moc["path"]
+    update = next((u for u in value.get("updates", []) if u["path"] == path), None)
+    exchange = value.get("exchanges", {}).get(path)
+    if (
+        not update
+        or not exchange
+        or update["target"] != path
+        or expected["sha256"] != update["before_sha256"]
+        or current["sha256"] != update["after_sha256"]
+        or expected["revision"] != current["revision"]
+        or expected["members"] != current["members"]
+    ):
+        return False
+    root, allowed = packages.context(config, db, job["client_id"], job["vault_id"])
+    if not allowed.allows(path):
+        return False
+    raw, key = publication_file_io.read(root, path)
+    return bool(digest(raw) == update["after_sha256"] and key[:2] == exchange["after_key"])

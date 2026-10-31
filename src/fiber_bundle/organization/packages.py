@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from collections.abc import Callable
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -26,12 +27,12 @@ def context(
     if write:
         auth.grant(db, client, vault, "add")
     root, allowed, _ = vault_directories.vault_root(config, db, vault)
-    # The copied L2 vault inherits the same user protection as its original.
-    if root.name == "L2":
+    # The copied example vault inherits the same user protection as its original.
+    if root.name == "ExampleVaultRoot":
         from dataclasses import replace
 
         allowed = replace(
-            allowed, exclude=tuple(sorted(set(allowed.exclude) | {"01-Projects/GF_supply_chain"}))
+            allowed, exclude=tuple(sorted(set(allowed.exclude) | {"01-Projects/protected-project"}))
         )
     return root, allowed
 
@@ -45,7 +46,20 @@ def scoped_read(root: Any, allowed: Any, path: Any) -> Any:
 @audited
 def inspect(config: Config, db: sqlite3.Connection, client: str, vault: str, relative: str) -> Any:
     root, allowed = context(config, db, client, vault, write=True)
-    raw = scoped_read(root, allowed, relative + "/manifest.json")
+    info = root.stat()
+    return inspect_reader(
+        lambda name: scoped_read(root, allowed, relative + "/" + name),
+        vault,
+        relative,
+        [info.st_dev, info.st_ino],
+    )
+
+
+def inspect_reader(
+    reader: Callable[[str], bytes], vault: str, relative: str, vault_key: list[int]
+) -> Any:
+    """Shared protocol validation for a scoped Vault or explicitly selected external Draft."""
+    raw = reader("manifest.json")
     try:
         manifest = json.loads(raw)
         package = manifest["package"]
@@ -61,11 +75,11 @@ def inspect(config: Config, db: sqlite3.Connection, client: str, vault: str, rel
             raise ValueError()
         files = {"manifest.json": {"sha256": digest(raw), "byte_count": len(raw)}}
         for name, expected in declared.items():
-            data = scoped_read(root, allowed, relative + "/" + name)
+            data = reader(name)
             if digest(data) != expected:
                 raise IntegrityError("expert_package_member_changed")
             files[name] = {"sha256": expected, "byte_count": len(data)}
-        catalog = json.loads(scoped_read(root, allowed, relative + "/" + CATALOG))
+        catalog = json.loads(reader(CATALOG))
         if catalog.get("schema_version") not in {
             "tkc.runtime-catalog/v0.3",
             "tkc.runtime-catalog/v0.2",
@@ -78,7 +92,7 @@ def inspect(config: Config, db: sqlite3.Connection, client: str, vault: str, rel
     except (KeyError, TypeError, ValueError, AttributeError, RecursionError) as exc:
         raise InvalidInput("expert_package_protocol_incompatible") from exc
     text_snapshot = {
-        name: scoped_read(root, allowed, relative + "/" + name).decode("utf-8")
+        name: reader(name).decode("utf-8")
         for name in {
             "manifest.json",
             CATALOG,
@@ -96,7 +110,6 @@ def inspect(config: Config, db: sqlite3.Connection, client: str, vault: str, rel
             "fiber-external-expert:" + vault + ":" + digest(canonical(lineage).encode()),
         )
     )
-    info = root.stat()
     return {
         "id": identity,
         "module_id": "expert:" + identity,
@@ -110,7 +123,7 @@ def inspect(config: Config, db: sqlite3.Connection, client: str, vault: str, rel
         "files": files,
         "manifest": manifest,
         "text_snapshot": text_snapshot,
-        "vault_key": [info.st_dev, info.st_ino],
+        "vault_key": vault_key,
         "kind": "expert",
         "artifact_stage": "draft",
         "review_state": "deferred",
@@ -124,7 +137,15 @@ def register(config: Config, db: sqlite3.Connection, client: str, vault: str, re
     return commit(config, db, client, vault, value)
 
 
-def commit(config: Config, db: sqlite3.Connection, client: str, vault: str, value: Any) -> Any:
+def commit(
+    config: Config,
+    db: sqlite3.Connection,
+    client: str,
+    vault: str,
+    value: Any,
+    *,
+    notify: bool = True,
+) -> Any:
     """Commit an inspected snapshot; caller rechecks files when inspection was outside lock."""
     context(config, db, client, vault, write=True)
     relative = value["path"]
@@ -143,9 +164,12 @@ def commit(config: Config, db: sqlite3.Connection, client: str, vault: str, valu
     if previous != value:
         store.put(config, "versions", value["id"] + ":" + value["version"], vault, value)
         store.put(config, "packages", value["id"], vault, value)
-        from .jobs import notify
+        from .draft_import_tasks import pending as pending_imports
 
-        notify(config, vault, "package", value["path"], value["version"])
+        if notify and value["module_id"] not in pending_imports(config, vault):
+            from .jobs import notify as notify_package
+
+            notify_package(config, vault, "package", value["path"], value["version"])
     return public(value)
 
 

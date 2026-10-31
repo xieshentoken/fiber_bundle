@@ -31,7 +31,16 @@ def read(config: Config, vault_id: str) -> dict[str, Any] | None:
         or value.get("schema") != "note-index-update/v1"
         or value.get("vault_id") != vault_id
         or value.get("state")
-        not in {"pending", "building", "ready", "failed", "interrupted", "stale"}
+        not in {
+            "pending",
+            "building",
+            "ready",
+            "partial",
+            "waiting",
+            "failed",
+            "interrupted",
+            "stale",
+        }
     ):
         raise IntegrityError("note index update record")
     identifier(value["id"])
@@ -78,7 +87,9 @@ def record(
         "schema": "note-index-update/v1",
         "vault_id": vault_id,
         "id": previous["id"]
-        if state != "pending" and previous and previous["state"] in {"pending", "building"}
+        if state != "pending"
+        and previous
+        and previous["state"] in {"pending", "building", "waiting"}
         else str(uuid4()),
         "state": state,
         "reason": reason,

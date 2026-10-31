@@ -15,7 +15,6 @@ from . import (
     file_exchange,
     moc_store,
     note_identity_store,
-    note_inventory,
     note_placement,
     publication_links,
     publication_locations,
@@ -201,17 +200,30 @@ def complete(
     updates = {u["path"]: u for u in value["updates"]}
     candidates = list(value["all_paths"]) if "all_paths" in value else []
     # Baseline hashes follow only controlled link rewrites; human differences remain revisions.
-    from .vault_scope import entries, for_vault
+    from .vault_scope import entries, for_vault, relative_path
 
     scope = for_vault(root, auth.grant(db, value["client_id"], value["vault_id"], "query"))
     import stat
 
+    from .partial_notes import validate as validate_omissions
+
+    omissions = validate_omissions(value.get("read_omissions", {}))
+    if any(not scope.allows(path) for path in omissions):
+        raise IntegrityError("partial_note_scope_changed")
+    candidates.extend(omissions)
     candidates.extend(
-        p.relative_to(root).as_posix() for p, i in entries(root, scope) if stat.S_ISREG(i.st_mode)
+        relative_path(root, p)
+        for p, i in entries(
+            root, scope, file_filter=lambda p: relative_path(root, p) not in omissions
+        )
+        if stat.S_ISREG(i.st_mode)
     )
     candidates.extend(value["moves"])
+    from . import publication_location_selection
+
+    changed_paths = set(updates) | {old for old, new in value["moves"].items() if old != new}
     with database.transaction(db):
-        for row in note_placement.locations(db, value["vault_id"]):
+        for row in publication_location_selection.affected(db, value["vault_id"], changed_paths):
             if row is None:
                 continue
             plan = row["plan"]
@@ -307,10 +319,13 @@ def complete(
                 after,
                 expected_revision=before["revision"],
             )
-        persist(db, operation, value, "completed")
-    from .note_search_jobs import record
+        # MOC projection evidence is finalized by the caller. A crash between
+        # metadata commit and that journal must remain explicitly recoverable.
+        value["metadata_committed"] = True
+        persist(db, operation, value, "applying")
+    from .note_search_jobs import changed as mark_index_changed
 
-    record(config, value["vault_id"], "pending", reason="document_publication")
+    mark_index_changed(config, value["vault_id"])
 
 
 def apply(
@@ -348,7 +363,11 @@ def apply(
     if row["state"] == "prepared":
         if time.time() > value["expires_at"]:
             raise IntegrityError("placement_preview_expired")
-        inv = note_inventory.read(config, db, auth.grant(db, client, vault, "query"))
+        from .partial_notes import read as read_inventory
+
+        inv = read_inventory(
+            config, db, auth.grant(db, client, vault, "query"), value.get("read_omissions")
+        )
         observed_notes = [
             (n.relative_path, n.sha256, n.identity, n.publication_id, list(n.file_key or ()))
             for n in inv.notes
@@ -389,6 +408,7 @@ def apply(
         from .moc_placement_projection import finalize
 
         finalize(config, db, operation, value, root)
+        persist(db, operation, value, "completed")
     except BaseException:
         persist(db, operation, value, "reconcile")
         raise

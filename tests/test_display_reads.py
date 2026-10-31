@@ -106,7 +106,7 @@ def test_unauthenticated_display_never_computes(config, store):
     assert not called
 
 
-def test_batch_checks_are_request_local_and_writes_still_check_each_file(tmp_path, monkeypatch):
+def test_batch_checks_are_local_and_independent_body_reads_keep_file_guards(tmp_path, monkeypatch):
     root = tmp_path / "Mobile Documents/vault"
     root.mkdir(parents=True)
     for i in range(120):
@@ -141,6 +141,12 @@ def test_batch_checks_are_request_local_and_writes_still_check_each_file(tmp_pat
         assert calls == ["--items"]
     calls.clear()
     assert len(read()) == 120
+    assert calls == ["--items", "--items"]  # Fresh before and after this one inventory.
+    calls.clear()
+    # Batching belongs to the inventory traversal, never to independent file
+    # operations. Each subsequent body read still performs its own native guard.
+    for i in range(120):
+        assert note_index.read_note(root, f"{i}.md", 1024).text == "# synthetic"
     assert calls == ["--file"] * 120
 
 
@@ -208,24 +214,63 @@ def test_live_moc_and_index_changes_reject_results_but_build_staging_does_not(
         assert b"moc-result" not in b"".join(m.get("body", b"") for m in result)
 
 
-@pytest.mark.parametrize('change', ['progress', 'scan', 'permission_generation', 'decision'])
+@pytest.mark.parametrize("change", ["progress", "scan", "permission_generation", "decision"])
 def test_catalog_ignores_progress_churn_but_rejects_business_changes(config, store, change):
     from fiber_bundle.organization import store as ledger
+
     token = login(config)
-    job = {'id':'synthetic-job','generation':1,'plan_sha256':'plan','confirmed':True,'completed':0}
+    job = {
+        "id": "synthetic-job",
+        "generation": 1,
+        "plan_sha256": "plan",
+        "confirmed": True,
+        "completed": 0,
+    }
     with database.locked(config):
-        ledger.put(config,'jobs',job['id'],'synthetic',job)
+        ledger.put(config, "jobs", job["id"], "synthetic", job)
+
     async def app(scope, receive, send):
         with database.locked(config):
-            if change == 'progress':
-                ledger.put(config,'jobs',job['id'],'synthetic',{**job,'completed':1,'activity':{'phase':'unit'}})
-            elif change == 'scan':
-                ledger.put(config,'package_scans','scan','synthetic',{'checked_at':time.time()})
-            elif change == 'permission_generation':
-                ledger.put(config,'jobs',job['id'],'synthetic',{**job,'generation':2})
+            if change == "progress":
+                ledger.put(
+                    config,
+                    "jobs",
+                    job["id"],
+                    "synthetic",
+                    {**job, "completed": 1, "activity": {"phase": "unit"}},
+                )
+            elif change == "scan":
+                ledger.put(
+                    config, "package_scans", "scan", "synthetic", {"checked_at": time.time()}
+                )
+            elif change == "permission_generation":
+                ledger.put(config, "jobs", job["id"], "synthetic", {**job, "generation": 2})
             else:
-                ledger.put(config,'decisions','decision','synthetic',{'state':'pinned'})
-        await send({'type':'http.response.start','status':200,'headers':[]})
-        await send({'type':'http.response.body','body':b'catalog'})
-    result = asyncio.run(call(Guard(app,config,Settings()),request(token)))
-    assert result[0]['status'] == (200 if change in {'progress','scan'} else 503)
+                ledger.put(config, "decisions", "decision", "synthetic", {"state": "pinned"})
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"catalog"})
+
+    result = asyncio.run(call(Guard(app, config, Settings()), request(token)))
+    assert result[0]["status"] == (200 if change in {"progress", "scan"} else 503)
+
+
+@pytest.mark.parametrize("change", ["heartbeat", "generation"])
+def test_observer_heartbeat_does_not_invalidate_display_but_source_change_does(
+    config, store, change
+):
+    from fiber_bundle import vault_scope
+    from fiber_bundle.vault_sync import store as sync
+
+    token = login(config)
+    sync.register(config, "synthetic", "/synthetic", vault_scope.Scope(), "binding")
+
+    async def app(scope, receive, send):
+        with sync.connection(config, write=True) as db:
+            db.execute("UPDATE libraries SET " + change + "=" + change + "+1")
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"index-status"})
+
+    result = asyncio.run(
+        call(Guard(app, config, Settings()), request(token, "/admin/note-index/status"))
+    )
+    assert result[0]["status"] == (200 if change == "heartbeat" else 503)

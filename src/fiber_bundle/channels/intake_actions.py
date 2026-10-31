@@ -118,8 +118,9 @@ def inspect(config: Config, identity: str) -> dict[str, Any]:
         for item in records:
             item["outcome"] = outcome(main, channel, item["batch_id"], item["value"])
             for link in item["value"].get("links", []):
-                link.update(recovery_status(main, link))
-                link["error_message"] = reason_text(link["reason"]) if link.get("reason") else None
+                link.update(recovery_status(main, link, config))
+                code = (link.get("video_progress") or {}).get("failure_code") or link.get("reason")
+                link["error_message"] = reason_text(code) if code else None
     return {
         **view,
         "worker": worker_status(config, channel),

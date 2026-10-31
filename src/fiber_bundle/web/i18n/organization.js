@@ -1,5 +1,164 @@
 // UI message catalog; parameters preserve source data.
 export default {
+  "execution.status.0": ["整理已中断", "Organization interrupted"],
+  "execution.status.1": ["整理已暂停", "Organization paused"],
+  "execution.status.2": [
+    "iCloud 文件版本暂未稳定，当前步骤已停止。",
+    "The iCloud file version is not yet stable. This step stopped.",
+  ],
+  "execution.status.3": [
+    "暂时无法核对 iCloud 元数据，当前步骤已停止。",
+    "iCloud metadata could not be verified. This step stopped.",
+  ],
+  "execution.status.4": [
+    "文件状态在核对期间变化，当前步骤已停止。",
+    "The file changed during verification. This step stopped.",
+  ],
+  "execution.status.5": [
+    "iCloud 存在版本冲突，请先核对文件。",
+    "There is an iCloud version conflict. Review the file first.",
+  ],
+  "execution.status.6": [
+    "文件尚未下载到本机，当前步骤已停止。",
+    "The file is not downloaded locally. This step stopped.",
+  ],
+  "execution.status.7": [
+    "已停止：{p0} 项失败，{p1} 项待处理；不会自动继续。",
+    "Stopped: {p0} failed, {p1} pending. This task will not resume automatically.",
+  ],
+  "execution.status.8": ["中断条目", "Interrupted item"],
+  "execution.status.file": ["核对失败的文件", "File that failed verification"],
+  "execution.status.legacy": [
+    "旧记录未保存具体文件和变化类型；以上为中断时处理的条目。",
+    "This older record does not identify the failed file or change type. The item above was being processed when interrupted.",
+  ],
+  "execution.status.9": [
+    "恢复证据也需核对；已保留主错误和现有文件。",
+    "Recovery evidence also needs review. The original error and existing files are retained.",
+  ],
+  "execution.status.10": ["最后进展：{p0}", "Last progress: {p0}"],
+  "execution.status.11": ["知识库索引：{p0}", "Vault index: {p0}"],
+  "execution.status.12": ["已就绪", "Ready"],
+  "execution.status.13": ["更新中", "Updating"],
+  "execution.status.14": [
+    "等待文件或观察器就绪",
+    "Waiting for files or the observer",
+  ],
+  "execution.status.15": ["部分内容待核对", "Some content needs review"],
+  "execution.status.16": ["需要更新", "Update required"],
+  "execution.status.17": [
+    "索引已在之后恢复；整理任务仍保持原状态。",
+    "The index recovered later. The organization task remains unchanged.",
+  ],
+  "execution.status.18": [
+    "文件同步或版本校验未通过，整理已停止。请核对中断位置后恢复未完成项。",
+    "File sync or version verification failed. Review the interruption before resuming unfinished items.",
+  ],
+  "execution.status.19": [
+    "本次预览跳过 {p0} 项；这是预览时的记录，当前状态可单独检查。",
+    "This preview skipped {p0} items. This is the preview-time record; check current file status separately.",
+  ],
+  "execution.status.20": ["{p0}（检查于 {p1}）", "{p0} (checked at {p1})"],
+
+  "partial.choice": ["存在不可读笔记时", "When notes are unreadable"],
+  "partial.default": [
+    "只挂载 MOC，延后归档（默认）",
+    "Mount MOCs; defer archiving (default)",
+  ],
+  "partial.archive": [
+    "继续归档，保留待核对链接",
+    "Continue archiving; keep links pending verification",
+  ],
+  "partial.risk": [
+    "不可读笔记均跳过。继续归档可能留下旧链接；恢复可读后需预览并确认修复。",
+    "Unreadable notes are skipped. Archiving may leave old links; preview and confirm repairs once notes are readable.",
+  ],
+  "partial.deferred": [
+    "本次挂载 MOC；{p0} 项归档延后，文件保持原位置。",
+    "Mount MOCs now; defer {p0} archives and keep the files in place.",
+  ],
+  "partial.allowed": [
+    "本次允许继续归档，未读笔记的引用保留待核对，不能视为全部链接已验证。",
+    "Archiving is allowed for this task. References in unreadable notes remain unverified.",
+  ],
+  "partial.pending": [
+    "归档已完成，仍有链接待核对。",
+    "Archiving completed; some links still need verification.",
+  ],
+  "partial.preview": ["预览待核对链接", "Preview pending links"],
+  "partial.remaining": [
+    "仍有 {p0} 篇未就绪；不会修改这些文件。",
+    "{p0} notes are still unavailable; these files will not be changed.",
+  ],
+  "partial.current": ["当前内容", "Current content"],
+  "partial.after": ["修复后", "After repair"],
+  "partial.confirm": [
+    "已核对当前内容与路径变化，确认修复这些链接。",
+    "I reviewed the current content and path changes and confirm these link repairs.",
+  ],
+  "partial.apply": ["确认修复链接", "Confirm link repair"],
+  "partial.resume": ["继续核对本次链接修复", "Resume this link repair"],
+  "partial.target": ["归档延后：{p0}", "Archive deferred: {p0}"],
+  "cloud.check": ["检查此文件状态", "Check this file"],
+  "cloud.download": ["下载此文件", "Download this file"],
+  "cloud.finder": ["在 Finder 中定位", "Reveal in Finder"],
+  "cloud.available": [
+    "当前版本已在本机；请重新生成整理预览。",
+    "The current version is local. Create a new organization preview.",
+  ],
+  "cloud.not_requested": [
+    "本地正文未就绪；系统尚未请求下载。",
+    "Local content is unavailable; no download has been requested.",
+  ],
+  "cloud.requested": [
+    "系统已接收下载请求，尚未确认本地正文就绪。",
+    "The download request was accepted; local content is not yet confirmed ready.",
+  ],
+  "cloud.downloading": [
+    "iCloud 正在下载此文件。",
+    "iCloud is downloading this file.",
+  ],
+  "cloud.conflict": [
+    "iCloud 存在版本冲突，请在 Finder 或 Obsidian 中核对。",
+    "iCloud reports a version conflict. Check it in Finder or Obsidian.",
+  ],
+  "cloud.error": [
+    "iCloud 返回下载错误，请在 Finder 中核对同步状态。",
+    "iCloud reports a download error. Check synchronization in Finder.",
+  ],
+  "cloud.unknown": [
+    "系统状态不明；未请求下载。",
+    "System status is unknown; no download was requested.",
+  ],
+
+  "organization.coverage.failed": [
+    "以下资料暂不可用，本次操作尚未完成。",
+    "These items are unavailable. The operation has not completed.",
+  ],
+  "organization.coverage": [
+    "当前可读资料已列出；{p0} 项暂未参与本次读取。",
+    "Locally readable items are listed; {p0} items are unavailable for this read.",
+  ],
+  "organization.coverage.details": [
+    "查看暂不可用的资料",
+    "View unavailable items",
+  ],
+  "organization.coverage.cloud": [
+    "本地内容尚不可读，可检查系统状态或主动下载此文件。",
+    "Local content is unavailable. Check its system status or explicitly download this file.",
+  ],
+  "organization.coverage.changed": [
+    "内容已变化，等待索引更新。",
+    "Content changed; waiting for an index update.",
+  ],
+  "organization.coverage.unknown": [
+    "暂不可读，请核对文件或索引状态。",
+    "Temporarily unreadable. Check the file or index status.",
+  ],
+  "organization.read.paused": [
+    "自动读取已暂停，请手动刷新重试。",
+    "Automatic reads paused. Refresh manually to retry.",
+  ],
   "organization.pause_pending": [
     "暂停请求已接收；当前安全步骤完成后暂停，已完成修改会保留。",
     "Pause requested. Pausing after the current safe step; completed changes are retained.",

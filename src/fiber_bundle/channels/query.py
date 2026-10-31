@@ -15,6 +15,7 @@ from .. import (
 from ..answer_tasks import ScopedNoteAnswerInput
 from ..config import Config, InvalidInput
 from ..inputs import canonical
+from ..search_snapshot import SearchSnapshot
 from . import query_scope, store
 
 PREFIXES = ("查询：", "查询:")
@@ -31,6 +32,9 @@ def evidence(
     channel: dict[str, Any],
     value: str,
     retrieval: str | None = None,
+    *,
+    snapshot: SearchSnapshot | None = None,
+    combine_sources: bool = True,
 ) -> dict[str, Any]:
     store.authorize(config, db, channel)
     selected = query_scope.checked(config, db, channel)
@@ -43,6 +47,8 @@ def evidence(
         retrieval or value[:200],
         [v["id"] for v in selected],
         5,
+        snapshot=snapshot,
+        combine_sources=combine_sources,
     )
     query_scope.annotate(config, db, channel, result)
     return result
@@ -94,11 +100,9 @@ def recheck(
         return
     sources = response.get("sources", [])
     if response.get("retrieval_queries"):
-        from .natural_query import evidence as retrieve
+        from .natural_query import recheck_evidence
 
-        current = retrieve(
-            config, main, channel, response["question"], response["retrieval_queries"]
-        )
+        current = recheck_evidence(config, main, channel, response)
     else:
         current = evidence(
             config,
@@ -107,9 +111,13 @@ def recheck(
             response.get("question", "来源核对"),
             response.get("retrieval_query"),
         )
-    before = [(s["vault_id"], s.get("note_id"), s["sha256"], s["snippet"]) for s in sources]
+    before = [
+        (s["vault_id"], s.get("note_id"), s["sha256"], s["snippet"], s.get("section_path"))
+        for s in sources
+    ]
     after = [
-        (s["vault_id"], s.get("note_id"), s["sha256"], s["snippet"]) for s in current["sources"]
+        (s["vault_id"], s.get("note_id"), s["sha256"], s["snippet"], s.get("section_path"))
+        for s in current["sources"]
     ]
     if before != after or response.get("searched_vault_ids") != [v["id"] for v in selected]:
         raise InvalidInput("channel_source_changed")

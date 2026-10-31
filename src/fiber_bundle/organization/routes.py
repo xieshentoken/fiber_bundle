@@ -46,6 +46,9 @@ class Members(Scope):
 
 def router(config: Config) -> Any:
     routes = APIRouter(prefix="/admin/organization")
+    from .cloud_recovery import register as register_cloud_recovery
+
+    register_cloud_recovery(routes, config)
 
     @routes.get("/progress")
     def task_progress(client_id: str, vault_id: str, request: Request) -> Any:

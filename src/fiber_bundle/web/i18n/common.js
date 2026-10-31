@@ -2,8 +2,8 @@ import { requestErrors } from "../request_errors.js";
 // UI message catalog; parameters preserve source data.
 export default {
   "organization.catalog.wait": [
-    "进度已更新；目录读取暂不可用，稍后自动重试。",
-    "Progress updated; catalog temporarily unavailable. Retrying shortly.",
+    "任务进度可继续更新；目录读取暂不可用，请手动刷新重试。",
+    "Task progress can still update. The catalog is unavailable; refresh manually to retry.",
   ],
   "suppliers.nav": ["供应商信息", "Suppliers"],
   ...Object.fromEntries(

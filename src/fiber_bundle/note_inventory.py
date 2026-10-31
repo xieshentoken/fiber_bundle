@@ -1,10 +1,10 @@
 """Current bounded Vault notes and publication bindings; caller authorizes and holds lock."""
 
-import json
 import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from . import (
     note_identities,
@@ -14,6 +14,7 @@ from . import (
     note_publications,
     vaults,
 )
+from .cloud_observation import retry_read
 from .config import Config, IntegrityError
 from .storage_read_scope import audited
 
@@ -25,9 +26,12 @@ class Inventory:
     publications: dict[str, sqlite3.Row]
     bindings: dict[str, note_publications.Binding]
     locations: dict[str, str]
+    coverage: dict[str, Any] | None = None
+    snapshot_token: str | None = None
 
 
 @audited
+@retry_read
 def read(
     config: Config,
     db: sqlite3.Connection,
@@ -40,10 +44,14 @@ def read(
     on_note: Callable[[note_index.Note], None] | None = None,
     note_loader: Callable[[str, int], note_index.Note] | None = None,
     exclude_path: Callable[[str], bool] | None = None,
+    known_entries: dict[str, tuple[int, int]] | None = None,
+    selected_paths: set[str] | None = None,
+    note_errors: dict[str, str] | None = None,
+    finalizing_operation: str | None = None,
 ) -> Inventory:
     from .note_placement import guard
 
-    guard(db, vault["id"])
+    guard(db, vault["id"], finalizing_operation=finalizing_operation)
     note_migration_store.guard(config, vault["id"])
     root = vaults.checked_vault(config, vault)
     rows = db.execute(
@@ -53,18 +61,14 @@ def read(
     ).fetchall()
     from . import publication_locations
 
-    managed, hidden = publication_locations.inventory(db, vault["id"])
-    mapped_articles = {
-        r[0]
-        for r in db.execute(
-            "SELECT publication_id FROM publication_locations WHERE kind='article' AND vault_id=?",
-            (vault["id"],),
-        )
-    }
+    identities = {p["id"]: p for p in rows if p["state"] == "published"}
+    layout = publication_locations.project_inventory(
+        db, vault["id"], article_ids=identities, include_attachments=True
+    )
     published = {
         p["relative_path"]: p
         for p in rows
-        if p["state"] == "published" and p["id"] not in mapped_articles
+        if p["state"] == "published" and p["id"] not in layout.mapped_articles
     }
     pending_documents = {
         p[0]
@@ -94,8 +98,7 @@ def read(
     from .document_creation_save import inventory_paths
 
     analysis_paths, analysis_published = inventory_paths(db, vault["id"])
-    identities = {p["id"]: p for p in rows if p["state"] == "published"}
-    bindings = {pid: publication_locations.binding(db, p) for pid, p in identities.items()}
+    bindings = {pid: layout.binding(p) for pid, p in identities.items()}
     info = root.stat()
     from .vault_merge_guard import retained_paths
 
@@ -134,7 +137,13 @@ def read(
             raise IntegrityError("published vault identity changed")
     from . import document_parts
 
-    parts = document_parts.bindings(db, vault["id"], root)
+    parts = document_parts.bindings(
+        db,
+        vault["id"],
+        root,
+        body_projections=layout.document_projections,
+        selected_paths=selected_paths,
+    )
     locations: dict[str, str] = {}
     from .attachment_projection import hidden_roots as attachment_roots
     from .organization.packages import roots as expert_roots
@@ -153,24 +162,13 @@ def read(
         note_loader=note_loader,
         exclude_path=exclude_path,
         scope=for_vault(root, vault),
-        managed_entries=managed,
-        hidden_files=hidden | retained,
+        known_entries=known_entries,
+        note_errors=note_errors,
+        managed_entries=layout.managed,
+        hidden_files=layout.hidden | retained,
         hidden_roots=expert_roots(config, vault["id"])
-        | attachment_roots(db, vault["id"])
-        | {
-            json.loads(r[0])["retained_source_root"]
-            for r in db.execute(
-                "SELECT value FROM publication_locations WHERE vault_id=?", (vault["id"],)
-            )
-            if "retained_source_root" in json.loads(r[0])
-        }
-        | {
-            r["package_root"]
-            for r in db.execute(
-                "SELECT * FROM publication_locations WHERE vault_id=?", (vault["id"],)
-            )
-            if r["package_root"] and not publication_locations.committed(db, dict(r))
-        },
+        | attachment_roots(db, vault["id"], location_roots=layout.attachment_roots)
+        | layout.hidden_roots,
     )
     notes = [document_parts.annotate(n, parts) for n in notes]
     notes = note_identities.resolve(notes, records, (info.st_dev, info.st_ino))

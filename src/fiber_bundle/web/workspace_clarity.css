@@ -79,6 +79,13 @@
   padding: 12px 16px;
   margin: 12px 0;
 }
+.task-stage-summary {
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 8px);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.8;
+}
 .task-failure {
   border-left: 3px solid var(--error-line);
   background: var(--error-soft);

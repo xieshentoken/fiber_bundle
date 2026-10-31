@@ -10,7 +10,12 @@ export async function loadGraphScope(graph, scope, query = "", offset = 0) {
       throw item.reason;
   if (results[0].status === "rejected") throw results[0].reason;
   return {
-    notes: results[0].value,
+    notes: Array.isArray(results[0].value)
+      ? results[0].value
+      : results[0].value.items,
+    coverage: Array.isArray(results[0].value)
+      ? null
+      : results[0].value.coverage,
     suggestions:
       results[1].status === "fulfilled" ? results[1].value : { items: [] },
     tasks: results[2].status === "fulfilled" ? results[2].value : [],

@@ -106,7 +106,10 @@ def tick(config: Config, *, channel_id: str | None = None, admit_after: float = 
         if job is None:
             return False
         try:
-            jobs.authorize(config, db, job)
+            from . import automatic_wait
+
+            if not automatic_wait.preflight(config, db, job):
+                return True
             if job["phase"] == "model_review" or (
                 job["kind"] == "intake_summary" and job["phase"] != "index"
             ):
@@ -132,6 +135,8 @@ def tick(config: Config, *, channel_id: str | None = None, admit_after: float = 
                     advance(config, db, job)
                 else:
                     jobs.settle(db, job, "needs_review", reason="automatic_processor_not_ready")
+                return True
+            elif automatic_wait.index_ready(config, db, job) is False:
                 return True
         except (StorageError, auth.Denied, OSError) as exc:
             # No automatic replay of uncertain filesystem/process side effects.
@@ -179,10 +184,15 @@ def tick(config: Config, *, channel_id: str | None = None, admit_after: float = 
 
     try:
         # Index body scanning intentionally runs outside the global storage lease.
-        build(config, job["client_id"], job["vault_id"])
+        from .vault_sync.store import library
+
+        if library(config, job["vault_id"]) is None:
+            build(config, job["client_id"], job["vault_id"])
         with database.locked(config), database.connect(config.state_root) as db:
             jobs.authorize(config, db, job)
             jobs.settle(db, job, "complete")
+            if job["value"].get("recovery_scope") == "publication_and_index":
+                return True
             from .intake_summary import after_source
 
             after_source(config, db, job)
@@ -256,6 +266,9 @@ class Runtime:
         self.discovery_thread.start()
 
     def _loop(self) -> None:
+        from .organization.execution_reads import ExecutionReads
+
+        organization_reads = ExecutionReads()
         while not self.stopped.wait(1):
             try:
                 tick(self.config)
@@ -267,7 +280,7 @@ class Runtime:
                 merge_tick(self.config)
                 from .organization.jobs import tick as organization_tick
 
-                organization_tick(self.config)
+                organization_tick(self.config, reads=organization_reads)
             except Exception:
                 logging.getLogger(__name__).warning(
                     "automatic ingestion tick requires reconciliation"

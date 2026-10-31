@@ -1,3 +1,5 @@
+import { openDraftImporter } from "./draft_import_ui.js";
+import { draftText } from "./draft_import_labels.js";
 import { joinText, sourceText, setText, uiText } from "./i18n/index.js";
 // Persistent policy and expert-package forms; saving remains explicitly owned by the caller.
 import { el } from "./ui.js";
@@ -160,6 +162,7 @@ export function organizationSettings(result, fixed, api, work, callbacks) {
   );
   config.append(
     el("h3", uiText("Book 专家包")),
+    control(draftText("title"), () => openDraftImporter(api.drafts, fixed)),
     el(
       "p",
       uiText(

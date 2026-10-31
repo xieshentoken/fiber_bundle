@@ -11,7 +11,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from . import note_identity_store, note_index, note_inventory, note_publications, vaults
+from . import note_identity_store, note_index, note_inventory, vaults
 from .config import Config, IntegrityError, InvalidInput, contained
 from .inputs import canonical
 from .search_matching import fold, terms
@@ -59,7 +59,7 @@ def fingerprint(config: Config, db: sqlite3.Connection, vault: sqlite3.Row) -> s
     h = hashlib.sha256()
     info = root.stat()
     h.update(canonical([info.st_dev, info.st_ino]).encode())
-    from .vault_scope import entries, for_vault
+    from .vault_scope import for_vault
 
     scope = for_vault(root, vault)
     h.update(canonical(scope.wire()).encode())
@@ -68,44 +68,10 @@ def fingerprint(config: Config, db: sqlite3.Connection, vault: sqlite3.Row) -> s
     registered_experts = expert_roots(config, vault["id"])
     if registered_experts:
         h.update(canonical(["organization-expert-roots", sorted(registered_experts)]).encode())
-    for p, i in entries(
-        root,
-        scope,
-        hidden=True,
-        batch=True,
-        file_filter=lambda p: (
-            p.name.lower().endswith(".md")
-            or p.name in {note_publications.MARKER, ".fiber-analysis.json"}
-        ),
-    ):
-        if stat.S_ISDIR(i.st_mode):
-            continue
-        if not scope.allows(p.relative_to(root).as_posix()):
-            continue
-        if not p.name.lower().endswith(".md") and p.name not in {
-            note_publications.MARKER,
-            ".fiber-analysis.json",
-        }:
-            continue
-        if p.name.startswith(".") and p.name not in {
-            note_publications.MARKER,
-            ".fiber-analysis.json",
-        }:
-            continue
-        h.update(
-            canonical(
-                [
-                    p.relative_to(root).as_posix(),
-                    i.st_dev,
-                    i.st_ino,
-                    i.st_mode,
-                    i.st_nlink,
-                    i.st_size,
-                    i.st_mtime_ns,
-                    i.st_ctime_ns,
-                ]
-            ).encode()
-        )
+    from .note_fingerprint_entries import entries as fingerprint_entries
+
+    for observed in fingerprint_entries(root, scope):
+        h.update(canonical(observed).encode())
     for sql in (
         "SELECT * FROM publication_locations WHERE vault_id=? ORDER BY kind,publication_id",
         (
@@ -153,6 +119,10 @@ def connection(config: Config, vault_id: str) -> Iterator[sqlite3.Connection | N
 
 
 def status(config: Config, db: sqlite3.Connection, vault: sqlite3.Row) -> dict[str, Any]:
+    from .vault_sync.presentation import index_status
+
+    if observed := index_status(config, vault["id"]):
+        return observed
     with connection(config, vault["id"]) as cache:
         if cache is None:
             return {"state": "absent", "index_mode": "current_read_only_snapshot"}
@@ -183,7 +153,12 @@ def status(config: Config, db: sqlite3.Connection, vault: sqlite3.Row) -> dict[s
 
 
 def candidates(
-    config: Config, db: sqlite3.Connection, vault: sqlite3.Row, query: str
+    config: Config,
+    db: sqlite3.Connection,
+    vault: sqlite3.Row,
+    query: str,
+    *,
+    observed_fingerprint: str | None = None,
 ) -> tuple[note_inventory.Inventory, list[tuple[tuple[int, int, str], note_index.Note]]] | None:
     patterns = terms(query)
     with connection(config, vault["id"]) as cache:
@@ -193,7 +168,7 @@ def candidates(
         if (
             generation is None
             or generation["state"] != "ready"
-            or generation["fingerprint"] != fingerprint(config, db, vault)
+            or generation["fingerprint"] != (observed_fingerprint or fingerprint(config, db, vault))
         ):
             from .note_search_jobs import changed
 
@@ -226,18 +201,23 @@ def candidates(
         )
         parameters.append(MAX_MATCHES + 1)
         best: dict[str, tuple[int, int, str, bool]] = {}
+        # One request-local source record per path, even when many chunks match.
+        # The full fingerprint checks before and after search remain authoritative.
+        sources: dict[str, tuple[dict[str, Any], str]] = {}
         import re
 
         for number, row in enumerate(cache.execute(sql, parameters), 1):
             if number > MAX_MATCHES:
                 raise IndexUnavailable("note_index_match_limit")
-            raw = cache.execute(
-                "SELECT metadata FROM notes WHERE path=?", (row["path"],)
-            ).fetchone()
-            if raw is None:
-                raise IntegrityError("note index chunk has no source")
-            metadata = json.loads(raw[0])
-            title = fold(metadata["title"])
+            if row["path"] not in sources:
+                raw = cache.execute(
+                    "SELECT metadata FROM notes WHERE path=?", (row["path"],)
+                ).fetchone()
+                if raw is None:
+                    raise IntegrityError("note index chunk has no source")
+                metadata = json.loads(raw[0])
+                sources[row["path"]] = (metadata, fold(metadata["title"]))
+            _, title = sources[row["path"]]
             passage = row["snippet"]
             body = fold(passage)
             if not all(p.search(title) or p.search(body) for p in patterns):
@@ -254,8 +234,7 @@ def candidates(
                 best[row["path"]] = (score, int(row["line"]), passage, heading)
         notes = []
         for relative, match in best.items():
-            raw = cache.execute("SELECT metadata FROM notes WHERE path=?", (relative,)).fetchone()
-            value = json.loads(raw[0])
+            value = dict(sources[relative][0])
             value["file_key"] = tuple(value["file_key"]) if value["file_key"] is not None else None
             notes.append((match[:3], note_index.Note(**value)))
     publications = {

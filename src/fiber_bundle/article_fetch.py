@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import socket
 import ssl
+import time
 import zlib
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -29,10 +30,35 @@ class Response:
 class PublicConnection(http.client.HTTPSConnection):
     """Resolve once, reject mixed private DNS, pin the socket, retain TLS hostname checks."""
 
+    def __init__(
+        self,
+        host: str,
+        timeout: float = 20,
+        *,
+        address_index: int = 0,
+        deadline: float | None = None,
+    ) -> None:
+        super().__init__(host, timeout=timeout)
+        self.connection_timeout = timeout
+        self.address_index = address_index
+        self.deadline = deadline
+
+    def remaining(self) -> float:
+        if self.deadline is None:
+            return self.connection_timeout
+        remaining = self.deadline - time.monotonic()
+        if remaining <= 0:
+            raise TimeoutError("public_connection_deadline")
+        return min(self.connection_timeout, remaining)
+
     def connect(self) -> None:
         addresses = resolve_public_addresses(self.host)
-        transport = socket.create_connection((addresses[0], 443), timeout=self.timeout)
+        transport = socket.create_connection(
+            (addresses[self.address_index % len(addresses)], 443), timeout=self.remaining()
+        )
         try:
+            if self.deadline is not None:
+                transport.settimeout(self.remaining())
             self.sock = ssl.create_default_context().wrap_socket(
                 transport, server_hostname=self.host
             )

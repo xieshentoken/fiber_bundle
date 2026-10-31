@@ -3,6 +3,8 @@
 import re
 from typing import Any
 
+from .query_failures import ANSWER_FORMAT_MESSAGES
+
 SOURCE = r"(?:引用|出处|来源|参考文献|参考资料|原文|笔记(?:标题|路径))"
 POSITIVE = re.compile(
     r"(?:注明|标注|标明|列出|提供|附上|附带|给出|给我|告诉我|告知|展示|显示|保留|返回|带上|加上|说明|查看|看看)"
@@ -62,6 +64,8 @@ def text(response: dict[str, Any]) -> str:
         return str(response["answer"])
     if response.get("status") == "query_failed":
         code = re.search(r"\b[a-z]+(?:_[a-z]+)+\b", str(response.get("answer") or ""))
+        if code and code[0] in ANSWER_FORMAT_MESSAGES:
+            return ANSWER_FORMAT_MESSAGES[code[0]] + "本次未发送答案，未自动重试。"
         reasons = {
             "channel_source_changed": "资料在处理期间发生变化，已停止生成回答。",
             "channel_model_policy_changed": "模型配置在处理期间发生变化，已停止生成回答。",

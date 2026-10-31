@@ -1,5 +1,60 @@
 // UI message catalog; parameters preserve source data.
 export default {
+  "intake.cached_publish": [
+    "使用已有缓存继续入库（不调用模型）",
+    "Continue saving cached results (no model calls)",
+  ],
+  "intake.archive_wait": ["等待归档收尾", "Waiting for archive reconciliation"],
+  "intake.fibermall": ["FiberMall 技术博客", "FiberMall technical blog"],
+  "video_budget.default": [
+    "单个视频默认 Token 总上限",
+    "Default total token limit per video",
+  ],
+  "video_budget.help": [
+    "默认50万 tokens，累计输入与输出；失败和恢复不清零，原 API Key 预算同时生效。仅影响新任务，已有视频可在恢复时调整总上限。",
+    "Default: 500,000 tokens, input plus output. Failed calls and retries retain usage, and the API Key budget also applies. Applies to new videos; existing videos can adjust the total limit when resuming.",
+  ],
+  "video_budget.exhausted": [
+    "本视频剩余 Token 预算不足以下一次调用预留，已暂停；已有结果保留。",
+    "The remaining video token budget cannot reserve the next call. Processing is paused; completed results are retained.",
+  ],
+  "video_recovery.truncated": [
+    "转写和画面已完成；笔记生成达到输出上限，需明确恢复。",
+    "Transcript and frames are complete; note authoring reached the output limit. Resume explicitly.",
+  ],
+  "video_recovery.0": [
+    "使用当前视频设置恢复（仅尚未开始提取的任务）",
+    "Resume with current video settings (before extraction starts only)",
+  ],
+  "video_recovery.1": [
+    "模型配置不代表已验证图片输入能力；恢复默认沿用任务快照。",
+    "Image input capability is unverified. Resume keeps the original settings by default.",
+  ],
+  "video_recovery.2": [
+    "视频短链连接超时，可明确重试；尚未提取视频或保存笔记。",
+    "The video short-link connection timed out. Retry explicitly; no video or note has been extracted.",
+  ],
+  "video_recovery.3": [
+    "视频短链域名解析失败，可明确重试。",
+    "Video short-link DNS resolution failed. Retry explicitly.",
+  ],
+  "video_recovery.4": [
+    "视频短链安全连接中断，可明确重试。",
+    "The video short-link TLS connection was interrupted. Retry explicitly.",
+  ],
+  "video_recovery.5": [
+    "视频短链连接中断，可明确重试。",
+    "The video short-link connection was interrupted. Retry explicitly.",
+  ],
+  "video_recovery.6": [
+    "视频短链证书校验失败，请检查系统时间及网络证书。",
+    "Video short-link certificate validation failed. Check the system clock and network certificates.",
+  ],
+  "video_recovery.7": [
+    "任务已开始提取，请沿用原快照恢复；旧产物和调用记录保留。",
+    "Extraction has started. Resume using the original settings; existing artifacts and call records are retained.",
+  ],
+
   "automatic_settings.82fda7d198": [
     "处理与审核策略",
     "Processing and review policy",

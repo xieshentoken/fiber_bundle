@@ -49,3 +49,23 @@ test("stale index blocks selector with actionable persistent message", async () 
     /核对位置/,
   );
 });
+
+test("partial selector envelope preserves readable notes and explicit coverage", async () => {
+  const coverage = {
+    complete: false,
+    unavailable_count: 1,
+    unavailable: [
+      { path: "Inbox/edited.md", reason: "vault_sync_cloud_pending" },
+    ],
+  };
+  const result = await loadGraphScope(
+    {
+      notes: async () => ({ items: [{ note_id: "n" }], coverage }),
+      suggestions: async () => ({ items: [] }),
+      jobs: async () => [],
+    },
+    scope,
+  );
+  assert.equal(result.notes[0].note_id, "n");
+  assert.deepEqual(result.coverage, coverage);
+});

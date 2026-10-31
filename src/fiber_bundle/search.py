@@ -4,9 +4,10 @@ import sqlite3
 from dataclasses import replace
 from typing import Any
 
-from . import auth, note_index, note_inventory, note_publications, publication_locations, vaults
-from .config import Config, IntegrityError, InvalidInput
+from . import auth, note_index, note_publications, publication_locations, vaults
+from .config import Config, IntegrityError, InvalidInput, StorageError
 from .search_matching import best_passage, terms
+from .search_snapshot import SearchSnapshot, combine
 
 
 def scope(db: sqlite3.Connection, client_id: str, requested: list[str] | None) -> list[sqlite3.Row]:
@@ -37,6 +38,9 @@ def vault_search(
     query: str,
     requested: list[str] | None = None,
     limit: int = 10,
+    *,
+    snapshot: SearchSnapshot | None = None,
+    combine_sources: bool = True,
 ) -> dict[str, Any]:
     """Caller holds the shared storage lock through authentication and response delivery."""
     patterns = terms(query)
@@ -47,33 +51,48 @@ def vault_search(
 
     requested, quality = connection_scope(config, db, client_id, requested)
     selected = scope(db, client_id, requested)
+    if snapshot is None:
+        with SearchSnapshot(config, db, client_id) as request_snapshot:
+            return vault_search(
+                config,
+                db,
+                client_id,
+                query,
+                requested,
+                limit,
+                snapshot=request_snapshot,
+                combine_sources=combine_sources,
+            )
+    if snapshot.config is not config or snapshot.db is not db or snapshot.client_id != client_id:
+        raise InvalidInput("search snapshot scope mismatch")
     candidates: list[tuple[int, dict[str, Any], note_index.Note]] = []
     roots = {}
     bindings = {}
     managed_entries = {}
     indexed: set[str] = set()
     for vault in selected:
-        from . import note_search_cache
+        from . import search_provenance
 
-        cached = note_search_cache.candidates(config, db, vault, query)
-        if cached is None:
-            inventory = note_inventory.read(config, db, vault)
-            matches = [
-                (best, note)
-                for note in inventory.notes
-                if (best := best_passage(note.title, note.text, patterns)) is not None
-            ]
-        else:
-            inventory, matches = cached
+        inventory, matches, cached = snapshot.candidates(vault, query)
+        if cached:
             indexed.add(vault["id"])
         roots[vault["id"]] = inventory.root
         bindings[vault["id"]] = inventory.bindings
         managed_entries[vault["id"]] = publication_locations.inventory(db, vault["id"])[0]
+        intake_locations = search_provenance.intake_locations(db, vault["id"])
         for best, note in matches:
             from . import note_provenance
 
             try:
-                provenance = note_provenance.describe(config, db, client_id, vault, inventory, note)
+                provenance = note_provenance.describe(
+                    config,
+                    db,
+                    client_id,
+                    vault,
+                    inventory,
+                    note,
+                    intake_locations=intake_locations,
+                )
             except auth.Denied:
                 continue
             if not visible(provenance, quality):
@@ -93,6 +112,7 @@ def vault_search(
             candidates.append((best[0], item, note))
     candidates.sort(key=lambda item: (-item[0], item[1]["vault_id"], item[1]["note_path"]))
     results: list[dict[str, Any]] = []
+    delivery_registrations = {}
     seen_experts = set()
     deduplicated = []
     for candidate in candidates:
@@ -108,9 +128,21 @@ def vault_search(
         from .document_creation_save import search_source
 
         search_source(db, client_id, item["vault_id"], note.relative_path, note.sha256)
-        current = note_index.read_note(
-            roots[item["vault_id"]], note.relative_path, note_index.Limits().note_bytes
-        )
+        try:
+            current = snapshot.read_note(
+                item["vault_id"], roots[item["vault_id"]], note.relative_path
+            )
+        except (StorageError, OSError):
+            if item["vault_id"] not in snapshot.managed:
+                raise
+            snapshot.incomplete.add(item["vault_id"])
+            continue
+        if item["vault_id"] in snapshot.managed and (
+            current.sha256 != note.sha256 or current.file_key != note.file_key
+        ):
+            snapshot.incomplete.add(item["vault_id"])
+            snapshot.reads.pop((item["vault_id"], note.relative_path), None)
+            continue
         managed = managed_entries[item["vault_id"]].get(note.relative_path)
         current = publication_locations.annotate(current, managed)
         if managed and (current.identity, current.publication_id) != (
@@ -133,6 +165,10 @@ def vault_search(
         if item["vault_id"] in indexed:
             from . import document_parts, note_identities, note_identity_store
 
+            if item["vault_id"] not in delivery_registrations:
+                delivery_registrations[item["vault_id"]] = note_identity_store.records(
+                    config, item["vault_id"]
+                )
             info = roots[item["vault_id"]].stat()
             resolved = note_identities.resolve(
                 [
@@ -143,7 +179,7 @@ def vault_search(
                         ),
                     )
                 ],
-                note_identity_store.records(config, item["vault_id"]),
+                delivery_registrations[item["vault_id"]],
                 (info.st_dev, info.st_ino),
             )[0]
             if resolved.identity != note.identity:
@@ -167,18 +203,25 @@ def vault_search(
     for vault in selected:
         external.extend(packages.search(config, db, client_id, vault["id"], query))
     if external:
-        results = (external + results)[:limit]
+        results = (
+            combine(external, results, limit) if combine_sources else (external + results)[:limit]
+        )
         for ordinal, item in enumerate(results, 1):
             item["citation"] = f"[{ordinal}]"
-    for vault in selected:
-        if vault["id"] in indexed:
-            if note_search_cache.status(config, db, vault)["state"] != "ready":
-                raise note_search_cache.IndexUnavailable("note_index_update_required")
+    coverage = {
+        v["id"]: value for v in selected if (value := snapshot.coverage(v["id"])) is not None
+    }
+    incomplete = any(not value["complete"] for value in coverage.values())
+    if incomplete and not results:
+        from .note_search_cache import IndexUnavailable
+
+        raise IndexUnavailable("note_index_update_required")
     return {
         "status": "evidence_found" if results else "no_evidence",
         "results": results,
         "searched_vault_ids": [v["id"] for v in selected],
         "scope": "vault_notes",
+        **({"coverage": coverage, "coverage_complete": not incomplete} if coverage else {}),
         "index_mode": (
             "persistent_chunks"
             if len(indexed) == len(selected) and indexed
@@ -198,18 +241,38 @@ def search(
     limit: int = 10,
     *,
     session_id: str | None = None,
+    snapshot: SearchSnapshot | None = None,
+    combine_sources: bool = True,
 ) -> dict[str, Any]:
     """Combine current-session evidence and default/explicit Vault notes without widening scope."""
     from .session_search import session_search
 
     if session_id is None:
-        return vault_search(config, db, client_id, query, requested, limit)
+        return vault_search(
+            config,
+            db,
+            client_id,
+            query,
+            requested,
+            limit,
+            snapshot=snapshot,
+            combine_sources=combine_sources,
+        )
     scope(db, client_id, requested)
     terms(query)
     if type(limit) is not int or not 1 <= limit <= 20:
         raise InvalidInput("invalid search result limit")
     current = session_search(config, db, client_id, session_id, query, requested, limit)
-    result = vault_search(config, db, client_id, query, requested, limit)
+    result = vault_search(
+        config,
+        db,
+        client_id,
+        query,
+        requested,
+        limit,
+        snapshot=snapshot,
+        combine_sources=combine_sources,
+    )
     result["results"] = (current + result["results"])[:limit]
     for index, item in enumerate(result["results"], 1):
         item["citation"] = f"[{index}]"

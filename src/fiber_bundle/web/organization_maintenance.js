@@ -1,6 +1,19 @@
+import {
+  mountMaintenanceWorkspace,
+  previewSubmitted,
+} from "./organization_workspace.js";
+import { appendContinuity } from "./organization_continuity.js";
+import { appendItemStages, appendStageSummary } from "./organization_stages.js";
+import { appendExecutionStatus } from "./organization_execution_status.js";
+import {
+  unavailableChoice,
+  partialTaskStatus,
+} from "./organization_partial_scope.js";
 // One-off maintenance presentation. Every write still uses the bound backend confirmation.
 import { el } from "./ui.js";
 import { control, showJSON, recordHeading } from "./record_ui.js";
+import { coverageNotice } from "./organization_coverage.js";
+import { requestErrors } from "./request_errors.js";
 import { disclosure } from "./view_sections.js";
 import { joinText, phrase, setText, uiText } from "./i18n/index.js";
 import {
@@ -28,12 +41,13 @@ const labels = {
   changed: "有变更",
   review: "待复核",
   error: "异常",
-  waiting: "等待分析",
+  waiting: "等待处理",
   unchanged: "无需变更",
   processed: "已人工处理",
   all: "全部",
 };
 function explain(code, detail) {
+  if (requestErrors[code]) return requestErrors[code][0];
   if (code === "organization_model_result_unknown")
     return unknownOutcome(detail);
   const reason = evidenceFailure(detail);
@@ -41,6 +55,10 @@ function explain(code, detail) {
     return `${reason}。分析已暂停，原关系与模型回复保留，不会自动重发请求。`;
   return (
     {
+      cloud_item_pending_stale_or_conflicted:
+        "文件同步或版本校验未通过，整理已停止。请核对中断位置后恢复未完成项。",
+      cloud_metadata_unavailable:
+        "暂时无法核对 iCloud 元数据，当前步骤已停止。",
       maintenance_undo_blob_unavailable:
         "撤销所需的私有快照缺失或损坏。原资料保持，请核对备份。",
       maintenance_undo_file_conflict:
@@ -140,10 +158,27 @@ export function maintenanceSection(
     card.append(
       el(
         "p",
-        descriptions[job.mode],
+        uiText(descriptions[job.mode]),
         job.mode === "deep" ? "task-impact" : "muted",
       ),
     );
+    const coverage = coverageNotice(job.coverage, `coverage:${job.id}`, false, {
+      scope: fixed,
+      api,
+    });
+    if (coverage) card.append(coverage);
+    card.append(partialTaskStatus(job, fixed, api, refresh));
+    if (job.application_blocked)
+      card.append(
+        el(
+          "p",
+          uiText(
+            requestErrors[job.application_blocked]?.[0] ||
+              job.application_blocked,
+          ),
+          "task-impact",
+        ),
+      );
     const planning = job.stage === "planning",
       rollback = job.stage === "rollback",
       completed = rollback
@@ -215,24 +250,9 @@ export function maintenanceSection(
         ),
       );
     }
-    if (job.error)
-      card.append(
-        el("p", uiText(explain(job.error, job.error_detail)), "task-failure"),
-      );
-    if (job.index_state)
-      card.append(
-        el(
-          "p",
-          phrase("索引：{p0}", {
-            p0:
-              {
-                pending: "等待更新",
-                ready: "已更新",
-                failed: "更新失败，可单独重试",
-              }[job.index_state] || "状态待核对",
-          }),
-        ),
-      );
+    appendExecutionStatus(card, job, explain);
+    appendStageSummary(card, job);
+    appendContinuity(card, job, fixed, api, refresh);
     if (job.mode === "deep")
       card.append(
         el(
@@ -325,6 +345,8 @@ export function maintenanceSection(
         ),
       );
       const expired = previewInvalidated(job);
+      if (expired || job.application_blocked || job.blocking_task)
+        accept.disabled = true;
       if (expired) {
         accept.disabled = true;
         card.append(
@@ -350,7 +372,11 @@ export function maintenanceSection(
         );
       }
       accept.addEventListener("change", () => {
-        button.disabled = previewInvalidated(job) || !accept.checked;
+        button.disabled =
+          previewInvalidated(job) ||
+          !!job.application_blocked ||
+          !!job.blocking_task ||
+          !accept.checked;
       });
       actions.append(consent, button);
     }
@@ -470,6 +496,7 @@ export function maintenanceSection(
             el("small", uiText(additions + removals), "task-row-change"),
           );
         row.append(summary);
+        appendItemStages(row, item, job);
         if (resolved) {
           row.append(
             el(
@@ -509,6 +536,14 @@ export function maintenanceSection(
           el("p", phrase("当前：{p0}", { p0: names(item.before) })),
           el("p", phrase("整理后：{p0}", { p0: names(item.after) })),
         );
+        if (item.deferred_target)
+          row.append(
+            el(
+              "p",
+              phrase("归档延后：{p0}", { p0: item.deferred_target }),
+              "muted",
+            ),
+          );
         if (item.target) {
           row.append(el("p", item.path + " → " + item.target));
           row.firstChild.append(
@@ -607,11 +642,14 @@ export function maintenanceSection(
       "all",
     ]) {
       const count = key === "all" ? stats.total : stats[key],
-        button = control(`${labels[key]} ${count}`, async () => {
-          ui.filter = key;
-          ui.page = 0;
-          rows();
-        });
+        button = control(
+          joinText([uiText(labels[key]), count], " "),
+          async () => {
+            ui.filter = key;
+            ui.page = 0;
+            rows();
+          },
+        );
       button.dataset.filter = key;
       filters.append(button);
     }
@@ -648,6 +686,11 @@ export function maintenanceSection(
         stage: job.stage,
         error: job.error,
         error_detail: job.error_detail,
+        recovery_error: job.recovery_error,
+        index_last_result: job.index_state,
+        index_observation: job.index_observation,
+        last_progress_at: job.last_progress_at,
+        read_work: job.read_work,
         plan_sha256: job.plan_sha256,
         created_at: job.created_at,
       },
@@ -656,7 +699,16 @@ export function maintenanceSection(
     if (actions.children.length) card.append(actions);
     return card;
   }
-  if (current) host.append(renderJob(current));
+  if (!current) {
+    const coverage = coverageNotice(
+      result.coverage,
+      "organization-coverage",
+      false,
+      { scope: fixed, api },
+    );
+    if (coverage) host.append(coverage);
+  }
+  const formError = el("div");
   const form = el("div"),
     mode = el("select"),
     label = el("label", uiText("本次整理模式")),
@@ -694,6 +746,7 @@ export function maintenanceSection(
   form.append(
     label,
     detail,
+    unavailableChoice(draft),
     disclosure(
       "新建 MOC 与处理说明",
       nameLabel,
@@ -707,37 +760,44 @@ export function maintenanceSection(
       ),
     ),
     control("生成整理预览", async () => {
-      await api.maintain({
-        ...fixed,
-        mode: mode.value,
-        new_mocs: title.value.trim()
-          ? [{ title: title.value.trim(), topic: topic.value.trim() }]
-          : [],
-      });
-      await refresh();
+      formError.replaceChildren();
+      try {
+        await api.maintain({
+          ...fixed,
+          mode: mode.value,
+          unavailable_action: draft.unavailableAction || "moc_only",
+          new_mocs: title.value.trim()
+            ? [{ title: title.value.trim(), topic: topic.value.trim() }]
+            : [],
+        });
+      } catch (error) {
+        if (error.issues?.length) {
+          const notice = coverageNotice(
+            {
+              complete: false,
+              unavailable_count: error.issues.length,
+              unavailable: error.issues,
+            },
+            "maintenance-failed-inputs",
+            true,
+          );
+          formError.append(notice);
+        }
+        throw error;
+      }
+      // A preview writes only its task ledger. Do not block its result on a full catalog read.
+      previewSubmitted(draft);
+      await refresh({ automatic: true, force: true });
     }),
+    formError,
   );
-  preparation = current
-    ? disclosure("准备另一项整理／重新生成预览", form)
-    : form;
-  if (current && previewInvalidated(current)) preparation.open = true;
-  host.append(preparation);
-  if (jobs.length > 1) {
-    const history = disclosure(`其他与历史任务（${jobs.length - 1}）`);
-    history.dataset.viewKey = "maintenance-history";
-    // Render a historical task only when requested, not thousands of hidden rows.
-    for (const job of jobs.slice(1)) {
-      const details = disclosure(
-        `${modeNames[job.mode]} · ${previewInvalidated(job) ? "预览已失效" : jobNames[job.state] || job.state}`,
-      );
-      details.dataset.viewKey = `job:${job.id}`;
-      details.addEventListener("toggle", () => {
-        if (details.open && details.children.length === 1)
-          details.append(renderJob(job));
-      });
-      history.append(details);
-    }
-    host.append(history);
-  }
+  const explanation = form.querySelector("details");
+  if (explanation) explanation.dataset.viewKey = "maintenance-new-moc";
+  preparation = mountMaintenanceWorkspace(host, {
+    jobs,
+    draft,
+    form,
+    renderJob,
+  });
   return host;
 }

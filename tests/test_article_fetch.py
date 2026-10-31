@@ -86,7 +86,8 @@ def install(monkeypatch, replies):
     closed = []
 
     class Connection:
-        def __init__(self, host, timeout):
+        def __init__(self, host, timeout, **kwargs):
+            self.sock = None
             self.host = host
 
         def request(self, method, target, headers):

@@ -1,3 +1,4 @@
+import { coverageNotice } from "./organization_coverage.js";
 import { phrase, setText, translate, uiText } from "./i18n/index.js";
 import { createOrganizationView } from "./organization.js";
 // Scope-bound admissions and composition of selection, reviews, and task observation.
@@ -380,12 +381,8 @@ export function createKnowledgeGraphView(api) {
     }
     if (organization) await organization.refresh();
     try {
-      const { notes, suggestions, tasks, warnings } = await loadGraphScope(
-        graph,
-        fixed,
-        noteQuery,
-        noteOffset,
-      );
+      const { notes, coverage, suggestions, tasks, warnings } =
+        await loadGraphScope(graph, fixed, noteQuery, noteOffset);
       if (revision !== epoch) return;
       if (pendingReview() || (before !== snapshot() && dirty())) {
         if (automatic || !canReplace()) {
@@ -409,6 +406,11 @@ export function createKnowledgeGraphView(api) {
         profile?.enabled,
         $("graph-submit"),
       );
+      const notice = coverageNotice(coverage, "graph-notes-coverage", false, {
+        scope: fixed,
+        api: api.organization,
+      });
+      if (notice) notesRoot.prepend(notice);
       setup.loaded(warnings);
       previousNotes.disabled = noteOffset === 0;
       nextNotes.disabled = notes.length < 100;

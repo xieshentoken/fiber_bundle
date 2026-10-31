@@ -57,7 +57,7 @@ def launch(config: Config, main: Any, identity: str, action: str) -> dict[str, A
 
         if pending(db, identity):
             raise InvalidInput("channel_operation_pending")
-        store.authorize(config, main, channel)
+        store.authorize(config, main, channel, transport=True)
         from .configuration import public
 
         if status(config, identity).get("instance_id"):

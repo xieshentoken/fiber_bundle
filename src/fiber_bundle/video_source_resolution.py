@@ -1,11 +1,12 @@
 """Resolve shared video URLs before V3 initialization, without fetching media."""
 
 import re
+import time
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
-from . import article_fetch, media_link_contract
+from . import media_link_contract, video_source_transport
 from .channels import intake_links
 from .config import InvalidInput
 
@@ -34,31 +35,23 @@ def canonical(value: str) -> str:
 def resolve(url: str, guard: Callable[[], None]) -> dict[str, Any]:
     current = intake_links.normalize(url)
     chain = [current]
+    deadline = time.monotonic() + 30
     for _ in range(6):
         guard()
         parsed = urlsplit(current)
         if parsed.hostname != "b23.tv":
             return {"original_url": url, "final_url": canonical(current), "redirects": chain}
-        connection = article_fetch.PublicConnection("b23.tv", timeout=20)
-        try:
-            target = quote(parsed.path or "/", safe="/%:@!$&'()*+,;=-._~")
-            if parsed.query:
-                target += "?" + quote(parsed.query, safe="/%?:@!$&'()*+,;=-._~")
-            connection.request(
-                "GET", target, headers={"User-Agent": "Mozilla/5.0", "Connection": "close"}
-            )
-            response = connection.getresponse()
-            guard()
-            location = response.getheader("Location")
-            if response.status not in {301, 302, 303, 307, 308} or not location:
-                raise InvalidInput("intake_video_short_link_unresolved")
-            following = intake_links.normalize(urljoin(current, location))
-            if intake_links.site(following) != "bilibili":
-                raise InvalidInput("intake_redirect_not_allowed")
-            if following in chain:
-                raise InvalidInput("intake_video_short_link_unresolved")
-            current = following
-            chain.append(current)
-        finally:
-            connection.close()
+        target = quote(parsed.path or "/", safe="/%:@!$&'()*+,;=-._~")
+        if parsed.query:
+            target += "?" + quote(parsed.query, safe="/%?:@!$&'()*+,;=-._~")
+        status, location = video_source_transport.redirect(target, guard, deadline)
+        if status not in {301, 302, 303, 307, 308} or not location:
+            raise InvalidInput("intake_video_short_link_unresolved")
+        following = intake_links.normalize(urljoin(current, location))
+        if intake_links.site(following) != "bilibili":
+            raise InvalidInput("intake_redirect_not_allowed")
+        if following in chain:
+            raise InvalidInput("intake_video_short_link_unresolved")
+        current = following
+        chain.append(current)
     raise InvalidInput("intake_video_short_link_unresolved")

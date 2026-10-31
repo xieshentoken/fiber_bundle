@@ -17,7 +17,7 @@ def native(tmp_path_factory):
     source = Path(__file__).parents[1] / "desktop/cloud-status.swift"
     policy = root / "policy.swift"
     policy.write_text(
-        source.read_text().split("guard setiopolicy_np", 1)[0]
+        source.read_text().split("func emitNoteInventory", 1)[0]
         + "\nlet a = CommandLine.arguments\n"
         + 'print(cloudDownloadState(ubiquitous: a[1] == "1", '
         + 'status: a[2] == "nil" ? nil : a[2]).rawValue)\n'
@@ -76,9 +76,14 @@ def test_helper_keeps_placeholder_symlink_and_scope_denials(native, tmp_path):
         return json.loads(result.stdout)
 
     assert check("--file", tmp_path)["available"]
+    assert check("--directory", tmp_path)["available"]
+    ordinary_file = tmp_path / "note.md"
+    ordinary_file.write_text("local note")
+    assert check("--directory", ordinary_file)["errors"] == 1
     placeholder = tmp_path / "missing.icloud"
     placeholder.write_bytes(b"placeholder")
     assert check("--file", placeholder)["pending"] == 1
+    assert check("--directory", placeholder)["pending"] == 1
     link = tmp_path / "linked"
     link.symlink_to(tmp_path, target_is_directory=True)
     assert check("--file", link)["errors"] == 1

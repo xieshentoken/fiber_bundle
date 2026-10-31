@@ -1,3 +1,5 @@
+import { openDraftImporter } from "./draft_import_ui.js";
+import { draftText } from "./draft_import_labels.js";
 import { joinText, phrase, setText, uiText } from "./i18n/index.js";
 import { mountImportForm } from "./source_import_form.js";
 // Resumable bounded uploads; the backend owns originals, permissions and processing.
@@ -494,6 +496,12 @@ export function createImportsView(api, refreshTasks) {
         notify: captureMessage("imports"),
         isRunning: () => running !== null,
       });
+      const importDraft = el("button", draftText("title"));
+      importDraft.type = "button";
+      importDraft.addEventListener("click", () =>
+        openDraftImporter(api.organization.drafts, scope()),
+      );
+      root().prepend(importDraft);
       initialized = true;
     }
 

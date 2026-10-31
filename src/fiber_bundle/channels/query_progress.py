@@ -57,6 +57,7 @@ def load(data: dict[str, Any]) -> dict[str, Any]:
         "retrieval_validate",
         "evidence",
         "answer_call",
+        "answer_supplement",
         "source_verify",
     }:
         raise InvalidInput("channel_model_result_unknown")

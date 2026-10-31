@@ -1,3 +1,7 @@
+import {
+  videoProgressLines,
+  videoResumeControls,
+} from "./video_intake_status.js";
 import { phrase, uiText, joinText } from "./i18n/index.js";
 import { el, checkbox } from "./ui.js";
 import { confirmAction } from "./confirm_dialog.js";
@@ -62,6 +66,28 @@ export function intakeLabel(code) {
       intake_article_image_limit:
         "正文超过内部配置的图片上限，原链接已保留；正常自动入库不限制图片数量。",
       intake_extractor_unavailable: "没有启用的提取器，仅链接已保存。",
+      intake_video_source_timeout:
+        "视频短链连接超时，可明确重试；尚未提取视频或保存笔记。",
+      intake_video_source_dns_failed: "视频短链域名解析失败，可明确重试。",
+      intake_video_source_tls_interrupted: "视频短链安全连接中断，可明确重试。",
+      intake_video_source_connection_interrupted:
+        "视频短链连接中断，可明确重试。",
+      intake_video_source_certificate_invalid:
+        "视频短链证书校验失败，请检查系统时间及网络证书。",
+      intake_video_refresh_not_safe:
+        "任务已开始提取，请沿用原快照恢复；旧产物和调用记录保留。",
+      video_skill_call_limit_reached:
+        "本次恢复调用额度已用完，处理已暂停；已有结果保留。",
+      video_skill_token_budget_exhausted:
+        "本视频剩余 Token 预算不足以下一次调用预留，已暂停；已有结果保留。",
+      video_skill_visual_output_truncated:
+        "图片模型输出达到上限，笔记尚未保存；已完成帧保留，可恢复失败帧。",
+      video_skill_visual_response_empty:
+        "图片模型未返回分析内容，笔记尚未保存；已完成帧保留。",
+      video_skill_note_output_truncated:
+        "转写和画面已完成；笔记生成达到输出上限，需明确恢复。",
+      video_skill_note_context_exceeded:
+        "转写和画面已完成；笔记生成超出预留上下文容量，需核对配置后明确恢复。",
       intake_fetch_failed: "获取失败，请核对来源后明确重试。",
       intake_video_access_restricted: "视频需要登录或不可访问。",
       intake_subtitles_unavailable: "未取得已有字幕，正文待补全。",
@@ -257,6 +283,53 @@ export function renderIntakeRecords(root, api, identity, snapshot, reload) {
                 ]),
           ),
         );
+        let refreshVideoSettings, resumeVideo;
+        if (link.video_processing) {
+          for (const text of videoProgressLines(link))
+            line.append(el("p", text, "muted"));
+          if (["needs_review", "link_only"].includes(link.state)) {
+            resumeVideo = videoResumeControls(link);
+            line.append(resumeVideo.root);
+          }
+        }
+        if (
+          link.video_processing &&
+          !link.publication &&
+          !link.receipt &&
+          !link.video_processing.completed?.length &&
+          !link.video_processing.source_resolution
+        ) {
+          const label = el("label");
+          refreshVideoSettings = el("input");
+          refreshVideoSettings.type = "checkbox";
+          refreshVideoSettings.dataset.draft = "ignore";
+          label.append(
+            refreshVideoSettings,
+            el("span", uiText("使用当前视频设置恢复（仅尚未开始提取的任务）")),
+          );
+          line.append(label);
+        }
+        if (link.video_processing?.skill?.settings) {
+          const settings = link.video_processing.skill.settings;
+          line.append(
+            el(
+              "p",
+              `ASR: ${settings.asr_backend || "local-qwen3"} · ${settings.asr_model || "Qwen/Qwen3-ASR-0.6B"}; ` +
+                `Vision: ${link.video_processing.models?.vision || settings.vision_model_configuration_id || "—"}; ` +
+                `Text: ${link.video_processing.models?.text || "—"}`,
+              "muted",
+            ),
+          );
+          line.append(
+            el(
+              "p",
+              uiText(
+                "模型配置不代表已验证图片输入能力；恢复默认沿用任务快照。",
+              ),
+              "muted",
+            ),
+          );
+        }
         if (link.video_processing)
           line.append(
             el(
@@ -327,7 +400,7 @@ export function renderIntakeRecords(root, api, identity, snapshot, reload) {
               if (
                 newAttempt &&
                 !(await confirmAction({
-                  title: "重新执行失败的 Pi 片段？",
+                  title: "恢复未完成的模型处理？",
                   body: [
                     "旧调用记录和预算预留会保留，用量未知的调用不会退款。",
                     "确认后创建新的处理尝试，可能再次消耗 Tokens；已完成片段继续复用。",
@@ -342,6 +415,8 @@ export function renderIntakeRecords(root, api, identity, snapshot, reload) {
                 index,
                 snapshot.revision,
                 newAttempt,
+                Boolean(refreshVideoSettings?.checked),
+                resumeVideo?.options(),
               );
               await reload();
             }),

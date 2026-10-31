@@ -16,6 +16,7 @@ import { createVaultMergeApi } from "./vault_merge_api.js";
 import { createAgentApi, agentErrorText } from "./agent_api.js";
 import { channelQr } from "./channel_qr.js";
 import { noteIndexErrorText } from "./note_index_errors.js";
+import { createNoteSearchApi } from "./note_search_api.js";
 import { createGraphApi } from "./knowledge_graph_api.js";
 import {
   createVaultPlacementApi,
@@ -160,7 +161,7 @@ export function createAdminApi(
     validate = record,
     options = {},
   ) {
-    if (method !== "GET") onMutation();
+    if (method !== "GET" && path !== "/admin/note-search") onMutation();
     if (options.signal?.aborted)
       throw new ApiError("读取已取消。", 0, "cancelled");
     const revision = session.revision,
@@ -192,7 +193,8 @@ export function createAdminApi(
               : path.startsWith("/admin/organization") ||
                   path.startsWith("/admin/note-index/status") ||
                   path.startsWith("/admin/vault-") ||
-                  path.startsWith("/admin/knowledge-graph/")
+                  path.startsWith("/admin/knowledge-graph/") ||
+                  path === "/admin/note-search"
                 ? 60000
                 : 10000,
     );
@@ -273,6 +275,19 @@ export function createAdminApi(
                 vaultPlacementErrorText(body.error);
             if (record(body) && path.startsWith("/admin/note-index"))
               detail = noteIndexErrorText(body.error);
+            if (record(body) && path.startsWith("/admin/organization"))
+              issues = Array.isArray(body.issues)
+                ? body.issues
+                    .filter(
+                      (item) =>
+                        record(item) &&
+                        typeof item.path === "string" &&
+                        item.path.length <= 2048 &&
+                        typeof item.reason === "string" &&
+                        /^[a-z_]{1,100}$/.test(item.reason),
+                    )
+                    .slice(0, 100)
+                : [];
             if (Object.hasOwn(requestErrors, code))
               detail = requestErrors[code][0];
             if (record(body) && body.error === "event_conflict")
@@ -394,6 +409,7 @@ export function createAdminApi(
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   return {
+    ...createNoteSearchApi(request),
     suppliers: createSupplierApi(request, pathId),
     modelsApi: createModelsApi(request),
     video: createVideoApi(request),

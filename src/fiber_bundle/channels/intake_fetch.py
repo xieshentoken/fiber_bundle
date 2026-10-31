@@ -86,7 +86,7 @@ def acquire(
         "source_sha256": digest(response.data),
         "site": kind,
     }
-    if kind in {"x", "wechat"}:
+    if kind in {"x", "wechat", "fibermall"}:
         if not settings["fetch_articles"]:
             raise InvalidInput("intake_article_extraction_off")
         parsed = articles.parse_article(
@@ -97,7 +97,11 @@ def acquire(
         )
         if kind == "x" and parsed.marker not in {"x:article+content_state", "x:article+draftjs"}:
             raise InvalidInput("intake_x_article_serialization_required")
-        cdns = {"mmbiz.qpic.cn", "mmbiz.qlogo.cn"} if kind == "wechat" else {"pbs.twimg.com"}
+        cdns = {
+            "wechat": {"mmbiz.qpic.cn", "mmbiz.qlogo.cn"},
+            "x": {"pbs.twimg.com"},
+            "fibermall": {"fibermall.com", "www.fibermall.com"},
+        }[kind]
         images = {}
         total = 0
         for reference in parsed.images:

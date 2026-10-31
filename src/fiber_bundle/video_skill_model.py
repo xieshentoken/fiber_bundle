@@ -6,12 +6,20 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from . import database, execution, execution_ledger, pi_processing
+from . import (
+    database,
+    execution,
+    execution_ledger,
+    pi_processing,
+    video_call_allowance,
+    video_token_budget,
+)
 from .config import Config, InvalidInput, StorageError, contained, make_directory
 from .inputs import canonical
 from .model_budgets import Exhausted
 from .objects import digest
 from .query_policy_store import write_private
+from .video_model_policy import vision_policy
 from .video_visual_contract import VisualContractError
 from .video_visual_contract import json_reply as json_reply
 from .video_visual_contract import prompt as visual_prompt
@@ -61,9 +69,13 @@ def visual(
     save: Callable[[], None],
     guard: Callable[[], None],
 ) -> None:
+    base_policy = policy
+    expanded_policy = vision_policy(policy)
     frames = json.loads((job / "frames/frame_manifest.json").read_bytes()).get("frames", [])
     if not frames:
         raise InvalidInput("video_skill_frames_missing")
+    frozen["frame_count"] = len(frames)
+    save()
     rows = []
     for frame in frames:
         guard()
@@ -75,6 +87,7 @@ def visual(
         runs = frozen.setdefault("vision_runs", {})
         rid = runs.get(fid)
         if rid is None:
+            policy = expanded_policy
             with database.locked(config), database.connect(config.state_root) as db:
                 rid = pi_processing.prepare(
                     config,
@@ -87,6 +100,10 @@ def visual(
                     frame["sha256"],
                     [{"id": fid, "text": "V3 selected-frame visual analysis"}],
                     allow_cloud=True,
+                )
+                video_call_allowance.bind(db, rid, frozen)
+                video_token_budget.bind(
+                    db, rid, frozen, policy.max_input_tokens + policy.max_output_tokens
                 )
             runs[fid] = rid
             save()
@@ -106,7 +123,8 @@ def visual(
                 write_private(archive, reply_path.read_bytes())
                 reply_path.unlink()
         with database.locked(config), database.connect(config.state_root) as db:
-            state = execution_ledger.get_run(db, rid)["state"]
+            run = execution_ledger.get_run(db, rid)
+            state = run["state"]
             if reply_path.exists():
                 row = json.loads(reply_path.read_bytes())
                 if (
@@ -122,6 +140,7 @@ def visual(
                 continue
             if state not in {"queued", "waiting_budget"}:
                 raise InvalidInput("video_skill_model_reconciliation_required")
+            policy = base_policy if run["config_digest"] == base_policy.digest else expanded_policy
             execution_ledger.start(config, db, rid, policy)
         prompt = visual_prompt(visual_primary=frozen.get("transcript_route") == "visual_primary")
         try:
@@ -179,7 +198,7 @@ def visual(
                     db,
                     rid,
                     "waiting_budget" if isinstance(error, Exhausted) else "failed",
-                    "model_key_budget_exhausted"
+                    str(error)
                     if isinstance(error, Exhausted)
                     else getattr(error, "code", "video_skill_visual_failed"),
                 )
@@ -188,6 +207,7 @@ def visual(
                     "frame_id": fid,
                     "run_id": rid,
                     "field": error.field,
+                    "code": error.code,
                     "response_path": "visual/responses/" + rid + "-" + fid + ".json",
                 }
                 save()
@@ -228,6 +248,10 @@ def author(
                 allow_cloud=True,
                 video_skill=frozen["skill"],
             )
+            video_call_allowance.bind(db, rid, frozen)
+            video_token_budget.bind(
+                db, rid, frozen, policy.max_input_tokens + policy.max_output_tokens
+            )
         runs[key] = rid
         save()
     with database.locked(config), database.connect(config.state_root) as db:
@@ -237,7 +261,26 @@ def author(
     guard()
     rejected = False
     with database.locked(config), database.connect(config.state_root) as db:
-        if execution_ledger.get_run(db, rid)["state"] != "succeeded":
+        failed_run = execution_ledger.get_run(db, rid)
+        if failed_run["state"] != "succeeded":
+            if failed_run["error_code"] in {
+                "video_skill_call_limit_reached",
+                "video_skill_token_budget_exhausted",
+            }:
+                raise InvalidInput(failed_run["error_code"])
+            if failed_run["error_code"] == "processing_model_usage_exceeded":
+                raise InvalidInput("video_skill_note_context_exceeded")
+            if failed_run["error_code"] == "processing_model_incomplete":
+                from .query_routing_files import read
+
+                path = contained(config.state_root, "tasks/" + rid + "/execution-diagnostics.json")
+                if path.exists():
+                    diagnostic = json.loads(read(path, 65536))
+                    if any(
+                        isinstance(event, dict) and event.get("stop") == "length"
+                        for event in diagnostic.get("events", [])
+                    ):
+                        raise InvalidInput("video_skill_note_output_truncated")
             raise InvalidInput("video_skill_note_requires_recovery")
         try:
             result = pi_processing.result(config, db, rid)

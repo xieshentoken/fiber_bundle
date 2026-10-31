@@ -1,6 +1,6 @@
 // Application frame: sidebar navigation, top bar and page header. No data reads.
 import { $, h, icon, clear } from "./dom.js";
-import { strings } from "./i18n.js";
+import { strings, createLocaleBindings } from "./i18n.js";
 import {
   groups,
   icons,
@@ -56,22 +56,38 @@ const t = strings({
   },
 });
 
-// Same source asset and crop as the classic application brand.
+// Clip the source artwork explicitly: SVG letterboxing otherwise reveals the wordmark.
 function applicationMark() {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   for (const [key, value] of Object.entries({
     viewBox: "260 250 740 520",
-    width: "28",
-    height: "28",
+    width: "36",
+    height: "36",
+    class: "a-brand-mark",
     "aria-hidden": "true",
     focusable: "false",
   }))
     svg.setAttribute(key, value);
+  const defs = document.createElementNS(ns, "defs");
+  const clip = document.createElementNS(ns, "clipPath");
+  clip.setAttribute("id", "atlas-brand-crop");
+  const rect = document.createElementNS(ns, "rect");
+  for (const [key, value] of Object.entries({
+    x: "260",
+    y: "250",
+    width: "740",
+    height: "520",
+  }))
+    rect.setAttribute(key, value);
+  clip.append(rect);
+  defs.append(clip);
+  svg.append(defs);
   const image = document.createElementNS(ns, "image");
   image.setAttribute("href", "/static/logo-original.png");
   image.setAttribute("width", "1254");
   image.setAttribute("height", "1254");
+  image.setAttribute("clip-path", "url(#atlas-brand-crop)");
   svg.append(image);
   return svg;
 }
@@ -85,8 +101,10 @@ export function createShell({
   onClassic,
   onChooseTheme,
 }) {
+  const labels = createLocaleBindings();
+  const live = labels.text;
   const app = $("#atlas-app");
-  const nav = h("nav.a-nav", { "aria-label": t("navigation") });
+  const nav = live(h("nav.a-nav"), () => t("navigation"), "aria-label");
   const links = new Map(),
     badges = new Map();
   for (const group of groups) {
@@ -97,7 +115,7 @@ export function createShell({
         "a.a-nav-link",
         { href: routeHash(page), dataset: { page } },
         icon(icons[page]),
-        h("span.a-nav-label", pageTitle(page)),
+        live(h("span.a-nav-label"), () => pageTitle(page)),
         badge,
       );
       link.addEventListener("click", (event) => {
@@ -113,7 +131,9 @@ export function createShell({
     nav.append(
       h(
         "div.a-nav-group",
-        group.id ? h("p.a-nav-heading", navText("group_" + group.id)) : null,
+        group.id
+          ? live(h("p.a-nav-heading"), () => navText("group_" + group.id))
+          : null,
         list,
       ),
     );
@@ -133,7 +153,7 @@ export function createShell({
       onclick: onPalette,
     },
     icon("search"),
-    h("span", t("search")),
+    live(h("span"), () => t("search")),
     h("kbd", /Mac/.test(navigator.platform) ? "⌘K" : "Ctrl K"),
   );
   const sidebar = h(
@@ -152,7 +172,11 @@ export function createShell({
         onclick: onChooseTheme,
       },
       applicationMark(),
-      h("div", h("strong", "Fiber bundle"), h("span", t("local"))),
+      h(
+        "div",
+        h("strong", "Fiber bundle"),
+        live(h("span"), () => t("local")),
+      ),
     ),
     searchButton,
     nav,
@@ -238,6 +262,32 @@ export function createShell({
   const view = h("main.a-view", { id: "atlas-view", tabindex: "-1" });
   clear(app, sidebar, scrim, h("div.a-main", topbar, warning, view));
 
+  let activePage = "home";
+  // Update the shell synchronously even while the preference reload is pending.
+  for (const [selector, key] of [
+    ["#theme-toggle", "chooseTheme"],
+    [".a-foot-actions button:nth-child(1)", "theme"],
+    [".a-foot-actions button:nth-child(2)", "language"],
+    [".a-foot-actions button:nth-child(3)", "classic"],
+    [".a-foot-actions button:nth-child(4)", "signOut"],
+  ]) {
+    const button = sidebar.querySelector(selector);
+    live(button, () => t(key), "title");
+    live(button, () => t(key), "aria-label");
+  }
+  live(
+    topbar.querySelector(".a-search-trigger"),
+    () => t("search"),
+    "aria-label",
+  );
+  live(
+    menuButton,
+    () => t(app.classList.contains("is-menu-open") ? "closeMenu" : "openMenu"),
+    "aria-label",
+  );
+  live(status.lastElementChild, () => t(status.dataset.state));
+  live(crumb, () => pageTitle(activePage));
+
   function setMenu(open) {
     app.classList.toggle("is-menu-open", open);
     scrim.hidden = !open;
@@ -250,7 +300,9 @@ export function createShell({
   return {
     view,
     warning,
+    dispose: labels.dispose,
     setActive(page) {
+      activePage = page;
       for (const [id, link] of links)
         link.toggleAttribute("aria-current", id === page);
       if (links.get(page)) links.get(page).setAttribute("aria-current", "page");
@@ -276,6 +328,8 @@ export function pageHeader(
   page,
   { title, summary, actions = [], onRefresh, back } = {},
 ) {
+  const labels = createLocaleBindings();
+  const live = labels.text;
   const stamp = h("span.a-stamp", { "aria-live": "off" });
   let stampedAt = 0;
   const refresh = onRefresh
@@ -283,7 +337,7 @@ export function pageHeader(
         "button.a-button.is-ghost",
         { type: "button", title: t("refresh"), onclick: onRefresh },
         icon("refresh"),
-        h("span", t("refresh")),
+        live(h("span"), () => t("refresh")),
       )
     : null;
   const node = h(
@@ -293,10 +347,16 @@ export function pageHeader(
       back
         ? h("a.a-back", { href: back.href }, icon("back"), back.label)
         : null,
-      h("h1", title || pageTitle(page)),
-      h("p.a-page-summary", summary ?? pageSummary(page)),
+      title ? h("h1", title) : live(h("h1"), () => pageTitle(page)),
+      summary !== undefined
+        ? h("p.a-page-summary", summary)
+        : live(h("p.a-page-summary"), () => pageSummary(page)),
     ),
     h("div.a-page-actions", ...actions, stamp, refresh),
+  );
+  if (refresh) live(refresh, () => t("refresh"), "title");
+  live(stamp, () =>
+    stampedAt ? t("updated", { time: relative(stampedAt) }) : "",
   );
   const timer = setInterval(() => {
     if (stampedAt)
@@ -311,6 +371,7 @@ export function pageHeader(
     },
     dispose() {
       clearInterval(timer);
+      labels.dispose();
     },
   };
 }

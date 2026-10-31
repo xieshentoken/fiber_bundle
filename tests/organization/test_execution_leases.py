@@ -373,3 +373,37 @@ def test_pause_is_retained_if_process_exits_before_ledger_commit(config, ready, 
     paused = store.get(config, "jobs", job["id"])
     assert paused["state"] == "paused" and paused["completed"] == 0
     assert ready[4].exists()
+
+
+def test_repeated_reads_publish_each_phase_once_and_keep_durable_progress(
+    config, ready, monkeypatch
+):
+    from fiber_bundle import storage_read_scope
+
+    job = confirmed(config, ready)
+    writes = []
+    original = store.put
+
+    def put(config, table, identity, vault, value):
+        if table == "jobs":
+            writes.append(value.get("activity", {}).copy())
+        return original(config, table, identity, vault, value)
+
+    monkeypatch.setattr(store, "put", put)
+    with database.connect(config.state_root) as db:
+        unit = execution.Unit(config, db, job)
+        unit.lock.__enter__()
+        token = storage_read_scope.current.set(unit.read)
+        try:
+            for phase in ("undo_capture", "undo_seal"):
+                job["activity"] = {"phase": phase, "started_at": 1.0}
+                for _ in range(12):
+                    unit.read(lambda: ready[4].read_bytes())
+                saved = store.get(config, "jobs", job["id"])
+                assert saved["activity"] == job["activity"]
+                assert saved["state"] == "queued" and saved["completed"] == 0
+        finally:
+            storage_read_scope.current.reset(token)
+            # read() reacquires a fresh context manager for the same lock.
+            unit.lock.__exit__(None, None, None)
+    assert [value["phase"] for value in writes] == ["undo_capture", "undo_seal"]

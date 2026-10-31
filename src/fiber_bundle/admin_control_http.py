@@ -88,7 +88,9 @@ async def respond(
                             "blocked",
                         }:
                             job = execution_control.pause(config, job)
-                        value = maintenance.public(job, config=config)
+                        value = maintenance.public(
+                            job, config=config, db=db, validate_preview=False
+                        )
                     elif scope["path"] == "/admin/backend":
                         value = backend_snapshot(config, lifecycle)
                     elif scope["path"] == "/admin/vaults":

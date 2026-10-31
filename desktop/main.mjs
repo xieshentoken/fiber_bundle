@@ -16,13 +16,14 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   backendURL,
+  allowedNavigation,
   allowedRequest,
   allowedDownload,
   windowPreferences,
 } from "./policy.mjs";
 
 import { createDirectoryPicker } from "./directory_picker.mjs";
-import { trusted, openNote, trashIntent } from "./native.mjs";
+import { trusted, openNote, trashIntent, revealCloudNote } from "./native.mjs";
 import {
   createAppearanceState,
   themePresentation,
@@ -88,6 +89,10 @@ ipcMain.handle("fiber:select-directory", async (event, currentPath) => {
 ipcMain.handle("fiber:open-note", async (event, value) => {
   trusted(event, window, backend);
   return openNote(window, backend, value, shell);
+});
+ipcMain.handle("fiber:reveal-cloud-note", async (event, value) => {
+  trusted(event, window, backend);
+  return revealCloudNote(window, backend, value, shell);
 });
 ipcMain.handle("fiber:trash-intent", async (event, value) => {
   trusted(event, window, backend);
@@ -200,7 +205,8 @@ function openWindow() {
     } else if (allowedDownload(url, backend)) {
       event.preventDefault();
       target.webContents.downloadURL(url);
-    } else if (url !== backend && url !== offline) event.preventDefault();
+    } else if (!allowedNavigation(url, backend, offline))
+      event.preventDefault();
   });
   window.webContents.on("will-redirect", (event, url) => {
     if (url !== backend) event.preventDefault();

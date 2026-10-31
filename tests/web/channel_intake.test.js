@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createChannelApi } from "../../src/fiber_bundle/web/channel_api.js";
-import { intakeLabel } from "../../src/fiber_bundle/web/channel_intake_records.js";
+globalThis.localStorage = { getItem: () => null, setItem: () => {} };
+const { createChannelApi } =
+  await import("../../src/fiber_bundle/web/channel_api.js");
+const { intakeLabel } =
+  await import("../../src/fiber_bundle/web/channel_intake_records.js");
 
 test("intake actions preserve CAS and encode original/review resource identities", async () => {
   const calls = [],
@@ -78,4 +81,72 @@ test("new Pi attempt approval is explicit and absent from ordinary retry", async
     expected_revision: 4,
     approve_new_model_attempt: true,
   });
+});
+
+test("refreshing unstarted video settings is explicit and independent of paid retry", async () => {
+  const calls = [];
+  const api = createChannelApi(async (...args) => {
+    calls.push(args);
+    return {};
+  });
+  await api.channelIntakeRetry("entry", "batch", 0, 6);
+  await api.channelIntakeRetry("entry", "batch", 0, 6, false, true);
+  assert.deepEqual(calls[0][2], { expected_revision: 6 });
+  assert.deepEqual(calls[1][2], {
+    expected_revision: 6,
+    use_current_video_settings: true,
+  });
+  assert.match(
+    intakeLabel("intake_video_source_tls_interrupted"),
+    /安全连接中断/,
+  );
+});
+
+test("Atlas video stages and connection failures have specific bilingual labels", async () => {
+  const labels =
+    await import("../../src/fiber_bundle/web/atlas/channel_labels.js");
+  assert.match(labels.intakeLabel("resolve_source"), /视频短链接/);
+  assert.match(labels.intakeLabel("visual_analysis"), /分析选择帧/);
+  assert.match(
+    labels.intakeLabel("intake_video_source_tls_interrupted"),
+    /安全连接中断/,
+  );
+  assert.equal(labels.intakeLabel("published"), "已保存入库");
+});
+
+test("video token budget and progress survive API transport in either locale", async () => {
+  const { videoProgressLines } =
+    await import("../../src/fiber_bundle/web/video_intake_status.js");
+  const { setLang } = await import("../../src/fiber_bundle/web/atlas/i18n.js");
+  const calls = [];
+  const api = createChannelApi(async (...args) => calls.push(args));
+  await api.channelIntakeRetry("channel", "batch", 0, 4, true, false, {
+    max_video_tokens: 500000,
+  });
+  assert.equal(calls[0][2].max_video_tokens, 500000);
+  assert.equal(calls[0][2].max_new_model_calls, undefined);
+  const link = {
+    video_progress: {
+      frames_complete: 18,
+      frames_total: 104,
+      frames_remaining: 86,
+      failed_frame: "F0019",
+      token_budget: {
+        limit: 500000,
+        used_tokens: 12000,
+        remaining_tokens: 488000,
+        reserved_tokens: 2000,
+      },
+    },
+  };
+  setLang("en");
+  assert.match(
+    videoProgressLines(link).join(" "),
+    /18\/104.*F0019.*86 frames.*12,000 \/ 500,000.*488,000.*2,000/s,
+  );
+  setLang("zh");
+  assert.match(
+    videoProgressLines(link).join(" "),
+    /18\/104.*剩余 86 帧.*12,000 \/ 500,000.*488,000.*2,000/s,
+  );
 });

@@ -10,6 +10,8 @@ from . import (
     execution_ledger,
     pi_processing,
     publication_layout,
+    video_call_allowance,
+    video_token_budget,
 )
 from .config import Config, InvalidInput, StorageError
 from .inputs import canonical
@@ -137,6 +139,14 @@ def _advance(config: Config, job: dict[str, Any]) -> None:
                     [{"id": f"capture:{number}", "text": text}],
                     allow_cloud=job["value"]["binding"]["settings"]["allow_model_source_content"],
                 )
+                video_call_allowance.bind(db, rid, link.get("video_processing", {}))
+                if link.get("video_processing"):
+                    video_token_budget.bind(
+                        db,
+                        rid,
+                        link["video_processing"],
+                        run_policy.max_input_tokens + run_policy.max_output_tokens,
+                    )
                 runs[str(number)] = rid
                 jobs.settle(db, job, "claimed")
             state = execution_ledger.get_run(db, rid)["state"]
@@ -151,7 +161,10 @@ def _advance(config: Config, job: dict[str, Any]) -> None:
                     job,
                     "needs_review",
                     reason=(
-                        "intake_processing_budget_required"
+                        run["error_code"]
+                        if run["error_code"]
+                        in {"video_skill_call_limit_reached", "video_skill_token_budget_exhausted"}
+                        else "intake_processing_budget_required"
                         if run["state"] == "waiting_budget"
                         else run["error_code"] or "intake_summary_failed"
                     ),

@@ -13,6 +13,8 @@ def child_environment() -> dict[str, str]:
         "PYTHONHOME",
         "FIBER_CLOUD_HELPER",
         "FIBER_CLOUD_HELPER_SHA256",
+        "FIBER_EVENTS_HELPER",
+        "FIBER_EVENTS_HELPER_SHA256",
         "FIBER_TRASH_HELPER",
         "FIBER_TRASH_HELPER_SHA256",
     )

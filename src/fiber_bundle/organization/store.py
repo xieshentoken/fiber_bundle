@@ -14,6 +14,7 @@ from ..inputs import canonical
 
 TABLES = {
     "packages",
+    "draft_imports",
     "package_scans",
     "versions",
     "policies",
@@ -29,6 +30,7 @@ TABLES = {
     "analysis_cache",
     "maintenance_undo",
     "manual_resolutions",
+    "cloud_downloads",
 }
 
 

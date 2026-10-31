@@ -7,6 +7,7 @@ import intake from "./intake.js";
 import creation from "./creation.js";
 import home from "./home.js";
 import organization from "./organization.js";
+import organizationContinuity from "./organization_continuity.js";
 import models from "./models.js";
 import vaults from "./vaults.js";
 import shell from "./shell.js";
@@ -19,6 +20,7 @@ export const messages = {
   ...creation,
   ...home,
   ...organization,
+  ...organizationContinuity,
   ...models,
   ...vaults,
   ...shell,

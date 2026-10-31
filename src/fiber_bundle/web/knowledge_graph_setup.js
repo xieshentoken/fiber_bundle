@@ -1,3 +1,4 @@
+import { noteIndexOutcome } from "./note_index_errors.js";
 import { phrase, setText, uiText } from "./i18n/index.js";
 // Persistent recovery controls; detection is explicit and never starts a note analysis.
 import { el } from "./ui.js";
@@ -33,15 +34,12 @@ export function createGraphSetup(graph, scope, refresh, profile) {
       const fixed = scope();
       if (!fixed.client_id || !fixed.vault_id)
         throw new Error("请先选择分析身份与知识库。");
-      setText(message, uiText("正在更新索引，完成前请保留此页面…"));
+      setText(message, uiText("正在提交索引更新任务…"));
       try {
         const result = await graph.updateIndex(fixed);
         if (JSON.stringify(fixed) !== JSON.stringify(scope())) return;
-        setText(
-          message,
-          phrase("索引已更新，共 {p0} 篇笔记。", { p0: result.notes }),
-        );
-        await refresh();
+        setText(message, noteIndexOutcome(result));
+        if (result.state === "ready") await refresh();
       } catch (error) {
         if (JSON.stringify(fixed) === JSON.stringify(scope()))
           setText(message, uiText(graphLoadFailure(error)));

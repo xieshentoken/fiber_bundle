@@ -404,7 +404,13 @@ def _execute(config: Config, policy: ExecutionConfig, run_id: str, prompt: str) 
         failure = exc.code
     except (model_gateway.ModelFailure, ModelError) as exc:
         failure = exc.code
-    except (ledger.BudgetExceeded, KeyBudgetExceeded):
+    except KeyBudgetExceeded as exc:
+        failure = (
+            str(exc)
+            if str(exc) in {"video_skill_call_limit_reached", "video_skill_token_budget_exhausted"}
+            else "budget_exhausted"
+        )
+    except ledger.BudgetExceeded:
         failure = "budget_exhausted"
     except (
         OSError,
@@ -420,6 +426,8 @@ def _execute(config: Config, policy: ExecutionConfig, run_id: str, prompt: str) 
                 "executor stopped": "processing_executor_stopped",
                 "executor protocol failed": "processing_executor_protocol",
                 "model did not finish successfully": "processing_model_incomplete",
+                "provider exceeded reserved limits": "processing_model_usage_exceeded",
+                "provider_exceeded_budget_reservation": "processing_model_usage_exceeded",
             }.get(str(exc), "execution_failed")
             if processing
             else "execution_failed"
@@ -474,7 +482,16 @@ def _execute(config: Config, policy: ExecutionConfig, run_id: str, prompt: str) 
                     run_id,
                     "succeeded"
                     if success
-                    else ("waiting_budget" if failure == "budget_exhausted" else "failed"),
+                    else (
+                        "waiting_budget"
+                        if failure
+                        in {
+                            "budget_exhausted",
+                            "video_skill_call_limit_reached",
+                            "video_skill_token_budget_exhausted",
+                        }
+                        else "failed"
+                    ),
                     None if success else failure,
                 )
                 db.execute(

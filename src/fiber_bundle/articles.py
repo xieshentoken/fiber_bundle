@@ -91,6 +91,10 @@ def _text(result: Mapping[str, object], key: str, *, required: bool = False) -> 
 
 
 def _extract_html(html: str, url: str, image_limit: int | None) -> dict[str, object]:
+    from . import article_fibermall
+
+    if urlsplit(url).hostname in article_fibermall.HOSTS:
+        return article_fibermall.extract(html, url, image_limit)
     if (urlsplit(url).hostname or "") in {"x.com", "www.x.com", "twitter.com", "www.twitter.com"}:
         parser = upstream.DocumentParser()
         parser.feed(html)

@@ -1,6 +1,6 @@
 // Bilingual text. Each module owns its strings next to the code that uses them;
 // Chinese is the reference language and the fallback for a missing English entry.
-import { locale, setLocale } from "../i18n/index.js";
+import { locale, setLocale, onLocaleChange, setText } from "../i18n/index.js";
 export const LANGS = ["zh", "en"];
 export function setLang(value) {
   setLocale(value === "en" ? "en" : "zh-CN");
@@ -27,4 +27,24 @@ export function strings(table) {
 // Pick between inline variants: pick({ zh: "…", en: "…" }).
 export function pick(variants) {
   return variants[lang()] ?? variants.zh;
+}
+
+// Bind only UI-owned labels. Source names and form values are never translated.
+export function createLocaleBindings() {
+  const updates = new Set();
+  const stop = onLocaleChange(() => {
+    for (const update of updates) update();
+  });
+  return {
+    text(node, read, attribute = "") {
+      const update = () => setText(node, read(), attribute);
+      updates.add(update);
+      update();
+      return node;
+    },
+    dispose() {
+      stop();
+      updates.clear();
+    },
+  };
 }

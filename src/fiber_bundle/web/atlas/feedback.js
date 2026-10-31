@@ -45,7 +45,14 @@ const englishStatus = {
 };
 export function errorText(error) {
   const message = error?.message || String(error || "");
-  if (lang() === "zh") return { title: message || "操作未完成。", detail: "" };
+  const diagnostic = [
+    "maintenance_membership_plan_changed",
+    "maintenance_membership_baseline_changed",
+  ].includes(error?.code)
+    ? error.code
+    : "";
+  if (lang() === "zh")
+    return { title: message || "操作未完成。", detail: diagnostic };
   const title =
     englishCodes[error?.code] ||
     englishStatus[error?.status] ||
@@ -57,7 +64,7 @@ export function errorText(error) {
         ? error?.code || ""
         : translated
       : "";
-  return { title, detail };
+  return { title, detail: diagnostic || detail };
 }
 
 let region;

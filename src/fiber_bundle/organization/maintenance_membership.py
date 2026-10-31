@@ -4,6 +4,7 @@ from typing import Any
 
 from .. import moc_file_journal, moc_registration, moc_store
 from ..config import IntegrityError
+from ..partial_notes import for_job as read_omissions
 from . import membership, store
 
 
@@ -29,7 +30,13 @@ def remove(config: Any, db: Any, job: Any, item: Any, mid: str) -> None:
         operation = item.get("retire_adoption")
         if operation is None:
             packet = moc_registration.preview(
-                config, db, job["client_id"], job["vault_id"], moc["path"], expected["sha256"]
+                config,
+                db,
+                job["client_id"],
+                job["vault_id"],
+                moc["path"],
+                expected["sha256"],
+                omissions=read_omissions(job),
             )
             operation = packet["operation_id"]
             item["retire_adoption"] = operation
@@ -77,6 +84,7 @@ def remove(config: Any, db: Any, job: Any, item: Any, mid: str) -> None:
         owner="manual",
         action="unlink",
         record_decision=False,
+        omissions=read_omissions(job),
     )
     store.put(
         config,

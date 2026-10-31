@@ -35,6 +35,10 @@ export function relationLines(entry) {
         ),
       );
     for (const item of scope.vaults) {
+      if (!item.available && item.reason?.startsWith("channel_cloud_"))
+        rows.push(
+          `${item.name}：${word("iCloud 同步状态未就绪，暂不可查询；入口连接单独检测。", "iCloud sync is not ready; queries are unavailable. Channel connection is checked separately.")}`,
+        );
       if (item.alias)
         rows.push(
           `查询[${item.alias}]：${word("问题", "question")} → ${item.name}${item.available ? "" : word("（不可用）", " (unavailable)")}`,

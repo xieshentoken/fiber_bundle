@@ -134,6 +134,7 @@ const selects = enhanceSelects(document.body, {
 });
 window.addEventListener("pagehide", () => {
   connection.stop();
+  shell.dispose();
   selects.destroy();
 });
 document.addEventListener("visibilitychange", () => {

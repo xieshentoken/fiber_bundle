@@ -46,7 +46,12 @@
       rel="stylesheet"
       href="/static/vault_relocation.css"
     />
-    <link data-ui-style="classic" rel="stylesheet" href="/static/suppliers.css" />
+    <link
+      data-ui-style="classic"
+      rel="stylesheet"
+      href="/static/suppliers.css"
+    />
+    <link rel="stylesheet" href="/static/draft_import.css" />
   </head>
   <body>
     <header>
@@ -167,7 +172,9 @@
         <button type="button" data-tab="vaults" data-i18n="shell.975b35f9c2">
           知识库
         </button>
-        <button type="button" data-tab="suppliers" data-i18n="suppliers.nav">供应商信息</button>
+        <button type="button" data-tab="suppliers" data-i18n="suppliers.nav">
+          供应商信息
+        </button>
         <button type="button" data-tab="imports" data-i18n="shell.3619939e3d">
           资料导入
         </button>
@@ -1239,7 +1246,7 @@
                     >或导入本机凭证文件绝对路径</span
                   ><input
                     id="channel-credential"
-                    placeholder="/Users/…/feishu_bot.txt"
+                    placeholder="/Users/…/example_feishu.txt"
                 /></label>
               </div>
               <label

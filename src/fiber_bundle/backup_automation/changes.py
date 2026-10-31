@@ -51,6 +51,8 @@ def observe(config: Config, cache: dict[str, Any] | None = None) -> dict[str, An
             raise InvalidInput("backup_observation_limit")
 
     for name in sorted(DATABASES):
+        if name == "vault-sync.sqlite3":
+            continue  # Observation heartbeat/cursors are not new business content.
         path = contained(config.state_root, name)
         if not path.exists():
             continue
@@ -104,6 +106,15 @@ def observe(config: Config, cache: dict[str, Any] | None = None) -> dict[str, An
         for row in db.execute("SELECT * FROM vaults ORDER BY id"):
             if row["attachment_state"] in {"detached", "trashed"}:
                 continue
+            from ..vault_sync.presentation import backup_items
+
+            observed = backup_items(config, row["id"])
+            if observed is not None:
+                for key, (digest, size) in observed.items():
+                    add(key, digest, size)
+                continue
+            if os.environ.get("FIBER_EVENTS_HELPER"):
+                raise InvalidInput("backup_vault_sync_pending")
             root = vaults.checked_vault(config, row, pending=True, metadata=db)
             scope = for_vault(root, row)
             for path, info in entries(root, scope, maximum=100000, hidden=True):
