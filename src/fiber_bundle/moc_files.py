@@ -18,6 +18,7 @@ from . import (
     note_changes,
     note_inventory,
     note_publications,
+    partial_notes,
     vaults,
 )
 from . import (
@@ -41,6 +42,25 @@ def observed(
     config: Config | None = None,
     vault: str = "",
 ) -> str:
+    if inventory.coverage:
+        from dataclasses import replace
+
+        return digest(
+            canonical(
+                [
+                    inventory.coverage,
+                    observed(
+                        replace(inventory, coverage=None),
+                        relative,
+                        record=record,
+                        data=data,
+                        moc_id=moc_id,
+                        config=config,
+                        vault=vault,
+                    ),
+                ]
+            ).encode()
+        )
     if record is not None:
         from .organization import store
 
@@ -70,6 +90,7 @@ def context(
     allow_after: bool = False,
     source: dict[str, Any] | None = None,
     recovering: bool = False,
+    omissions: dict[str, str] | None = None,
 ) -> tuple[moc_store.Record, note_inventory.Inventory]:
     if (plan or {}).get("graph_writeback_id") is not None:
         from .knowledge_graph.writeback import authorize
@@ -93,7 +114,9 @@ def context(
         if plan is not None
         else None
     )
-    inventory = note_inventory.read(config, db, vault, projection=projection)
+    inventory = partial_notes.read(
+        config, db, vault, (plan or {}).get("read_omissions", omissions), projection=projection
+    )
     if plan is not None:
         moc_file_identity.check_target(inventory, plan, allow_after=allow_after)
     if source is not None:
@@ -146,9 +169,10 @@ def plan_file(
     source: dict[str, Any] | None = None,
     graph_writeback_id: str | None = None,
     missing_block_repair: tuple[str, str] | None = None,
+    omissions: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     vaults.require_scope(config, auth.grant(db, client, vid, "add"), relative)
-    record, inventory = context(config, db, client, vid, mid, source=source)
+    record, inventory = context(config, db, client, vid, mid, source=source, omissions=omissions)
     if record.revision != revision:
         raise IntegrityError("MOC revision conflict")
     items = journal.plans(config, vid, mid)
@@ -205,6 +229,8 @@ def plan_file(
         "base_id": prior.plan_id if prior else None,
         "manual_links_preserved": preserved,
     }
+    if omissions:
+        value["read_omissions"] = partial_notes.validate(omissions)
     if identity is not None:
         value.update(schema=2, identity=identity, after_file_key=None)
     if source is not None:
@@ -213,7 +239,7 @@ def plan_file(
         value.update(
             schema=4, identity=identity, after_file_key=None, graph_writeback_id=graph_writeback_id
         )
-    again_record, again = context(config, db, client, vid, mid, source=source)
+    again_record, again = context(config, db, client, vid, mid, source=source, omissions=omissions)
     again_data, again_key = target(again, relative)
     if (
         again_record,

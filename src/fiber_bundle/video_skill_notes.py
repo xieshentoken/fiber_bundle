@@ -35,8 +35,11 @@ def render(
     visual_primary = frozen.get("transcript_route") == "visual_primary"
     if visual_primary:
         body += "> " + DISCLOSURE + "\n\n"
-    if frozen.get("note_authoring") == video_evidence_notes.MODE:
-        body += "> 生成方式：已有画面文字与分析要点直接排版，未调用 Pi 或新增模型推断。\n\n"
+    if frozen.get("note_authoring") in video_evidence_notes.MODES:
+        body += (
+            "> 生成方式：已有转写原文、画面文字与分析要点直接排版；本次排版未调用 Pi，"
+            "未新增模型推断。既有 Pi 扩写尝试保留在处理历史。\n\n"
+        )
     bindings = []
     for segment in segments:
         guard()
@@ -57,7 +60,7 @@ def render(
             )
         note = (
             video_evidence_notes.segment_note(evidence)
-            if frozen.get("note_authoring") == video_evidence_notes.MODE
+            if frozen.get("note_authoring") in video_evidence_notes.MODES
             else video_skill_model.author(
                 config, policy, frozen, evidence, version, client, vault, save, guard
             )
@@ -156,10 +159,10 @@ def export(job: Path, frozen: dict[str, Any]) -> dict[str, bytes]:
             "vision_runs": frozen.get("vision_runs", {}),
             "note_authoring": frozen.get("note_authoring", "pi"),
             "note_runs": {}
-            if frozen.get("note_authoring") == video_evidence_notes.MODE
+            if frozen.get("note_authoring") in video_evidence_notes.MODES
             else frozen.get("note_runs", {}),
             "unused_prior_note_runs": frozen.get("note_runs", {})
-            if frozen.get("note_authoring") == video_evidence_notes.MODE
+            if frozen.get("note_authoring") in video_evidence_notes.MODES
             else {},
             "source_coverage": json.loads((job / "metadata/source_coverage.json").read_bytes()),
             "knowledge_verified": False,

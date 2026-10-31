@@ -416,3 +416,79 @@ def test_active_api_chunk_is_running_not_a_failed_retry(
     video_asr_api.attempt(
         config, selected, frozen, job, "1", b"audio", "terms", lambda: None, lambda: None
     )
+
+
+def test_asr_reservation_and_vision_share_the_resume_allowance(
+    config, entry, policy, monkeypatch, tmp_path, media, vault_keychain
+):
+    from fiber_bundle import video_call_allowance
+    from fiber_bundle.channels import intake_actions
+
+    batch, _ = install_v3(config, entry, policy, monkeypatch, tmp_path, media, subtitles=False)
+    configure_api(config, policy, monkeypatch)
+    monkeypatch.setattr(
+        video_asr_transport,
+        "transcribe",
+        lambda *a: (_ for _ in ()).throw(ModelError("model_timeout")),
+    )
+    assert intake_extraction.advance(config, entry[0]["id"])
+    revision = intake_actions.inspect(config, entry[0]["id"])["revision"]
+    intake_extraction.retry(
+        config,
+        entry[0]["id"],
+        batch,
+        0,
+        revision,
+        approve_new_model_attempt=True,
+        max_new_model_calls=1,
+    )
+    monkeypatch.setattr(
+        video_asr_transport,
+        "transcribe",
+        lambda *a: {
+            "text": "Synthetic transcript",
+            "usage": {"input_tokens": 5, "output_tokens": 5},
+        },
+    )
+    monkeypatch.setattr(
+        "fiber_bundle.model_gateway.complete",
+        lambda *a: pytest.fail("ASR already consumed allowance"),
+    )
+    assert intake_extraction.advance(config, entry[0]["id"])
+    link = current(config, entry, batch)
+    assert link["reason"] == "video_skill_call_limit_reached", link
+    assert link["video_processing"]["transcript_route"] == "transcription_api"
+    with database.connect(config.state_root) as db:
+        status = video_call_allowance.status(db, link["video_processing"]["call_allowance"])
+        assert status["used"] == 1 and status["remaining"] == 0
+
+
+@pytest.mark.parametrize("damage", ["audio", "timestamp"])
+def test_api_evidence_checks_real_audio_and_rejects_time_beyond_it(
+    config, entry, policy, monkeypatch, tmp_path, media, vault_keychain, damage
+):
+    from fiber_bundle.video_evidence_notes import require_cached
+
+    batch, _ = install_v3(config, entry, policy, monkeypatch, tmp_path, media, subtitles=False)
+    configure_api(config, policy, monkeypatch)
+    monkeypatch.setattr(
+        video_asr_transport,
+        "transcribe",
+        lambda *a: {
+            "text": "Verified synthetic transcript",
+            "usage": {"input_tokens": 5, "output_tokens": 5},
+        },
+    )
+    assert intake_extraction.advance(config, entry[0]["id"])
+    link = current(config, entry, batch)
+    assert link["state"] == "review_required", link
+    frozen = link["video_processing"]
+    job = config.state_root / "video-skill-jobs" / frozen["job_id"]
+    if damage == "audio":
+        audio = job / "transcript/asr_audio.wav"
+        audio.write_bytes(audio.read_bytes() + b"changed")
+    else:
+        path = job / "transcript/asr_normalized.srt"
+        path.write_text(path.read_text().replace("00:00:04,032", "00:00:04,200"))
+    with database.connect(config.state_root) as db, pytest.raises(InvalidInput):
+        require_cached(db, frozen, job)

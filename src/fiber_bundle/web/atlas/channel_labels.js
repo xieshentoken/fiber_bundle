@@ -38,6 +38,12 @@ const zh = {
   transport_or_processing_unavailable: "平台连接或处理状态尚未就绪",
   binding_required: "请先完成本人绑定",
   permission_revoked: "查询授权不可用",
+  channel_cloud_not_ready: "知识库 iCloud 同步状态未就绪；连接仍独立检测",
+  channel_cloud_metadata_unavailable: "暂时无法核验知识库 iCloud 状态",
+  channel_cloud_check_timeout: "知识库 iCloud 状态检查超时",
+  channel_cloud_not_downloaded: "知识库所需文件尚未下载到本机",
+  channel_vault_unavailable: "知识库目录暂不可用，请检查接入位置",
+  channel_source_verification_failed: "知识库来源安全校验未通过",
   policy_changed: "模型配置已变化",
   channel_paused: "入口已暂停",
   budget_or_switch_disabled: "开关关闭或额度不足",
@@ -103,6 +109,15 @@ const en = {
     "Platform connection or processing not ready",
   binding_required: "Complete owner binding first",
   permission_revoked: "Query access unavailable",
+  channel_cloud_not_ready:
+    "Vault iCloud sync is not ready; connection is checked separately",
+  channel_cloud_metadata_unavailable:
+    "Vault iCloud status cannot be verified yet",
+  channel_cloud_check_timeout: "Vault iCloud status check timed out",
+  channel_cloud_not_downloaded:
+    "Required vault files are not downloaded locally",
+  channel_vault_unavailable: "Vault folder unavailable; check its location",
+  channel_source_verification_failed: "Vault source safety check failed",
   policy_changed: "Model configuration changed",
   channel_paused: "Channel paused",
   budget_or_switch_disabled: "Switch off or quota exhausted",
@@ -140,6 +155,37 @@ const en = {
   fallback: "Needs checking",
 };
 const intakeZh = {
+  video_skill_token_budget_exhausted:
+    "本视频剩余 Token 预算不足以下一次调用预留，已暂停；已有结果保留。",
+  video_skill_call_limit_reached:
+    "本次恢复调用额度已用完，处理已暂停；已有结果保留。",
+  video_skill_visual_output_truncated:
+    "图片模型输出达到上限，笔记尚未保存；已完成帧保留，可恢复失败帧。",
+  video_skill_visual_response_empty:
+    "图片模型未返回分析内容，笔记尚未保存；已完成帧保留。",
+  video_skill_note_output_truncated:
+    "转写和画面已完成；笔记生成达到输出上限，需明确恢复。",
+  video_skill_note_context_exceeded:
+    "转写和画面已完成；笔记生成超出预留上下文容量，需核对配置后明确恢复。",
+  resolve_source: "展开并核对视频短链接",
+  init_job: "初始化视频任务",
+  fiber_public_probe: "核对公开视频访问",
+  acquire_public: "获取视频或字幕",
+  run_asr: "本地 ASR 转写",
+  asr_api: "API 语音转写",
+  select_keyframes: "提取关键帧",
+  visual_analysis: "分析选择帧",
+  note_authoring: "生成视频笔记",
+  crop_illustrations: "裁剪笔记配图",
+  build_evidence_timeline: "关联时间戳与证据",
+  intake_video_source_timeout: "视频短链连接超时，可明确重试。",
+  intake_video_source_tls_interrupted: "视频短链安全连接中断，可明确重试。",
+  intake_video_source_connection_interrupted: "视频短链连接中断，可明确重试。",
+  intake_video_source_certificate_invalid:
+    "短链证书校验失败，请核对网络证书和系统时间。",
+  intake_video_source_dns_failed: "视频短链域名解析失败，可明确重试。",
+  intake_video_refresh_not_safe: "提取已开始，请沿用任务快照恢复。",
+
   waiting: "附件待补齐",
   queued: "等待归档",
   archiving: "归档中 / 中断待核对",
@@ -150,7 +196,7 @@ const intakeZh = {
   extracting: "提取中 / 中断待核对",
   review_required: "正文 / 字幕待审核",
   metadata_only: "仅来源信息；正文待补全",
-  published: "已审核发布",
+  published: "已保存入库",
   sent: "回执已发送",
   unknown: "回执结果待手机核对",
   sending: "回执发送中 / 中断待核对",
@@ -198,6 +244,42 @@ const intakeZh = {
   fallback: "需要核对，详情见诊断。",
 };
 const intakeEn = {
+  video_skill_token_budget_exhausted:
+    "The remaining video token budget cannot reserve the next call. Processing is paused; completed results are retained.",
+  video_skill_call_limit_reached:
+    "This resume reached its call limit and is paused; completed results are retained.",
+  video_skill_visual_output_truncated:
+    "Image analysis reached the output limit. The note is not saved; completed frames are retained.",
+  video_skill_visual_response_empty:
+    "The image model returned no analysis. The note is not saved; completed frames are retained.",
+  video_skill_note_output_truncated:
+    "Transcript and frames are complete; note authoring reached the output limit. Resume explicitly.",
+  video_skill_note_context_exceeded:
+    "Transcript and frames are complete; note authoring exceeded reserved context capacity. Check settings before explicitly resuming.",
+  resolve_source: "Resolving video short link",
+  init_job: "Initializing video task",
+  fiber_public_probe: "Checking public video access",
+  acquire_public: "Fetching video or subtitles",
+  run_asr: "Local ASR transcription",
+  asr_api: "API audio transcription",
+  select_keyframes: "Extracting keyframes",
+  visual_analysis: "Analyzing selected frames",
+  note_authoring: "Authoring video note",
+  crop_illustrations: "Cropping note illustrations",
+  build_evidence_timeline: "Linking timestamps and evidence",
+  intake_video_source_timeout:
+    "Video short-link connection timed out. Retry explicitly.",
+  intake_video_source_tls_interrupted:
+    "Video short-link TLS connection interrupted. Retry explicitly.",
+  intake_video_source_connection_interrupted:
+    "Video short-link connection interrupted. Retry explicitly.",
+  intake_video_source_certificate_invalid:
+    "Certificate validation failed. Check certificates and system time.",
+  intake_video_source_dns_failed:
+    "Video short-link DNS resolution failed. Retry explicitly.",
+  intake_video_refresh_not_safe:
+    "Extraction started. Resume with the original task settings.",
+
   waiting: "Attachments pending",
   queued: "Waiting to archive",
   archiving: "Archiving / interrupted — check",
@@ -208,7 +290,7 @@ const intakeEn = {
   extracting: "Extracting / interrupted — check",
   review_required: "Text / subtitles need review",
   metadata_only: "Source info only; text to complete",
-  published: "Reviewed and published",
+  published: "Saved to vault",
   sent: "Receipt sent",
   unknown: "Receipt result to check on phone",
   sending: "Receipt sending / interrupted — check",

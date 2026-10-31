@@ -2,7 +2,10 @@ import { uiText } from "./i18n/index.js";
 // Explicit lifecycle and model actions. Rendering never starts a task by itself.
 import { el } from "./ui.js";
 import { control } from "./record_ui.js";
-import { manuallyResolved } from "./organization_progress.js";
+import {
+  manuallyResolved,
+  effectiveIndexState,
+} from "./organization_progress.js";
 
 export function taskActions(job) {
   const actions = [];
@@ -27,11 +30,21 @@ export function taskActions(job) {
     ["queued", "running", "preview", "cancelling"].includes(job.state)
   )
     actions.push({ operation: "pause", label: "暂停整理" });
-  if (["failed", "partial", "blocked", "paused"].includes(job.state))
+  if (
+    !job.blocking_task &&
+    [
+      "failed",
+      "partial",
+      "blocked",
+      "paused",
+      "waiting_task",
+      "waiting_file",
+    ].includes(job.state)
+  )
     actions.push({ operation: "resume", label: "恢复未完成整理" });
   if (job.state === "rollback_conflict")
     actions.push({ operation: "resume", label: "核对后继续撤销" });
-  if (job.index_state === "failed" && job.state === "completed")
+  if (effectiveIndexState(job) === "failed" && job.state === "completed")
     actions.push({ operation: "resume", label: "重试整理索引" });
   if (
     [
@@ -42,6 +55,8 @@ export function taskActions(job) {
       "paused",
       "partial",
       "failed",
+      "waiting_file",
+      "waiting_task",
     ].includes(job.state)
   )
     actions.push({

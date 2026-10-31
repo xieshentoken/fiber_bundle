@@ -13,8 +13,8 @@ from . import (
     moc_files,
     moc_markdown,
     moc_store,
-    note_inventory,
     note_placement,
+    partial_notes,
     vault_directories,
     vault_save_policy,
 )
@@ -46,9 +46,15 @@ def adoption_context(
     return root, scope, policy
 
 
-def context(config: Config, db: sqlite3.Connection, client: str, vault: str) -> tuple[Any, Any]:
+def context(
+    config: Config,
+    db: sqlite3.Connection,
+    client: str,
+    vault: str,
+    omissions: dict[str, str] | None = None,
+) -> tuple[Any, Any]:
     _, _, policy = adoption_context(config, db, client, vault)
-    inventory = note_inventory.read(config, db, auth.grant(db, client, vault, "query"))
+    inventory = partial_notes.read(config, db, auth.grant(db, client, vault, "query"), omissions)
     return inventory, policy
 
 
@@ -101,9 +107,16 @@ def listing(config: Config, db: sqlite3.Connection, client: str, vault: str) -> 
 
 
 def observe(
-    config: Config, db: sqlite3.Connection, client: str, vault: str, path: str, expected: str
+    config: Config,
+    db: sqlite3.Connection,
+    client: str,
+    vault: str,
+    path: str,
+    expected: str,
+    *,
+    omissions: dict[str, str] | None = None,
 ) -> tuple[dict[str, Any], bytes, Any]:
-    inventory, policy = context(config, db, client, vault)
+    inventory, policy = context(config, db, client, vault, omissions)
     prefix = policy["settings"].get("moc_dir", "Map") + "/"
     if not path.startswith(prefix):
         raise InvalidInput("moc_registration_outside_directory")
@@ -140,11 +153,20 @@ def observe(
 
 
 def preview(
-    config: Config, db: sqlite3.Connection, client: str, vault: str, path: str, expected: str
+    config: Config,
+    db: sqlite3.Connection,
+    client: str,
+    vault: str,
+    path: str,
+    expected: str,
+    *,
+    omissions: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     note_placement.guard(db, vault)
     guard(db, vault)
-    value, raw, inventory = observe(config, db, client, vault, path, expected)
+    value, raw, inventory = observe(config, db, client, vault, path, expected, omissions=omissions)
+    if omissions:
+        value["read_omissions"] = partial_notes.validate(omissions)
     record = moc_store.Record(**value["record"])
     after, _, _ = moc_markdown.render(raw, value["moc_id"], path, record, inventory)
     value.update(after_sha256=digest(after), expires_at=time.time() + 900, plan_id=None)
@@ -195,7 +217,15 @@ def apply(
         if action != "apply" or time.time() > value["expires_at"]:
             raise IntegrityError("moc_registration_preview_expired")
         note_placement.guard(db, vault)
-        observed, _, _ = observe(config, db, client, vault, value["path"], value["before_sha256"])
+        observed, _, _ = observe(
+            config,
+            db,
+            client,
+            vault,
+            value["path"],
+            value["before_sha256"],
+            omissions=value.get("read_omissions"),
+        )
         if any(canonical(v) != canonical(value[k]) for k, v in observed.items()):
             raise IntegrityError("moc_registration_file_changed")
     elif row["state"] not in {"applying", "reconcile"} or action != "reconcile":
@@ -232,6 +262,7 @@ def apply(
                 record.revision,
                 value["path"],
                 value["before_sha256"],
+                omissions=value.get("read_omissions"),
             )
             if packet["after_sha256"] != value["after_sha256"]:
                 raise IntegrityError("moc_registration_file_changed")

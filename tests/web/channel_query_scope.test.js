@@ -27,3 +27,27 @@ test("saving relationship uses the actual intake target and does not imply union
   });
   assert.deepEqual(lines, ["独立入库 → Suppliers"]);
 });
+
+test("cloud availability warnings do not mislabel channel connectivity", () => {
+  const lines = relationLines({
+    query_scope: {
+      vaults: [
+        {
+          vault_id: "a",
+          alias: "",
+          name: "ExampleVaultRoot",
+          available: false,
+          reason: "channel_cloud_not_ready",
+        },
+      ],
+    },
+    configuration: { settings: { purpose: "query" } },
+  });
+  assert(
+    lines.some((line) =>
+      line.includes(
+        "ExampleVaultRoot：iCloud 同步状态未就绪，暂不可查询；入口连接单独检测。",
+      ),
+    ),
+  );
+});

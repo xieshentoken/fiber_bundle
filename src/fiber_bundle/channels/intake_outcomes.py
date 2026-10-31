@@ -77,6 +77,14 @@ def outcome(
             for j in jobs
         )
     )
+    from ..publication_blockers import pending as publication_blockers
+
+    blocked = any(
+        j["phase"] == "publish"
+        and j["state"] in {"waiting", "reconcile", "needs_review"}
+        and publication_blockers(main, j["vault_id"])
+        for j in jobs
+    )
     if value.get("aborted"):
         stage, text = (
             "cancelled",
@@ -96,6 +104,12 @@ def outcome(
                 )
             )
         )
+    elif blocked:
+        stage, text = (
+            "waiting_dependency",
+            "正文和附件已提取并保留，等待本库归档操作完成核对后发布。"
+            "请在关联与 MOC 页面恢复原整理任务，无需重新转发或重新提取。",
+        )
     elif (
         failed_links
         or failed_jobs
@@ -105,6 +119,10 @@ def outcome(
         stage = (
             "waiting_budget"
             if "waiting_budget" in states
+            or {
+                "video_skill_call_limit_reached",
+                "video_skill_token_budget_exhausted",
+            }.intersection(reasons)
             else "waiting_dependency"
             if "waiting_dependency" in states
             else "failed"
@@ -114,6 +132,10 @@ def outcome(
             "waiting_dependency": "处理等待所需环境，尚未完成入库。",
             "failed": "提取或处理失败，本批尚未全部入库。",
         }[stage]
+        if "video_skill_call_limit_reached" in reasons:
+            text = "本次恢复的模型调用次数已用完，已暂停；尚未完成入库。"
+        if "video_skill_token_budget_exhausted" in reasons:
+            text = "本视频剩余 Token 预算不足以下一次调用预留，已暂停；尚未完成入库。"
         text += "已保留收到的消息/附件及链接；远端正文或视频可能尚未取得。"
         if reasons:
             text += "\n" + "\n".join(reason_text(r) for r in reasons[:3])

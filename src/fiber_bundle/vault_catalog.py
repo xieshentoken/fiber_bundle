@@ -18,9 +18,9 @@ def canonical_root(config: Config, value: str, scope: object) -> tuple[Path, vau
         raise InvalidInput("vault_root_invalid")
     # Inherited denial is evaluated before probing the requested root.
     effective = vault_scope.effective(path, scope)
-    from .cloud_files import require_available
+    from .cloud_files import require_directory
 
-    require_available(path)
+    require_directory(path)
     if path.resolve(strict=True) != path or not path.is_dir() or path == Path(path.anchor):
         raise InvalidInput("vault_root_invalid")
     state = config.state_root

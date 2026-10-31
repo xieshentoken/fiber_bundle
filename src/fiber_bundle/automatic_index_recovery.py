@@ -33,6 +33,11 @@ def acknowledge(
     for permission in ("original", "add"):
         auth.grant(db, job["client_id"], job["vault_id"], permission)
     root = vaults.checked_vault(config, vault)
+    from .vault_sync.index_state import token
+
+    def observed() -> str:
+        current = token(config, db, vault)
+        return current if current is not None else cache.fingerprint(config, db, vault)
     with cache.connection(config, job["vault_id"]) as index:
         if index is None:
             return None
@@ -40,7 +45,7 @@ def acknowledge(
         if (
             generation is None
             or generation["state"] != "ready"
-            or cache.fingerprint(config, db, vault) != generation["fingerprint"]
+            or observed() != generation["fingerprint"]
         ):
             return None
         managed, _ = publication_locations.inventory(db, job["vault_id"])
@@ -68,7 +73,7 @@ def acknowledge(
             ):
                 raise IntegrityError("automatic_index_source_changed")
             evidence.append({"path": path, "sha256": current.sha256})
-        if cache.fingerprint(config, db, vault) != generation["fingerprint"]:
+        if observed() != generation["fingerprint"]:
             raise IntegrityError("automatic_index_source_changed")
         proof = {"fingerprint": generation["fingerprint"], "notes": evidence}
     job["value"].setdefault("failure_history", []).append(

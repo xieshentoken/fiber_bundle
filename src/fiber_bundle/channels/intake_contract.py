@@ -7,11 +7,12 @@ from pydantic import Field, StrictBool, field_validator
 from ..payloads import Identifier, Payload
 from .intake_links import domain
 
-Site = Literal["x", "wechat", "bilibili", "youtube", "wechat_channels"]
+Site = Literal["x", "wechat", "bilibili", "youtube", "wechat_channels", "fibermall"]
 Material = Literal["text", "link", "image", "file"]
 MATERIALS: tuple[Material, ...] = ("text", "link", "image", "file")
 DEFAULT_SITES: tuple[Site, ...] = ("x", "wechat", "bilibili", "youtube", "wechat_channels")
 SITES = [
+    {"id": "fibermall", "name": "FiberMall 技术博客", "kind": "article"},
     {"id": "x", "name": "X 长文章", "kind": "article"},
     {"id": "wechat", "name": "微信公众号（含图片型）", "kind": "article"},
     {"id": "bilibili", "name": "Bilibili", "kind": "video"},
@@ -27,7 +28,7 @@ class Settings(Payload):
     materials: Annotated[list[Material], Field(max_length=4)] = Field(
         default_factory=lambda: list(MATERIALS)
     )
-    sites: Annotated[list[Site], Field(max_length=5)] = Field(
+    sites: Annotated[list[Site], Field(max_length=6)] = Field(
         default_factory=lambda: list(DEFAULT_SITES)
     )
     custom_domains: Annotated[list[str], Field(max_length=20)] = Field(default_factory=list)
@@ -70,8 +71,11 @@ class Revision(Payload):
 
 
 class Retry(Revision):
+    use_current_video_settings: StrictBool = False
     approve_new_model_attempt: StrictBool = False
-    video_note_mode: Literal["visual_evidence"] | None = None
+    video_note_mode: Literal["visual_evidence", "captured_evidence", "direct"] | None = None
+    max_new_model_calls: Annotated[int, Field(strict=True, ge=0, le=1000)] | None = None
+    max_video_tokens: Annotated[int, Field(strict=True, ge=0, le=1_000_000_000)] | None = None
 
 
 class Review(Payload):

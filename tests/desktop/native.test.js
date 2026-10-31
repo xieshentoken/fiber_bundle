@@ -145,3 +145,65 @@ test("Atlas hash routes keep native authorization on the same root document only
     assert.throws(() => trusted(event, w, backend));
   }
 });
+
+test("cloud reveal validates backend permission and inode without reading content", async () => {
+  const { revealCloudNote } = await import("../../desktop/native.mjs");
+  const { lstat } = await import("node:fs/promises");
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "fiber-reveal-"))),
+    path = join(dir, "note.md");
+  await writeFile(path, "# synthetic");
+  const info = await lstat(path);
+  let calls = 0;
+  const shown = [];
+  const w = windowFor(async (url) => {
+    assert.match(url, /cloud-file\/reveal/);
+    calls++;
+    return {
+      ok: true,
+      json: async () => ({
+        absolute_path: path,
+        device: info.dev,
+        inode: info.ino,
+        expected: "scope-v1",
+      }),
+    };
+  });
+  try {
+    await revealCloudNote(
+      w,
+      backend,
+      { clientId: id, vaultId: id, path: "note.md" },
+      { showItemInFolder: (p) => shown.push(p) },
+    );
+    assert.equal(calls, 2);
+    assert.deepEqual(shown, [path]);
+    await assert.rejects(() =>
+      revealCloudNote(
+        w,
+        backend,
+        { clientId: id, vaultId: id, path: "note.md", extra: true },
+        {},
+      ),
+    );
+    w.webContents.session.fetch = async () => ({
+      ok: true,
+      json: async () => ({
+        absolute_path: path,
+        device: info.dev,
+        inode: info.ino + 1,
+        expected: "scope-v1",
+      }),
+    });
+    await assert.rejects(() =>
+      revealCloudNote(
+        w,
+        backend,
+        { clientId: id, vaultId: id, path: "note.md" },
+        { showItemInFolder: (p) => shown.push(p) },
+      ),
+    );
+    assert.equal(shown.length, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

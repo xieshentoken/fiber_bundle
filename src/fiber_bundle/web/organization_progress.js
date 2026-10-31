@@ -16,6 +16,9 @@ export const jobNames = {
   paused: "已暂停",
   cancelling: "撤销中",
   rollback_conflict: "撤销待核对",
+  waiting_task: "等待原任务",
+  waiting_file: "等待文件就绪",
+  closed: "已结束 · 保留结果",
 };
 export function evidenceFailure(reason) {
   const messages = {
@@ -36,6 +39,8 @@ export function manuallyResolved(item) {
 }
 export function itemCategory(item, job) {
   if (manuallyResolved(item)) return "processed";
+  if (["waiting_file", "waiting_archive"].includes(item.state))
+    return "waiting";
   if (item.error || item.analysis_error) return "error";
   if (job.stage === "planning" && !item.evaluated) return "waiting";
   if (item.status === "review") return "review";
@@ -73,7 +78,8 @@ export function previewInvalidated(job) {
 }
 export function orderedMaintenance(jobs) {
   const active = (job) =>
-    !["completed", "cancelled"].includes(job.state) && !previewInvalidated(job);
+    !["completed", "cancelled", "closed"].includes(job.state) &&
+    !previewInvalidated(job);
   return jobs
     .filter((j) => j.maintenance)
     .slice()
@@ -98,7 +104,17 @@ export function mergeProgress(previous, incoming) {
     }),
   };
 }
+export function effectiveIndexState(job) {
+  const observed = job.index_observation;
+  if (!observed || observed.state === "unknown") return job.index_state;
+  if (observed.state !== "ready" || observed.after_task) return observed.state;
+  return job.index_state;
+}
 export function maintenancePhase(job) {
+  if (job.state === "closed") return "已结束 · 已完成结果保留";
+  if (job.state === "waiting_file") return "部分已完成 · 等待文件就绪";
+  if (job.blocking_task || job.state === "waiting_task")
+    return "等待原任务处理";
   if (job.pause_requested) return "正在暂停 · 等待当前安全步骤完成";
   if (job.state === "cancelled")
     return job.rollback_completed
@@ -107,8 +123,11 @@ export function maintenancePhase(job) {
   if (job.stage === "rollback") return "撤销本次整理变更";
   if (previewInvalidated(job)) return "预览已失效";
   if (job.state === "preview") return "差异预览 · 等待确认";
+  if (["partial", "failed", "blocked"].includes(job.state)) return "整理已中断";
+  if (job.state === "paused") return "整理已暂停";
   if (job.stage === "planning") return "分析与生成预览";
-  if (job.index_state === "pending") return "更新索引";
-  if (job.index_state === "failed") return "索引更新失败";
+  if (["queued", "running"].includes(job.state)) return "应用分类与归档";
+  if (effectiveIndexState(job) === "pending") return "更新索引";
+  if (effectiveIndexState(job) === "failed") return "索引更新失败";
   return job.state === "completed" ? "整理完成" : "应用分类与归档";
 }

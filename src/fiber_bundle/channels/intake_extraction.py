@@ -2,6 +2,7 @@
 
 import json
 import mimetypes
+import sqlite3
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,23 @@ from . import intake_fetch, intake_links, store
 from . import intake_repository as repository
 from .intake_processing import guard_locked, record
 from .services import policy as service_policy
+
+
+def _pending(
+    side: sqlite3.Connection, identity: str, revision: int, after: float, *, hint: bool = False
+) -> sqlite3.Row | None:
+    fields = "1" if hint else "*"
+    row: sqlite3.Row | None = side.execute(
+        f"SELECT {fields} FROM channel_intake_records WHERE channel_id=? AND revision=? "
+        "AND state='stored' AND json_extract(value,'$.extraction')='pending' "
+        "AND created>=? AND EXISTS(SELECT 1 "
+        "FROM json_each(channel_intake_records.value,'$.links') l "
+        "WHERE json_extract(l.value,'$.state') IS NULL "
+        "OR json_extract(l.value,'$.state')='pending') "
+        "ORDER BY created LIMIT 1",
+        (identity, revision, after),
+    ).fetchone()
+    return row
 
 
 def update(config: Config, identity: str, batch: str, index: int, changes: dict[str, Any]) -> None:
@@ -71,17 +89,24 @@ def advance(config: Config, identity: str) -> bool:
     channel, policy = repository.channel(config, identity)
     if not policy["settings"]["fetch_articles"] and not policy["settings"]["fetch_subtitles"]:
         return False
+    with store.readonly(config) as side:
+        if side is None or (
+            store.schema_ready(side)
+            and _pending(
+                side,
+                identity,
+                policy["revision"],
+                service_policy.cutoff(config, identity),
+                hint=True,
+            )
+            is None
+        ):
+            return False
     with database.locked(config), store.opened(config) as side:
-        row = side.execute(
-            "SELECT * FROM channel_intake_records WHERE channel_id=? AND revision=? "
-            "AND state='stored' AND json_extract(value,'$.extraction')='pending' "
-            "AND created>=? AND EXISTS(SELECT 1 "
-            "FROM json_each(channel_intake_records.value,'$.links') l "
-            "WHERE json_extract(l.value,'$.state') IS NULL "
-            "OR json_extract(l.value,'$.state')='pending') "
-            "ORDER BY created LIMIT 1",
-            (identity, policy["revision"], service_policy.cutoff(config, identity)),
-        ).fetchone()
+        service = service_policy.get(config, identity, "intake")
+        if service and not service["enabled"]:
+            return False
+        row = _pending(side, identity, policy["revision"], service_policy.cutoff(config, identity))
         if row is None:
             return False
         value = json.loads(row["value"])
@@ -96,7 +121,9 @@ def advance(config: Config, identity: str) -> bool:
         if value.get("aborted") or link.get("aborted"):
             raise InvalidInput("intake_user_aborted")
         kind = intake_links.site(link["original_url"]) if link["allowed"] else None
-        supported = (kind in {"x", "wechat"} and policy["settings"]["fetch_articles"]) or (
+        supported = (
+            kind in {"x", "wechat", "fibermall"} and policy["settings"]["fetch_articles"]
+        ) or (
             kind in {"youtube", "bilibili", "wechat_channels"}
             and policy["settings"]["fetch_subtitles"]
         )
@@ -246,6 +273,7 @@ def advance(config: Config, identity: str) -> bool:
         )
         from ..model_configuration.errors import MESSAGES as model_errors
         from ..processing_errors import MESSAGES as processing_errors
+        from ..video_source_transport import SourceConnectionError
         from .diagnostics import failure
 
         if safe in model_errors or safe in processing_errors:
@@ -259,7 +287,10 @@ def advance(config: Config, identity: str) -> bool:
             {
                 "state": "needs_review",
                 "reason": known,
-                "diagnostic": failure(exc)["diagnostic"],
+                "diagnostic": {
+                    **failure(exc)["diagnostic"],
+                    **(exc.diagnostic if isinstance(exc, SourceConnectionError) else {}),
+                },
             },
         )
     return True
@@ -275,6 +306,9 @@ def retry(
     leased: bool = False,
     approve_new_model_attempt: bool = False,
     video_note_mode: str | None = None,
+    use_current_video_settings: bool = False,
+    max_new_model_calls: int | None = None,
+    max_video_tokens: int | None = None,
 ) -> dict[str, Any]:
     from . import operations
 
@@ -298,6 +332,22 @@ def retry(
         if not 0 <= index < len(value["links"]):
             raise InvalidInput("intake_link_unavailable")
         link = value["links"][index]
+        if max_video_tokens is not None:
+            from ..video_token_budget import validate_limit
+
+            validate_limit(max_video_tokens)
+            if not link.get("video_processing") or max_new_model_calls is not None:
+                raise InvalidInput("video_skill_token_budget_invalid")
+            if link.get("state") in {"pending", "extracting"}:
+                raise InvalidInput("video_skill_recovery_already_queued")
+        if max_new_model_calls is not None:
+            from ..video_call_allowance import new
+
+            if not link.get("video_processing"):
+                raise InvalidInput("video_skill_call_allowance_invalid")
+            new(max_new_model_calls)  # Validate direct callers before any record changes.
+            if link.get("state") in {"pending", "extracting"}:
+                raise InvalidInput("video_skill_recovery_already_queued")
         if value.get("aborted") or link.get("aborted"):
             raise InvalidInput("intake_user_aborted")
         if link.get("state") == "extracting":
@@ -312,9 +362,9 @@ def retry(
             if runtime["process_state"] != "stopped":
                 raise InvalidInput("intake_stop_before_recovery")
         kind = intake_links.site(link["original_url"])
-        if kind not in {"x", "wechat", "youtube", "bilibili", "wechat_channels"}:
+        if kind not in {"x", "wechat", "fibermall", "youtube", "bilibili", "wechat_channels"}:
             raise InvalidInput("intake_extractor_unavailable")
-        setting = "fetch_articles" if kind in {"x", "wechat"} else "fetch_subtitles"
+        setting = "fetch_articles" if kind in {"x", "wechat", "fibermall"} else "fetch_subtitles"
         if not policy["settings"][setting]:
             raise InvalidInput(
                 "intake_article_extraction_disabled"
@@ -327,13 +377,39 @@ def retry(
             raise InvalidInput("intake_site_not_allowed")
         if value["target_vault_id"] != policy["settings"]["target_vault_id"]:
             raise InvalidInput("intake_target_changed")
-        if video_note_mode not in (None, "visual_evidence"):
+        if video_note_mode not in (None, "visual_evidence", "captured_evidence", "direct"):
             raise InvalidInput("video_skill_visual_audit_failed")
         if video_note_mode and (not link.get("video_processing") or link.get("pi_processing")):
             raise InvalidInput("video_skill_visual_audit_failed")
         from ..intake_abort_store import guard as abort_guard
 
         abort_guard(config, {"channel": identity, "batch": batch, "index": index})
+        if link.get("video_processing"):
+            link.setdefault("retry_history", []).append(
+                {
+                    "attempt_id": link.get("attempt_id"),
+                    "reason": link.get("reason"),
+                    "diagnostic": link.get("diagnostic"),
+                }
+            )
+        if use_current_video_settings:
+            from .. import video_token_budget
+            from ..video_recovery import refresh
+
+            previous_budget = (
+                video_token_budget.descriptor(link["video_processing"])
+                if link.get("video_processing")
+                else None
+            )
+            if previous_budget is not None and max_video_tokens is not None:
+                previous_budget["limit"] = max_video_tokens
+            refresh(config, link)
+            if previous_budget is not None:
+                link["pending_video_token_budget"] = previous_budget
+            if max_new_model_calls is not None:
+                from ..video_call_allowance import new
+
+                link["pending_video_call_allowance"] = new(max_new_model_calls)
         attempt = str(uuid4())
         link.pop("diagnostic", None)
         link.update(
@@ -368,6 +444,8 @@ def retry(
                     link,
                     approve_new_attempt=approve_new_model_attempt,
                     video_note_mode=video_note_mode,
+                    max_new_model_calls=max_new_model_calls,
+                    max_video_tokens=max_video_tokens,
                 )
             resume_capture(config, main, identity, batch, index, attempt_id=attempt)
         record(side, identity, batch, revision, row["state"], row["reason"], value)

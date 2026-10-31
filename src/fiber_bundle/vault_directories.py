@@ -123,7 +123,7 @@ def parent_path(
         current = current / part
         if not scope.reachable(current.relative_to(root).as_posix()):
             raise SettingsError("vault_directories_scope_denied")
-        cloud_files.require_available(current)
+        cloud_files.require_directory(current)
         key(current)
     return current
 

@@ -1,11 +1,16 @@
 """Current authorized metadata pages for selecting graph inputs; no implicit registration."""
 
 import sqlite3
-from typing import Any
+from typing import Any, TypedDict
 
 from .. import auth, note_provenance, note_search_inventory
 from ..config import Config
 from . import jobs
+
+
+class Page(TypedDict):
+    items: list[dict[str, Any]]
+    coverage: dict[str, Any] | None
 
 
 def listing(
@@ -16,6 +21,17 @@ def listing(
     query: str = "",
     offset: int = 0,
 ) -> list[dict[str, Any]]:
+    return page(config, db, client, vault_id, query, offset)["items"]
+
+
+def page(
+    config: Config,
+    db: sqlite3.Connection,
+    client: str,
+    vault_id: str,
+    query: str = "",
+    offset: int = 0,
+) -> Page:
     jobs.authorize(config, client, vault_id)
     vault = auth.grant(db, client, vault_id, "query")
     inventory = note_search_inventory.read(config, db, vault, selected=set())
@@ -40,4 +56,4 @@ def listing(
                 "selectable": note.identity is not None,
             }
         )
-    return rows
+    return {"items": rows, "coverage": inventory.coverage}

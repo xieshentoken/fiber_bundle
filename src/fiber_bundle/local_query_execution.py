@@ -80,14 +80,21 @@ def _stop(config: Config, client_id: str, task_id: str, *, recover: bool) -> dic
             db.close()
 
 
-def _active(config: Config, owned: ledger.Claim) -> bool:
+def _active(config: Config, owned: ledger.Claim, *, full: bool = False) -> bool:
     with database.locked(config):
         db = database.connect(config.state_root)
         try:
             task = tasks.get(db, owned.client_id, owned.task_id)
-            if task["state"] != "running":
+            if not tasks.active_check(
+                config,
+                db,
+                task,
+                call_id=owned.call_id,
+                configuration_sha256=owned.configuration_sha256,
+            ):
                 return False
-            tasks.current(config, db, task)
+            if full:
+                tasks.current(config, db, task)
             return True
         finally:
             db.close()
@@ -181,6 +188,8 @@ def execute(
                                 raise InvalidInput("local_model_capability_invalid")
                             model_requested = True
                             # Pi cannot substitute its prompt, evidence, model, scope or endpoint.
+                            if not _active(config, owned, full=True):
+                                raise LocalCallStopped()
                             completion = local_query_gateway.complete(
                                 local,
                                 owned.request,
@@ -188,7 +197,7 @@ def execute(
                                 should_stop=lambda: not _active(config, owned),
                                 deadline=deadline,
                             )
-                            if not _active(config, owned):
+                            if not _active(config, owned, full=True):
                                 raise LocalCallStopped()
                             send(
                                 {"type": "reply", "id": frame["id"], "ok": True, "body": completion}

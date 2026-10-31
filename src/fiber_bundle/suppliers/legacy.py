@@ -1,4 +1,4 @@
-"""Read-only Gsup Markdown adapter; never fabricates missing original evidence."""
+"""Read-only ExampleData Markdown adapter; never fabricates missing original evidence."""
 
 import json
 import re

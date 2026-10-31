@@ -1,7 +1,9 @@
 # Project status
 
-This source snapshot is derived from the maintained Fiber bundle 0.6.0a2 Projects package.
+This is a privacy-reviewed source snapshot of Fiber bundle 0.6.0a2, published on 2026-10-31.
 
-The local application's data, configuration, credentials, task history, checkpoints, backups and installed environments are excluded from this source publication. This repository does not indicate that a recipient installation has been configured or verified.
+Recent changes include resumable cached article publication, explicit archive-dependency waiting, FiberMall blog extraction, incremental indexing, and organization task history and performance improvements. Installation and external-provider acceptance depend on the recipient environment.
 
-See README.md for setup, TECHNICAL_REFERENCE.md for configuration and interfaces, and SPEC.md and DECISIONS.md for product and architecture constraints. Optional external providers, channels, Hermes and knowledge-graph runtimes must be configured separately by the recipient.
+Private configuration, credentials, personal knowledge bases, messages, task history, backups, maintenance evidence, installed environments and generated artifacts are excluded. Source examples use synthetic vault, account and protected-folder names. Read README.md for setup and TECHNICAL_REFERENCE.md for behavior and configuration contracts.
+
+Publication validation: 140 focused backend tests passed; 18 tests requiring the real macOS scoped cloud-status helper were skipped. All 370 Web/desktop tests passed. Static privacy review found no unclassified credential findings; upstream license attribution and synthetic security fixtures are retained. No real provider messages or model calls were used for publication validation.

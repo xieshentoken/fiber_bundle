@@ -9,6 +9,7 @@ from urllib.parse import urlsplit, urlunsplit
 from ..config import InvalidInput
 
 HOSTS = {
+    "fibermall": {"fibermall.com", "www.fibermall.com"},
     "x": {"x.com", "www.x.com", "mobile.x.com", "twitter.com", "www.twitter.com", "t.co"},
     "wechat": {"mp.weixin.qq.com"},
     "bilibili": {"bilibili.com", "www.bilibili.com", "m.bilibili.com", "b23.tv"},
@@ -89,7 +90,11 @@ def allowed(value: str, settings: Mapping[str, Any]) -> bool:
     except InvalidInput:
         return False
     if kind is not None:
-        return kind in settings["sites"]
+        if kind in settings["sites"]:
+            return True
+        # Preserve explicit custom-domain permission when introducing a built-in site.
+        if kind != "fibermall":
+            return False
     host = urlsplit(canonical).hostname or ""
     # Custom entries are hosts, with only the conventional www alias. Other
     # subdomains must be selected explicitly; no implicit whole-domain crawl.

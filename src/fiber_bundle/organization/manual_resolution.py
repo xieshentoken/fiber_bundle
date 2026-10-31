@@ -43,7 +43,7 @@ def record(config: Any, client: str, vault: str, proof: Any) -> int:
         if job["client_id"] != client:
             continue
         native_expert = proof["entity"].startswith("expert:") and not job.get("maintenance")
-        if native_expert and job["state"] in {"completed", "cancelled"}:
+        if native_expert and job["state"] in {"completed", "cancelled", "closed"}:
             continue
         if not job.get("maintenance") and not native_expert:
             continue

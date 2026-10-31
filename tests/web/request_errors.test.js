@@ -78,3 +78,37 @@ test("storage faults remain errors and never retry automatically", async () => {
   assert(criticalAlert({ backend: record }));
   assert(atlasAlert({ backend: record }));
 });
+
+
+for (const code of [
+  "maintenance_membership_plan_changed",
+  "maintenance_membership_baseline_changed",
+]) {
+  test(`${code}: resume errors keep their code and show actionable bilingual toast text`, async () => {
+    let calls = 0;
+    const api = createAdminApi(
+      createSession(),
+      { onConnection() {}, onUnauthorized() {} },
+      async () => {
+        calls++;
+        return { ok: false, status: 409, json: async () => ({ error: code }) };
+      },
+    );
+    await assert.rejects(
+      api.organization.maintenanceAction("task", "resume", {}),
+      (error) => {
+        assert.equal(error.code, code);
+        for (const locale of ["zh-CN", "en"]) {
+          setLocale(locale);
+          assert.deepEqual(errorText(error), {
+            title: requestErrors[code][locale === "en" ? 1 : 0],
+            detail: code,
+          });
+        }
+        setLocale("zh-CN");
+        return true;
+      },
+    );
+    assert.equal(calls, 1);
+  });
+}

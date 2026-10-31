@@ -38,10 +38,11 @@ export function createGraphApi(request) {
           "&q=" +
           path(query) +
           "&offset=" +
-          offset,
+          offset +
+          "&include_coverage=true",
         "GET",
         undefined,
-        Array.isArray,
+        (value) => value && Array.isArray(value.items),
       ),
     suggestions: (cid, vid) => request(base + "/suggestions" + scope(cid, vid)),
     jobs: (cid, vid) =>

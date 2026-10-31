@@ -69,11 +69,16 @@ def validate(value: Any, vault_id: str, moc_id: str) -> None:
     if not isinstance(value, dict):
         raise IntegrityError("invalid MOC write plan fields")
     schema = value.get("schema")
-    fields = FIELDS | {"identity", "after_file_key"} if schema in {2, 3, 4} else FIELDS
+    fields = FIELDS | {"identity", "after_file_key"} if schema in {2, 3, 4} else set(FIELDS)
     if schema == 3:
         fields |= {"dispatch_source"}
     if schema == 4:
         fields |= {"graph_writeback_id"}
+    if "read_omissions" in value:
+        from .partial_notes import validate as validate_omissions
+
+        validate_omissions(value["read_omissions"])
+        fields |= {"read_omissions"}
     if type(schema) is not int or schema not in {1, 2, 3, 4} or set(value) != fields:
         raise IntegrityError("invalid MOC write plan fields")
     if (value["vault_id"], value["moc_id"]) != (vault_id, moc_id):

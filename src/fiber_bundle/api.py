@@ -74,9 +74,18 @@ def create_app(
     from .suppliers.runtime import Runtime as SupplierRuntime
 
     supplier_runtime = SupplierRuntime(config)
+    from .organization.draft_import_runtime import Runtime as DraftImportRuntime
+
+    draft_import_runtime = DraftImportRuntime(config)
+
+    from .vault_sync.runtime import Runtime as VaultSyncRuntime
+
+    vault_sync_runtime = VaultSyncRuntime(config)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        vault_sync_runtime.start()
+        draft_import_runtime.start()
         supplier_runtime.start()
         backup_runtime.start()
         relocation_runtime.start()
@@ -84,6 +93,8 @@ def create_app(
         try:
             yield
         finally:
+            vault_sync_runtime.close()
+            draft_import_runtime.close()
             supplier_runtime.close()
             backup_runtime.close()
             relocation_runtime.close()
@@ -175,6 +186,9 @@ def create_app(
     from .note_search_routes import router as note_search_router
 
     app.include_router(note_search_router(config))
+    from .note_search_admin_routes import router as note_search_admin_router
+
+    app.include_router(note_search_admin_router(config))
     from .note_search_admin import router as note_index_admin_router
 
     app.include_router(note_index_admin_router(config))
@@ -184,6 +198,9 @@ def create_app(
     from .organization.routes import router as organization_router
 
     app.include_router(organization_router(config))
+    from .organization.draft_import_routes import router as draft_import_router
+
+    app.include_router(draft_import_router(config, draft_import_runtime))
     from .knowledge_graph.projection_routes import router as projection_router
 
     app.include_router(projection_router(config))
@@ -234,6 +251,10 @@ def create_app(
             processing_status, processing_body = processing_specific
             return JSONResponse(processing_body, status_code=processing_status)
         specific = None
+        if request.url.path.startswith("/admin/organization"):
+            from .organization.read_errors import response as organization_read_error
+
+            specific = organization_read_error(exc)
         if request.url.path.startswith("/admin/channels"):
             specific = channel_error(exc)
         elif request.url.path.startswith("/admin/vault-catalog"):

@@ -92,10 +92,30 @@ export function createChannelApi(request) {
       request(`${link(id, bid, index)}/publish`, "POST", {
         review_id: reviewId,
       }),
-    channelIntakeRetry: (id, bid, index, revision, approveNewAttempt = false) =>
+    channelIntakeRetry: (
+      id,
+      bid,
+      index,
+      revision,
+      approveNewAttempt = false,
+      useCurrentVideoSettings = false,
+      videoOptions = {},
+    ) =>
       request(`${link(id, bid, index)}/retry`, "POST", {
         expected_revision: revision,
         ...(approveNewAttempt ? { approve_new_model_attempt: true } : {}),
+        ...(useCurrentVideoSettings
+          ? { use_current_video_settings: true }
+          : {}),
+        ...(videoOptions.max_new_model_calls !== undefined
+          ? { max_new_model_calls: videoOptions.max_new_model_calls }
+          : {}),
+        ...(videoOptions.max_video_tokens !== undefined
+          ? { max_video_tokens: videoOptions.max_video_tokens }
+          : {}),
+        ...(videoOptions.video_note_mode
+          ? { video_note_mode: videoOptions.video_note_mode }
+          : {}),
       }),
     channelIntakeReceiptAck: (id, bid, state) =>
       request(`${batch(id, bid)}/receipt-ack`, "POST", {

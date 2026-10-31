@@ -3,6 +3,7 @@
 import json
 import sqlite3
 import stat
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -106,7 +107,13 @@ class Part:
 
 
 def bindings(
-    db: sqlite3.Connection, vault_id: str, root: Path, relative_path: str | None = None
+    db: sqlite3.Connection,
+    vault_id: str,
+    root: Path,
+    relative_path: str | None = None,
+    *,
+    body_projections: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
+    selected_paths: set[str] | None = None,
 ) -> dict[str, Part]:
     """Caller supplies the currently authorized root; check bound manifests, not chapter bodies.
 
@@ -130,10 +137,17 @@ def bindings(
         if expected is None:
             continue
         package = row["package_root"] or row["relative_path"]
+        if selected_paths is not None and not any(
+            p.startswith(package + "/") for p in selected_paths
+        ):
+            continue
         from .publication_locations import get as location_get
 
-        location = location_get(db, "document", row["run_id"])
-        projections = location["plan"].get("body_projections", {}) if location else {}
+        if body_projections is None:
+            location = location_get(db, "document", row["run_id"])
+            projections = location["plan"].get("body_projections", {}) if location else {}
+        else:
+            projections = body_projections.get(row["run_id"], {})
         directory = contained(root, package)
         try:
             raw = read_bounded(directory, MANIFEST, MAX_MANIFEST_BYTES)

@@ -2,6 +2,7 @@
 
 from document_support import pdf_bytes
 from test_automatic_ingestion import admitted, setup
+from test_automatic_ingestion import explicit_ticks as explicit_ticks
 from test_source_imports import request, upload
 from test_source_processing import WORKERS
 

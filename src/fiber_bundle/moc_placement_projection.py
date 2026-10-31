@@ -101,8 +101,14 @@ def finalize(
     specs = value.get("moc_file_projections", [])
     if not specs:
         return
-    inventory = note_inventory.read(
-        config, db, auth.grant(db, value["client_id"], value["vault_id"], "query")
+    from .partial_notes import read as read_inventory
+
+    inventory = read_inventory(
+        config,
+        db,
+        auth.grant(db, value["client_id"], value["vault_id"], "query"),
+        value.get("read_omissions"),
+        finalizing_operation=operation,
     )
     for spec in specs:
         mid, path = spec["moc_id"], spec["path"]
@@ -147,6 +153,8 @@ def finalize(
             parent_key=[parent.st_dev, parent.st_ino],
             inventory_sha256=moc_files.observed(inventory, path),
         )
+        if value.get("read_omissions"):
+            packet["read_omissions"] = value["read_omissions"]
         if spec["identity"] is not None:
             note = next(n for n in inventory.notes if n.relative_path == path)
             packet.update(

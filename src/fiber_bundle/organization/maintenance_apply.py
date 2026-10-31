@@ -1,16 +1,20 @@
 """Preview-bound execution, one entity at a time, with separate membership/archive stages."""
 
+import time
 from typing import Any
 
-from .. import moc_store
+from .. import cloud_observation, moc_store
 from ..config import IntegrityError
 from ..objects import digest
+from ..partial_notes import for_job as read_omissions
 from ..publication_file_io import read
 from . import (
     maintenance,
     maintenance_archive,
+    maintenance_membership_validation,
     maintenance_moc_recovery,
     maintenance_mocs,
+    maintenance_waiting,
     manual_resolution,
     membership,
     note_moc_sync,
@@ -21,6 +25,7 @@ from .maintenance_timing import measure
 
 
 def persist(config: Any, job: Any) -> None:
+    job["updated_at"] = time.time()
     store.put(config, "jobs", job["id"], job["vault_id"], job)
 
 
@@ -117,6 +122,7 @@ def step(config: Any, db: Any, job: Any, item: Any, mid: str, action: str) -> No
         item["source"],
         moc,
         record_decision=False,
+        omissions=read_omissions(job),
         missing_block_repair=maintenance_moc_recovery.repair_base(job, mid, current["sha256"]),
     )
     item.setdefault("steps", []).append(key)
@@ -126,8 +132,56 @@ def step(config: Any, db: Any, job: Any, item: Any, mid: str, action: str) -> No
 
 
 def run(config: Any, db: Any, job: Any) -> Any:
+    from ..note_read_session import reuse
+
+    root, _ = packages.context(config, db, job["client_id"], job["vault_id"], write=True)
+    with reuse() as session, cloud_observation.scope(root):
+        # A worker may retain parsed bytes across units; counters and the one
+        # read-only cloud recheck remain per-unit, not cumulative deltas twice.
+        session.counts.pop("cloud_rechecks", None)
+        before_counts = dict(session.counts)
+        settled = False
+        try:
+            result = _run(config, db, job)
+            settled = True
+            return result
+        except cloud_observation.ObservationError as error:
+            job["error_detail"] = error.detail
+            raise
+        finally:
+            counters = job.setdefault("read_work", {})
+            for name, count in session.counts.items():
+                counters[name] = counters.get(name, 0) + count - before_counts.get(name, 0)
+            if settled:
+                persist(config, job)
+
+
+def validate_source(config: Any, db: Any, job: Any, item: Any) -> None:
+    root, _ = packages.context(config, db, job["client_id"], job["vault_id"], write=True)
+    if item["kind"] == "note":
+        actual = digest(read(root, item["path"])[0])
+        if actual != item["sha256"] and not note_moc_sync.accepts(
+            config, job["vault_id"], item["entity"], item["sha256"], actual
+        ):
+            raise IntegrityError("maintenance_note_changed")
+    elif item["kind"] == "expert":
+        packages.load(
+            config,
+            db,
+            job["client_id"],
+            item["entity"].removeprefix("expert:"),
+            item["sha256"],
+            text_only=True,
+        )
+
+
+def _run(config: Any, db: Any, job: Any) -> Any:
     maintenance.validate(config, db, job, sources=False)
     handled = manual_resolution.resolved(config, job)
+    if not maintenance_waiting.prepare_scope(config, db, job):
+        job["state"] = "running"
+        persist(config, job)
+        return job
     active = [i for i in job["items"] if i["entity"] not in handled]
     if handled and all(i["state"] == "done" for i in active):
         # Manual completion can close the last failed item after an earlier unit
@@ -136,19 +190,88 @@ def run(config: Any, db: Any, job: Any) -> Any:
         job.update(state="completed", completed=len(job["items"]))
         persist(config, job)
         return job
-    note_moc_sync.recover_all(config, db, job["client_id"], job["vault_id"])
+    # A genuine no-op changes no file or relationship and needs no compensation journal.
+    # Never use this shortcut for an interrupted intent, pending journal or new Map.
+    journal = store.get(config, "maintenance_undo", job["id"])
+    if not job["new_mocs"] and (not journal or journal.get("state") != "applying"):
+        batch = [i for i in active if i["state"] == "pending"][:32]
+        for candidate in batch:
+            if (
+                candidate["add"]
+                or candidate["remove"]
+                or candidate["target"]
+                or candidate.get("intent")
+                or candidate.get("steps")
+                or candidate.get("archive_operation")
+            ):
+                break
+            try:
+                validate_decisions(config, job, candidate)
+                validate_source(config, db, job, candidate)
+                maintenance_membership_validation.validate_item(
+                    config, db, job, candidate, complete=True
+                )
+            except Exception as error:
+                if maintenance_waiting.park(config, job, candidate, error):
+                    continue
+                if isinstance(error, cloud_observation.ObservationError):
+                    job["error_detail"] = error.detail
+                candidate.update(state="failed", error=str(error)[:180])
+                job.update(state="partial", error=str(error)[:180])
+                return job
+            candidate.update(
+                state="waiting_archive" if candidate.get("runtime_archive_deferred") else "done",
+                phase="members_done",
+                changed=0,
+            )
+            job["completed"] = sum(
+                i["state"] == "done" or i["entity"] in handled for i in job["items"]
+            )
+        if all(i["state"] == "done" for i in active):
+            job["state"] = "completed"
+            if any(i.get("changed") or i.get("archive_operation") for i in job["items"]):
+                job["index_state"] = "pending"
+            return job
+        if len(batch) == 32 and all(i["state"] == "done" for i in batch):
+            job["state"] = "running"
+            return job
+    item = next((i for i in active if i["state"] == "pending"), None)
+    if item is None and any(i["state"] in maintenance_waiting.WAITING for i in active):
+        maintenance_waiting.settle(job, active)
+        return job
     job["state"] = "running"
     persist(config, job)
     from . import maintenance_undo
 
-    item = next((i for i in active if i["state"] == "pending"), None)
-    with measure(job, "undo_capture"):
-        maintenance_undo.begin(config, db, job, item)
+    try:
+        if item:
+            maintenance_membership_validation.validate_item(config, db, job, item)
+        if item and item.get("phase") not in {"members_done", "archived"}:
+            validate_source(config, db, job, item)
+            maintenance_moc_recovery.preflight(config, db, job, item=item)
+        with measure(job, "undo_capture"):
+            maintenance_undo.begin(config, db, job, item)
+    except Exception as error:
+        if str(error) in {
+            "maintenance_membership_plan_changed",
+            "maintenance_membership_baseline_changed",
+        }:
+            job.update(state="partial", error=str(error))
+            if item:
+                item.update(state="failed", error=str(error))
+            persist(config, job)
+            return job
+        if item and maintenance_waiting.park(config, job, item, error):
+            maintenance_waiting.settle(job, active)
+            persist(config, job)
+            return job
+        raise
+    note_moc_sync.recover_all(config, db, job["client_id"], job["vault_id"])
     try:
         # An interrupted archive owns its own exchange/reconciliation evidence;
         # finish that stage before inspecting Maps for the next membership.
         if not item or item.get("phase") not in {"members_done", "archived"}:
-            maintenance_moc_recovery.preflight(config, db, job)
+            maintenance_moc_recovery.preflight(config, db, job, item=item)
             persist(config, job)
         maintenance_mocs.create(config, db, job)
         for moc in job["new_mocs"]:
@@ -160,21 +283,7 @@ def run(config: Any, db: Any, job: Any) -> Any:
                 root, _ = packages.context(
                     config, db, job["client_id"], job["vault_id"], write=True
                 )
-                if item["kind"] == "note":
-                    actual = digest(read(root, item["path"])[0])
-                    if actual != item["sha256"] and not note_moc_sync.accepts(
-                        config, job["vault_id"], item["entity"], item["sha256"], actual
-                    ):
-                        raise IntegrityError("maintenance_note_changed")
-                if item["kind"] == "expert":
-                    packages.load(
-                        config,
-                        db,
-                        job["client_id"],
-                        item["entity"].removeprefix("expert:"),
-                        item["sha256"],
-                        text_only=True,
-                    )
+                validate_source(config, db, job, item)
                 for mid in item["add"]:
                     step(config, db, job, item, mid, "link")
                 for mid in item["remove"]:
@@ -183,15 +292,22 @@ def run(config: Any, db: Any, job: Any) -> Any:
                     raw, physical = read(root, item["path"])
                     item["sha256"] = digest(raw)
                     item["source"].update(sha256=digest(raw), file_key=physical)
+                maintenance_membership_validation.validate_item(
+                    config, db, job, item, complete=True
+                )
                 item["phase"] = "members_done"
                 persist(config, job)
             if item["target"] and item["phase"] != "archived":
+                maintenance_membership_validation.validate_item(
+                    config, db, job, item, complete=True
+                )
                 with measure(job, "archive_links_and_files"):
                     maintenance_archive.apply(config, db, job, item)
-                # Archive may update controlled MOC links and their file journals.
-                for mid in job["moc_expected"]:
-                    job["moc_expected"][mid] = observe(config, db, job, mid)
-            item.update(state="done", changed=len(item["add"]) + len(item["remove"]))
+                maintenance_archive.refresh_expected(config, db, job, item)
+            item.update(
+                state="waiting_archive" if item.get("runtime_archive_deferred") else "done",
+                changed=len(item["add"]) + len(item["remove"]),
+            )
         job["completed"] = sum(i["state"] == "done" or i["entity"] in handled for i in job["items"])
         if all(i["state"] == "done" for i in active):
             job["state"] = "completed"
@@ -201,6 +317,8 @@ def run(config: Any, db: Any, job: Any) -> Any:
             ):
                 job["index_state"] = "pending"
     except Exception as error:
+        if isinstance(error, cloud_observation.ObservationError):
+            job["error_detail"] = error.detail
         job.update(
             state="partial",
             error=str(error)[:180]
@@ -215,6 +333,20 @@ def run(config: Any, db: Any, job: Any) -> Any:
         with measure(job, "undo_seal"):
             maintenance_undo.seal(config, db, job)
     except Exception as error:
-        job.update(state="partial", error=str(error)[:180])
+        detail = error.detail if isinstance(error, cloud_observation.ObservationError) else None
+        if job.get("error"):
+            # Compensation verification is a second failure, not the cause of interruption.
+            job["recovery_error"] = {"error": str(error)[:180], "detail": detail}
+            job["state"] = "partial"
+        else:
+            job.update(state="partial", error=str(error)[:180])
+            if detail:
+                job["error_detail"] = detail
+    else:
+        job.pop("recovery_error", None)
+    if job["state"] not in {"partial", "failed"}:
+        maintenance_waiting.settle(job, active)
+        if any(i.get("steps") or i.get("archive_operation") for i in job["items"]):
+            job["index_state"] = "pending"
     persist(config, job)
     return job

@@ -36,7 +36,10 @@ const t = strings({
     searchNote:
       "以所选身份的查询权限检索其默认查询库；只显示命中片段与位置，不修改笔记、不调用模型。",
     hits: "在 {v} 个知识库中找到 {n} 条命中。",
+    elapsed: "检索用时 {s} 秒",
     noHits: "该身份的默认查询库中没有命中。",
+    partial:
+      "部分笔记仍在更新或等待核对。以下是已核验的命中，结果范围尚不完整。",
     noDefault:
       "该身份没有默认参与查询的知识库。可在知识库页面打开“默认参与查询”。",
     line: "第 {n} 行",
@@ -97,6 +100,8 @@ const t = strings({
   },
   en: {
     search: "Search notes",
+    partial:
+      "Some notes are updating or need review. These verified matches do not cover the complete library yet.",
     ask: "Ask a model",
     identity: "Search as",
     noIdentity:
@@ -107,6 +112,7 @@ const t = strings({
     searchNote:
       "Searches the identity's default query vaults with its grants. Shows matching snippets and locations only — never edits notes or calls a model.",
     hits: "{n} matches in {v} vaults.",
+    elapsed: "Search completed in {s} s",
     noHits: "No matches in this identity's default query vaults.",
     noDefault:
       "This identity has no default query vault. Turn on “Use in default queries” on a vault.",
@@ -182,6 +188,8 @@ const stateText = (value) =>
 export function createView(ctx, route) {
   let tab = route.sub === "model" ? "model" : "search",
     epoch = 0,
+    searchEpoch = 0,
+    searchController = null,
     digest = null,
     clients = [];
   const tabHost = h("div");
@@ -208,19 +216,44 @@ export function createView(ctx, route) {
   );
   const searchForm = h("form.a-ask-hero", query, searchWho, go);
   let vaultNames = new Map();
+  function invalidateSearch() {
+    searchEpoch++;
+    searchController?.abort();
+    searchController = null;
+    clear(results);
+  }
+  searchWho.addEventListener("change", invalidateSearch);
+  query.addEventListener("input", invalidateSearch);
   searchForm.addEventListener("submit", (event) => {
     event.preventDefault();
     void run(go, doSearch);
   });
   async function doSearch() {
+    invalidateSearch();
     const text = query.value.trim();
     if (text.length < 2 || !searchWho.value) return;
-    const mine = ++epoch;
+    const started = performance.now();
+    const clientId = searchWho.value;
+    const mine = searchEpoch;
+    searchController = new AbortController();
     clear(results, skeleton(3));
-    const result = await ctx.api.searchNotes(searchWho.value, text, 20);
-    if (mine !== epoch) return;
+    let result;
+    try {
+      result = await ctx.api.searchNotes(clientId, text, 20, {
+        signal: searchController.signal,
+      });
+    } catch (error) {
+      if (mine !== searchEpoch) return;
+      clear(results);
+      throw error;
+    } finally {
+      if (mine === searchEpoch) searchController = null;
+    }
+    if (mine !== searchEpoch) return;
+    const duration = h("span", { "data-search-elapsed": "" });
     clear(
       results,
+      result.coverage_complete === false ? notice(t("partial")) : null,
       h(
         "p.a-subtle",
         result.results.length
@@ -231,6 +264,8 @@ export function createView(ctx, route) {
           : result.searched_vault_ids.length
             ? t("noHits")
             : t("noDefault"),
+        " · ",
+        duration,
       ),
       result.results.map((hit) =>
         h(
@@ -253,11 +288,17 @@ export function createView(ctx, route) {
             button(t("askThis"), {
               variant: "small",
               iconName: "ask",
-              onClick: () => prefillAsk(text, searchWho.value),
+              onClick: () => prefillAsk(text, clientId),
             }),
           ),
         ),
       ),
+    );
+    // Monotonic submit-to-DOM timing includes HTTP, decoding and result construction.
+    // It stays in this view: no query text, credential or telemetry is persisted.
+    clear(
+      duration,
+      t("elapsed", { s: ((performance.now() - started) / 1000).toFixed(2) }),
     );
   }
   // Ask
@@ -578,6 +619,7 @@ export function createView(ctx, route) {
   }
   async function refresh() {
     const mine = ++epoch;
+    invalidateSearch();
     drawTabs();
     let components, vaults, policy;
     try {
@@ -588,6 +630,7 @@ export function createView(ctx, route) {
         ctx.api.queryPolicy().catch(() => null),
       ]);
     } catch (error) {
+      if (mine !== epoch) return;
       clear(body, failure(error, refresh));
       return;
     }
@@ -615,7 +658,8 @@ export function createView(ctx, route) {
         body,
         card(
           { className: "a-ask-card" },
-          components.gui_features?.note_search === false
+          components.gui_features?.note_search === false ||
+            typeof ctx.api.searchNotes !== "function"
             ? notice(t("noFeature"), "warning")
             : searchers.length
               ? searchForm
@@ -624,7 +668,12 @@ export function createView(ctx, route) {
         ),
         results,
       );
-      if (query.value.trim().length >= 2 && searchers.length)
+      if (
+        query.value.trim().length >= 2 &&
+        searchers.length &&
+        components.gui_features?.note_search !== false &&
+        typeof ctx.api.searchNotes === "function"
+      )
         await run(go, doSearch);
       query.focus();
     } else {
@@ -663,6 +712,9 @@ export function createView(ctx, route) {
       } else if (tab === "search" && next.params?.q) void run(go, doSearch);
       return true;
     },
-    dispose: () => epoch++,
+    dispose() {
+      epoch++;
+      invalidateSearch();
+    },
   };
 }

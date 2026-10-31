@@ -60,9 +60,17 @@ def snapshot(
     include: list[str] | None = None,
     exclude: list[str] | None = None,
     scope_packages: bool = False,
+    partial: bool = False,
 ) -> Any:
     entities, mocs, context = catalog.snapshot(
-        config, db, client, vault, include=include, exclude=exclude, scope_packages=scope_packages
+        config,
+        db,
+        client,
+        vault,
+        include=include,
+        exclude=exclude,
+        scope_packages=scope_packages,
+        partial=partial,
     )
     prior = store.get_many(config, "entities", [vault + ":" + e["id"] for e in entities])
     for e in entities:
@@ -130,7 +138,12 @@ def submit(
     decisions = store.rows(config, "decisions", vault)
     selected = []
     matches = _scope(config, db, vault, target)
+    from .draft_import_tasks import pending as pending_imports
+
+    importing = pending_imports(config, vault) if source == "automatic" else set()
     for e in entities:
+        if e["id"] in importing:
+            continue
         if not matches(e) or (source == "automatic" and not classifier.eligible(e, p["settings"])):
             continue
         if (target == "待分类" or source == "automatic" and e["kind"] == "expert") and _classified(
@@ -268,6 +281,10 @@ def run(config: Config, db: sqlite3.Connection, job: Any, *, batch: int = 3) -> 
 
         return maintenance_run(config, db, job)
     if job["state"] not in {"queued", "running"}:
+        return job
+    from .maintenance_admission import hold
+
+    if hold(config, job):
         return job
     if job.get("organizer_version") != ORGANIZER_VERSION:
         raise IntegrityError("organization_legacy_plan_replan_required")
@@ -420,10 +437,15 @@ def notify(
     )
 
 
-def tick(config: Config) -> None:
+def tick(config: Config, *, reads: Any = None) -> None:
+    if reads is not None:
+        reads.expire()
     from .execution_control import reconcile
 
     reconcile(config)
+    from .maintenance_admission import release_background_waits
+
+    release_background_waits(config)
     # Read-only idle probe avoids creating a ledger or taking a global writer lease.
     pending = [
         j for j in store.rows(config, "jobs") if j["state"] in {"queued", "running", "cancelling"}
@@ -439,7 +461,8 @@ def tick(config: Config) -> None:
     index_jobs = [
         j
         for j in store.rows(config, "jobs")
-        if j.get("index_state") == "pending" and j["state"] in {"completed", "partial", "cancelled"}
+        if j.get("index_state") == "pending"
+        and j["state"] in {"completed", "partial", "cancelled", "closed", "waiting_file"}
     ]
     from ..vault_relocation.guard import paused
 
@@ -448,23 +471,22 @@ def tick(config: Config) -> None:
     due = [j for j in due if not paused(config, j["vault_id"])]
     index_jobs = [j for j in index_jobs if not paused(config, j["vault_id"])]
     if index_jobs:
-        job = index_jobs[0]
-        from ..note_search_build import build
+        from .index_completion import advance
 
-        try:
-            build(config, job["client_id"], job["vault_id"])
-            job["index_state"] = "ready"
-        except Exception as error:
-            if paused(config, job["vault_id"]):
-                return
-            job["index_state"] = "failed"
-            job["index_error"] = type(error).__name__ + ": " + str(error)[:120]
-        with database.locked(config):
-            store.put(config, "jobs", job["id"], job["vault_id"], job)
-        return
+        # Observation must not starve the next safe organization unit while the
+        # separate index writer waits for file events or its stability window.
+        for index_job in index_jobs:
+            advance(config, index_job)
     if not (pending or triggers or due):
         return
     if pending:
+        if not pending[0].get("maintenance"):
+            from .maintenance_admission import hold
+
+            with database.locked(config):
+                current = store.get(config, "jobs", pending[0]["id"])
+                if current["state"] not in {"queued", "running"} or hold(config, current):
+                    return
         try:
             if pending[0].get("maintenance"):
                 from .maintenance_analysis import prepare as maintenance_prepare
@@ -488,7 +510,7 @@ def tick(config: Config) -> None:
     if pending and pending[0].get("maintenance") and pending[0]["stage"] != "planning":
         from .execution import run as execute
 
-        execute(config, pending[0]["id"])
+        execute(config, pending[0]["id"], reads=reads)
         return
     with database.locked(config), database.connect(config.state_root) as db:
         if pending:

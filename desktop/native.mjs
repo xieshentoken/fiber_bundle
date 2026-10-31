@@ -147,3 +147,51 @@ export async function trashIntent(window, backend, value) {
     throw error;
   }
 }
+
+export async function revealCloudNote(window, backend, value, shell) {
+  if (
+    !value ||
+    Object.keys(value).sort().join() !== "clientId,path,vaultId" ||
+    !uuid.test(value.clientId) ||
+    !uuid.test(value.vaultId) ||
+    typeof value.path !== "string" ||
+    value.path.length > 1000
+  )
+    throw new Error("Invalid file selection");
+  const url =
+    backend +
+    "admin/organization/cloud-file/reveal?" +
+    new URLSearchParams({
+      client_id: value.clientId,
+      vault_id: value.vaultId,
+      path: value.path,
+    });
+  const before = await request(window, url),
+    path = before.absolute_path;
+  if (
+    typeof path !== "string" ||
+    !path.startsWith("/") ||
+    !path.endsWith(".md") ||
+    (await realpath(path)) !== path
+  )
+    throw new Error("Invalid authorized path");
+  const info = await lstat(path);
+  if (
+    !info.isFile() ||
+    info.isSymbolicLink() ||
+    info.nlink !== 1 ||
+    info.dev !== before.device ||
+    info.ino !== before.inode
+  )
+    throw new Error("File changed");
+  const after = await request(window, url);
+  if (
+    after.absolute_path !== path ||
+    after.expected !== before.expected ||
+    window.webContents.mainFrame.url.split("#")[0] !== backend.split("#")[0]
+  )
+    throw new Error("File selection changed");
+  // Reveal only; don't open/read the body or request a cloud download.
+  shell.showItemInFolder(path);
+  return { revealed: true };
+}

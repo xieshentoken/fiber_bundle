@@ -127,11 +127,19 @@ export function createVaultSaveApi(request) {
       ),
     automaticJobs: (vault) =>
       request(path(vault) + "/automatic-jobs", "GET", undefined, automaticJobs),
-    reconcileAutomaticJob: (vault, job, approveNewModelAttempt = false) =>
+    reconcileAutomaticJob: (
+      vault,
+      job,
+      approveNewModelAttempt = false,
+      publicationOnly = false,
+    ) =>
       request(
         `/admin/vault-catalog/${id(vault)}/automatic-jobs/${id(job)}/reconcile`,
         "POST",
-        { approve_new_model_attempt: approveNewModelAttempt },
+        {
+          approve_new_model_attempt: approveNewModelAttempt,
+          publication_only: publicationOnly,
+        },
       ),
     cancelAutomaticJob: (vault, job) =>
       request(

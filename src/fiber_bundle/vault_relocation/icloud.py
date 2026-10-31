@@ -41,7 +41,7 @@ def absent(root: Path, excluded: tuple[str, ...]) -> None:
 def scopes(source: Path, target: Path, row: Any) -> tuple[dict[str, Any], str]:
     raw = json.loads(row["scope_json"])
     before = vault_scope.effective(source, raw)
-    if before.include != ("",) or set(before.exclude) - {"01-Projects/GF_supply_chain"}:
+    if before.include != ("",) or set(before.exclude) - {"01-Projects/protected-project"}:
         files.reject("full_scope_required")
     absent(source, before.exclude)
     destination_scope = {"include": [""], "exclude": list(before.exclude)}

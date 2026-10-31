@@ -2,7 +2,8 @@
 
 import json
 import sqlite3
-from dataclasses import replace
+from collections.abc import Collection
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 from uuid import NAMESPACE_URL, uuid5
 
@@ -98,20 +99,75 @@ def committed(db: sqlite3.Connection, row: dict[str, Any]) -> bool:
     return True
 
 
-def inventory(db: sqlite3.Connection, vault: str) -> tuple[dict[str, dict[str, Any]], set[str]]:
+@dataclass(frozen=True)
+class InventoryProjection:
+    """One inventory read's compact view; never retained across reads or write units."""
+
+    managed: dict[str, dict[str, Any]]
+    hidden: set[str]
+    mapped_articles: set[str]
+    article_hashes: dict[str, str]
+    hidden_roots: set[str]
+    attachment_roots: set[str]
+    document_projections: dict[str, dict[str, dict[str, Any]]]
+
+    def binding(self, row: sqlite3.Row) -> note_publications.Binding:
+        original = note_publications.binding(row)
+        if row["id"] not in self.mapped_articles:
+            return original
+        return note_publications.Binding(
+            original.publication_id, self.article_hashes[row["id"]], original.marker_sha256
+        )
+
+
+def project_inventory(
+    db: sqlite3.Connection,
+    vault: str,
+    *,
+    article_ids: Collection[str] = (),
+    include_attachments: bool = False,
+) -> InventoryProjection:
+    """Read only compact location evidence; never materialize output/recovery blobs."""
     managed = {}
     hidden = set()
-    for raw in db.execute("SELECT * FROM publication_locations WHERE vault_id=?", (vault,)):
-        row = dict(raw)
-        plan = json.loads(row["value"])
+    mapped_articles = set()
+    article_hashes = {}
+    hidden_roots = set()
+    attachment_roots = set()
+    document_projections = {}
+    from .publication_inventory_read import rows
+
+    for row, plan in rows(db, vault):
         ready = committed(db, row)
+        if row["kind"] == "article":
+            mapped_articles.add(row["publication_id"])
+            if row["publication_id"] in article_ids:
+                article_hashes[row["publication_id"]] = plan["published_hashes"][
+                    row["entry_note_path"]
+                ]
+        if "retained_source_root" in plan:
+            hidden_roots.add(plan["retained_source_root"])
+        if row["package_root"] and not ready:
+            hidden_roots.add(row["package_root"])
+        if include_attachments:
+            settings = plan["policy_binding"]["settings"]
+            if settings.get("policy_version") == 2:
+                attachment_roots.add(settings["attachment_root"])
+        if row["kind"] == "document":
+            document_projections[row["publication_id"]] = {
+                name: {"published_sha256": value.get("published_sha256")}
+                for name, value in plan.get("body_projections", {}).items()
+            }
+        body_files = plan.get("body_files", plan["mapping"])
+        if not isinstance(body_files, (dict, list)):
+            raise IntegrityError("invalid publication body mapping")
         for logical, path in plan["mapping"].items():
             if path not in plan["outputs"] and plan.get("layout_version") != 3:
                 continue
             if (
                 ready
                 and logical.endswith(".md")
-                and logical in plan.get("body_files", list(plan["mapping"]))
+                and logical in body_files
                 and (
                     row["package_root"]
                     or logical == "note.md"
@@ -131,4 +187,17 @@ def inventory(db: sqlite3.Connection, vault: str) -> tuple[dict[str, dict[str, A
                 }
             else:
                 hidden.add(path)
-    return managed, hidden
+    return InventoryProjection(
+        managed,
+        hidden,
+        mapped_articles,
+        article_hashes,
+        hidden_roots,
+        attachment_roots,
+        document_projections,
+    )
+
+
+def inventory(db: sqlite3.Connection, vault: str) -> tuple[dict[str, dict[str, Any]], set[str]]:
+    projection = project_inventory(db, vault)
+    return projection.managed, projection.hidden

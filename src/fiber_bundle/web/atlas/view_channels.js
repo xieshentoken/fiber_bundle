@@ -751,7 +751,7 @@ export function createView(ctx) {
     );
     const appId = input({ pattern: "cli_[A-Za-z0-9]+", value: s.app_id || "" });
     const secret = input({ type: "password", autocomplete: "new-password" });
-    const credential = input({ placeholder: "/path/to/feishu_bot.txt" });
+    const credential = input({ placeholder: "/path/to/example_feishu.txt" });
     const manifest = input({
       required: true,
       placeholder: "/path/to/runtime-manifest.json",

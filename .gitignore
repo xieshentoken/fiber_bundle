@@ -31,3 +31,17 @@ __pycache__/
 dist/
 build/
 .DS_Store
+
+# Private release audits and recovery material
+maintenance/
+publication/
+*.log
+*.har
+*.trace
+
+# Private release audits and recovery material
+maintenance/
+publication/
+*.log
+*.har
+*.trace

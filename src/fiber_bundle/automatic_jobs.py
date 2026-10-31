@@ -102,11 +102,13 @@ def claim(
 
     def eligible(row: Any) -> bool:
         value = json.loads(row["value"])
+        if value.get("availability_wait", {}).get("next_check", 0) > time.time():
+            return False
         owner = value.get("intake", {}).get("channel") or value.get("channel_batch", {}).get(
             "channel"
         )
         if channel_id is not None:
-            return owner == channel_id and row["created_at"] >= admit_after
+            return bool(owner == channel_id and row["created_at"] >= admit_after)
         return owner not in (excluded_channels or set())
 
     row = next(

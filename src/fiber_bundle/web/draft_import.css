@@ -1,0 +1,107 @@
+.draft-import-dialog {
+  box-sizing: border-box;
+  width: min(780px, calc(100vw - 32px));
+  max-height: 88vh;
+  padding: 24px;
+  overflow: auto;
+  color: var(--text);
+  background: var(--surface, var(--surface-raised, white));
+  border: 1px solid var(--border, var(--line));
+  border-radius: var(--radius-lg, 14px);
+  font-family: var(--font-sans, var(--font-ui));
+  line-height: 1.6;
+}
+.draft-import-dialog::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+.draft-import-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.draft-import-dialog h2 {
+  margin: 0 0 16px;
+  font-size: 21px;
+}
+.draft-import-dialog label {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+}
+.draft-import-dialog input:not([type="checkbox"]),
+.draft-import-dialog select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong, var(--line));
+  border-radius: 6px;
+  color: inherit;
+  background: var(--surface, var(--surface-raised));
+}
+.draft-import-dialog button {
+  margin: 6px 8px 6px 0;
+  min-height: 36px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-strong, var(--line));
+  border-radius: 6px;
+  color: inherit;
+  background: var(--surface-2, var(--surface-raised));
+  cursor: pointer;
+}
+.draft-import-dialog button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.draft-import-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.draft-import-task {
+  margin: 18px 0;
+  padding: 18px;
+  border: 1px solid var(--border, var(--line));
+  border-radius: 10px;
+  overflow-wrap: anywhere;
+}
+.draft-import-task h4 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+.draft-import-task fieldset {
+  padding: 12px;
+  border: 1px solid var(--border, var(--line));
+  border-radius: 8px;
+}
+.draft-import-mocs {
+  max-height: 220px;
+  overflow: auto;
+}
+.draft-import-mocs label,
+.draft-import-task label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+}
+.draft-import-task progress {
+  width: 100%;
+}
+@media (max-width: 600px) {
+  .draft-import-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .draft-import-dialog {
+    padding: 16px;
+  }
+}
+
+.draft-import-dialog header {
+  position: sticky;
+  top: -24px;
+  z-index: 3;
+  padding-top: 12px;
+  background: var(--surface, var(--surface-raised, white));
+}

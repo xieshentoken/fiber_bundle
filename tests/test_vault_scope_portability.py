@@ -1,4 +1,4 @@
-"""The inherited local L2 exclusion follows the owner on recipient devices."""
+"""The inherited local protected-folder exclusion follows the owner on recipient devices."""
 
 from pathlib import Path
 
@@ -10,8 +10,8 @@ from fiber_bundle.vault_scope import PROTECTED, effective
 
 def test_protected_l2_follows_owner_home():
     assert PROTECTED == Path.home() / (
-        "Library/Mobile Documents/iCloud~md~obsidian/Documents/L2/"
-        "01-Projects/GF_supply_chain"
+        "Library/Mobile Documents/iCloud~md~obsidian/Documents/ExampleVaultRoot/"
+        "01-Projects/protected-project"
     )
 
 

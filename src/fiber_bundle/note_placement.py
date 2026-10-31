@@ -27,13 +27,21 @@ from .inputs import canonical
 from .objects import digest
 
 
-def guard(db: sqlite3.Connection, vault: str) -> None:
-    if db.execute(
-        "SELECT 1 FROM vault_operations WHERE vault_id=? AND kind IN "
-        "('note_placement','layout_migration','publication_rebind') AND state IN "
-        "('applying','reconcile')",
-        (vault,),
-    ).fetchone():
+def guard(db: sqlite3.Connection, vault: str, *, finalizing_operation: str | None = None) -> None:
+    from .publication_blockers import pending
+
+    blockers = pending(db, vault)
+    if finalizing_operation is not None:
+        owned = db.execute(
+            "SELECT 1 FROM vault_operations WHERE id=? AND vault_id=? "
+            "AND kind='note_placement' AND state='applying' "
+            "AND json_extract(payload,'$.metadata_committed')=1",
+            (finalizing_operation, vault),
+        ).fetchone()
+        if owned is None:
+            raise IntegrityError("placement_reconciliation_required")
+        blockers = [b for b in blockers if b["id"] != finalizing_operation]
+    if blockers:
         raise IntegrityError("placement_reconciliation_required")
 
 
@@ -194,11 +202,16 @@ def plan_links(
     *,
     affected_only: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    candidates = []
-    for path, info in vault_scope.entries(root, scope):
+    omissions = (getattr(inventory, "coverage", None) or {}).get("omissions", {})
+    # Explicitly unavailable sources retain their names for link ambiguity checks;
+    # enumerating candidates must not require their bodies to be downloaded.
+    candidates = list(omissions)
+    for path, info in vault_scope.entries(
+        root, scope, file_filter=lambda p: vault_scope.relative_path(root, p) not in omissions
+    ):
         import stat
 
-        relative = path.relative_to(root).as_posix()
+        relative = vault_scope.relative_path(root, path)
         if stat.S_ISREG(info.st_mode) and scope.allows(relative):
             candidates.append(relative)
     candidates = sorted(set(candidates) | set(moves))
@@ -245,6 +258,8 @@ def plan_links(
             from .publication_file_io import read
 
             original, key = read(root, note.relative_path)
+            if digest(original) != note.sha256 or key != list(note.file_key or ()):
+                raise IntegrityError("placement_note_changed")
             if original.startswith(b"\xef\xbb\xbf"):
                 rewritten = "\ufeff" + rewritten
             updates.append(
@@ -274,6 +289,7 @@ def preview(
     moc_revision: int | None = None,
     destination: str | None = None,
     inventory: note_inventory.Inventory | None = None,
+    read_omissions: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     guard(db, vault)
     from .moc_registration import guard as registration_guard
@@ -409,9 +425,14 @@ def preview(
     for source in moves:
         raw, key = read(root, source)
         source_files[source] = {"sha256": digest(raw), "file_key": key}
+    from .partial_notes import validate as validate_omissions
+
+    if read_omissions:
+        validate_omissions(read_omissions)
     token = str(uuid4())
     now = time.time()
     value = {
+        **({"read_omissions": read_omissions} if read_omissions else {}),
         "client_id": client,
         "vault_id": vault,
         "root_key": vault_directories.key(root),

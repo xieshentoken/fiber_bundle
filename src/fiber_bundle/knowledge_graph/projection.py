@@ -30,7 +30,7 @@ def inventory(
     config: Config, main: sqlite3.Connection, cid: str, vid: str, selected: set[str]
 ) -> note_inventory.Inventory:
     vault = auth.grant(main, cid, vid, "query")
-    if note_search_cache.status(config, main, vault)["state"] != "ready":
+    if note_search_cache.status(config, main, vault)["state"] not in {"ready", "partial"}:
         raise note_search_cache.IndexUnavailable("note_index_update_required")
     return note_search_inventory.read(config, main, vault, selected=selected)
 
@@ -237,10 +237,12 @@ def read(
     nodes.extend(groups.values())
     # Recheck scope and index generation at response publication, after every batch.
     auth.grant(main, cid, vid, "query")
-    if note_search_cache.status(config, main, vault)["state"] != "ready":
+    checked = note_search_inventory.read(config, main, vault, selected=selected)
+    if checked.snapshot_token != current.snapshot_token:
         raise note_search_cache.IndexUnavailable("note_index_update_required")
     return {
         "state": "ready",
+        "coverage": checked.coverage,
         "scope": {"client_id": cid, "vault_id": vid},
         "configuration": profile.digest if profile else None,
         "snapshot": fingerprint(

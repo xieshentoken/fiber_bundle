@@ -394,3 +394,241 @@ def test_processing_output_capacity_preserves_user_settings_and_other_models(pol
     assert pi_processing.execution_policy(expanded) is expanded
     other = replace(base, model="other")
     assert pi_processing.execution_policy(other) is other
+
+
+def test_video_deepseek_capacity_keeps_other_tasks_and_saved_settings(policy):
+    from dataclasses import asdict, replace
+
+    from fiber_bundle import pi_processing
+    from fiber_bundle.model_configuration.policy import RegisteredPolicy
+
+    saved = RegisteredPolicy(
+        **{
+            **asdict(policy),
+            "model": "deepseek-flash",
+            "max_input_tokens": 16384,
+            "endpoint": "https://api.deepseek.com/v1/chat/completions",
+            "price_revision": "unknown",
+            "input_nusd": 0,
+            "output_nusd": 0,
+            "max_attempts": 1,
+        },
+        provider="deepseek",
+    )
+    assert pi_processing.execution_policy(saved) is saved
+    expanded = pi_processing.execution_policy(saved, video_authoring=True)
+    assert expanded.max_output_tokens == 16384
+    assert expanded.max_input_tokens == max(saved.max_input_tokens, 32768)
+    assert (
+        replace(
+            expanded,
+            max_input_tokens=saved.max_input_tokens,
+            max_output_tokens=saved.max_output_tokens,
+        )
+        == saved
+    )
+    larger = replace(saved, max_input_tokens=65536, max_output_tokens=32768)
+    assert pi_processing.execution_policy(larger, video_authoring=True) is larger
+    assert pi_processing.execution_policy(expanded, video_authoring=True) is expanded
+    other = replace(saved, model="other")
+    assert pi_processing.execution_policy(other, video_authoring=True) is other
+
+
+def test_video_capacity_settles_tool_round_context_and_keeps_overflow_guard(config, policy, bound):
+    from dataclasses import asdict
+
+    from fiber_bundle import pi_processing
+    from fiber_bundle.model_configuration.policy import RegisteredPolicy
+
+    saved = RegisteredPolicy(
+        **{
+            **asdict(policy),
+            "model": "deepseek-flash",
+            "max_input_tokens": 16384,
+            "endpoint": "https://api.deepseek.com/v1/chat/completions",
+            "price_revision": "unknown",
+            "input_nusd": 0,
+            "output_nusd": 0,
+            "max_attempts": 1,
+        },
+        provider="deepseek",
+    )
+    expanded = pi_processing.execution_policy(saved, video_authoring=True)
+    with database.connect(config.state_root) as db:
+        version = execution_ledger.get_run(db, bound[0])["version_id"]
+        from fiber_bundle import model_budgets
+
+        model_budgets.save(
+            db,
+            model_budgets.Save(
+                secret_file=expanded.secret_file,
+                expected_revision=0,
+                settings=model_budgets.Policy(label="Synthetic", limit=1000000),
+            ),
+        )
+        rid = execution_ledger.create_run(config, db, expanded, bound[1], bound[2], version)
+        execution_ledger.start(config, db, rid, expanded)
+        call = execution_ledger.reserve(config, db, rid, expanded)
+        execution_ledger.settle(
+            db, call, expanded, {"prompt_tokens": 17167, "completion_tokens": 145}
+        )
+        assert (
+            db.execute("select state from model_calls where id=?", (call,)).fetchone()[0]
+            == "settled"
+        )
+        call = execution_ledger.reserve(config, db, rid, expanded)
+        with pytest.raises(InvalidInput, match="provider exceeded reserved limits"):
+            execution_ledger.settle(
+                db,
+                call,
+                expanded,
+                {"prompt_tokens": expanded.max_input_tokens + 1, "completion_tokens": 1},
+            )
+        assert (
+            db.execute("select state from model_calls where id=?", (call,)).fetchone()[0]
+            == "settled"
+        )
+
+        model_budgets.save(
+            db,
+            model_budgets.Save(
+                secret_file=expanded.secret_file,
+                expected_revision=1,
+                settings=model_budgets.Policy(label="Synthetic", limit=1),
+            ),
+        )
+        before = db.execute("select count(*) from model_calls where run_id=?", (rid,)).fetchone()[0]
+        with pytest.raises(model_budgets.Exhausted):
+            execution_ledger.reserve(config, db, rid, expanded)
+        assert (
+            db.execute("select count(*) from model_calls where run_id=?", (rid,)).fetchone()[0]
+            == before
+        )
+
+
+def test_processing_reports_reserved_context_overflow_and_preserves_charge(
+    config, policy, bound, monkeypatch
+):
+    from dataclasses import asdict
+
+    from fiber_bundle import model_budgets, pi_processing
+    from fiber_bundle.model_configuration.policy import RegisteredPolicy
+
+    selected = RegisteredPolicy(
+        **{
+            **asdict(policy),
+            "model": "deepseek-flash",
+            "max_input_tokens": 16384,
+            "max_output_tokens": 16384,
+            "endpoint": "https://api.deepseek.com/v1/chat/completions",
+            "price_revision": "unknown",
+            "input_nusd": 0,
+            "output_nusd": 0,
+            "max_attempts": 1,
+        },
+        provider="deepseek",
+    )
+    with database.connect(config.state_root) as db:
+        model_budgets.save(
+            db,
+            model_budgets.Save(
+                secret_file=selected.secret_file,
+                expected_revision=0,
+                settings=model_budgets.Policy(label="Synthetic", limit=1000000),
+            ),
+        )
+        version = execution_ledger.get_run(db, bound[0])["version_id"]
+        run = pi_processing.prepare(
+            config,
+            db,
+            selected,
+            bound[1],
+            bound[2],
+            version,
+            "article",
+            "a" * 64,
+            [{"id": "capture:0", "text": "Synthetic source"}],
+            allow_cloud=True,
+        )
+    script = (
+        "import sys,json;json.loads(sys.stdin.readline());"
+        'print(json.dumps({"type":"model","id":"one","body":{"messages":[{"role":"user","content":"synthetic"}]}}),flush=True);'
+        "sys.stdin.readline()"
+    )
+    monkeypatch.setattr(execution, "command", lambda *a, **kw: [sys.executable, "-u", "-c", script])
+    monkeypatch.setattr(execution, "stop", lambda *a, **kw: None)
+    monkeypatch.setattr(
+        model_gateway,
+        "complete",
+        lambda *a: {
+            "choices": [{"message": {"content": "Synthetic"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 17167, "completion_tokens": 145},
+        },
+    )
+    result = execution.execute(config, selected, run, "synthetic")
+    assert result["state"] == "failed"
+    with database.connect(config.state_root) as db:
+        assert execution_ledger.get_run(db, run)["error_code"] == "processing_model_usage_exceeded"
+        assert tuple(
+            db.execute(
+                "select state,input_tokens,output_tokens from model_calls where run_id=?", (run,)
+            ).fetchone()
+        ) == ("settled", 17167, 145)
+
+
+@pytest.mark.parametrize("layers,changed", [(0, False), (1, False), (2, False), (1, True)])
+def test_video_draft_string_envelope_keeps_bound_validation(config, policy, bound, layers, changed):
+    import json
+
+    from pydantic import ValidationError
+
+    from fiber_bundle import pi_processing
+    from fiber_bundle.config import IntegrityError
+    from fiber_bundle.inputs import canonical
+    from fiber_bundle.objects import digest
+    from fiber_bundle.query_policy_store import write_private
+
+    with database.connect(config.state_root) as db:
+        version = execution_ledger.get_run(db, bound[0])["version_id"]
+        run = pi_processing.prepare(
+            config,
+            db,
+            policy,
+            bound[1],
+            bound[2],
+            version,
+            "video",
+            "a" * 64,
+            [{"id": "S1", "text": "source"}],
+            allow_cloud=True,
+        )
+        binding = pi_processing.get(db, run)
+        inputs = json.loads(binding["input_json"])
+        inputs["video_skill"] = {"host_frozen_fixture": True}
+        db.execute(
+            "update pi_processing_runs set input_json=? where run_id=?", (canonical(inputs), run)
+        )
+        execution_ledger.transition(db, run, "succeeded")
+        draft = {
+            "schema": "fiber-processing-draft/v1",
+            "kind": "video",
+            "source_sha256": ("b" if changed else "a") * 64,
+            "summary": "summary",
+            "evidence_ids": ["S1"],
+            "gaps": [],
+            "note_markdown": "source note",
+        }
+        raw = canonical(draft)
+        for _ in range(layers):
+            raw = json.dumps(raw, ensure_ascii=False)
+        path = config.state_root / "tasks" / run / "draft.json"
+        path.parent.mkdir(parents=True)
+        write_private(path, raw.encode())
+        if layers > 1 or changed:
+            with pytest.raises((ValidationError, IntegrityError)):
+                pi_processing.result(config, db, run)
+        else:
+            result = pi_processing.result(config, db, run)
+            assert result["note_markdown"] == "source note"
+            assert result["analysis_sha256"] == digest(raw.encode())
+        assert path.read_bytes() == raw.encode()

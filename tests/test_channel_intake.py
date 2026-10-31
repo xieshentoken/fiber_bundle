@@ -295,3 +295,27 @@ def test_no_url_wechat_channels_card_is_archived_as_pending_content(config, entr
     value = json.loads(row["value"])
     assert value["cards"] == [{"kind": "wechat_channels", "content_state": "card_only"}]
     assert count(config, "receipts") == 1
+
+
+def test_cloud_target_unavailable_does_not_break_overview_or_allow_intake(
+    config, entry, monkeypatch
+):
+    from fiber_bundle import vaults
+    from fiber_bundle.channels import health
+    from fiber_bundle.config import IntegrityError
+
+    enable(config, entry)
+
+    def unavailable(*args):
+        raise IntegrityError("cloud_item_pending_stale_or_conflicted")
+
+    monkeypatch.setattr(vaults, "checked_vault", unavailable)
+    with database.connect(config.state_root) as db:
+        result = health.present(config, db, entry[0])
+        assert result["intake"]["reason"] == "channel_cloud_not_ready"
+        assert not result["capabilities"]["store"]["available"]
+        with pytest.raises(IntegrityError):
+            repository.authorize(
+                config, db, entry[0], repository.channel(config, entry[0]["id"])[1]["settings"]
+            )
+    assert count(config, "receipts") == 0

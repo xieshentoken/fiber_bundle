@@ -32,6 +32,11 @@ def build(
     *,
     cancelled: Callable[[sqlite3.Connection], bool] | None = None,
 ) -> dict[str, object]:
+    from .vault_sync import commands
+    from .vault_sync import store as sync_store
+
+    if sync_store.library(config, vault_id) is not None:
+        return commands.refresh(config, client_id, vault_id, cancelled)
     # The local command owns one Vault index; unrelated query/import locks stay free.
     with run_lock(config, str(uuid5(NAMESPACE_URL, "fiber-note-index:" + vault_id))):
         with Lease(config, vault_id) as lease:
@@ -164,16 +169,6 @@ def build(
                         for key in ("notes", "chunks", "reused_notes", "updated_notes")
                     },
                 )
-            from .organization.jobs import notify
-            from .organization.jobs import policy as organization_policy
-
-            with database.locked(config):
-                target = (
-                    "全库"
-                    if organization_policy(config, vault_id)["settings"]["full_review"]
-                    else "Inbox"
-                )
-                notify(config, vault_id, "changed", target)
             return result
         except BaseException:
             with database.locked(config):

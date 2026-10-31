@@ -6,12 +6,17 @@ import { maintenanceSection } from "./organization_maintenance.js";
 import { control } from "./record_ui.js";
 import { organizationSettings } from "./organization_settings.js";
 import { createSections, disclosure, retainView } from "./view_sections.js";
+import {
+  readOrganizationCycle,
+  progressRetryDelay,
+  organizationWorking,
+} from "./organization_read_cycle.js";
+import { coverageNotice } from "./organization_coverage.js";
 import { memberControls } from "./organization_members.js";
 import {
   maintenancePhase,
   maintenanceSummary,
   previewInvalidated,
-  mergeProgress,
 } from "./organization_progress.js";
 
 const states = {
@@ -61,8 +66,6 @@ export function createOrganizationView(
     deferredPaint = false,
     catalogChanged = false,
     catalogReady = false,
-    catalogRetry = 0,
-    catalogAfter = 0,
     readGeneration = 0,
     memberPending = 0;
   function interacting() {
@@ -75,6 +78,7 @@ export function createOrganizationView(
   }
   const requestRead = scopedRead(refreshNow);
   function refresh(options = {}) {
+    if (options.force) readGeneration++;
     return requestRead({
       ...options,
       key: JSON.stringify(scope()) + ":" + readGeneration,
@@ -88,7 +92,6 @@ export function createOrganizationView(
           maintenanceSection(
             {
               ...result,
-              jobs: result.jobs.filter((job) => job.state !== "preview"),
               mocs: [],
             },
             fixed,
@@ -99,7 +102,7 @@ export function createOrganizationView(
         );
     });
   }
-  async function refreshNow({ automatic = false } = {}) {
+  async function refreshNow({ automatic = false, force = false } = {}) {
     const fixed = scope(),
       key = JSON.stringify(fixed),
       revision = ++epoch;
@@ -119,6 +122,8 @@ export function createOrganizationView(
       lastResult = "";
       lastData = null;
       catalogReady = false;
+      catalogChanged = false;
+      retryCount = 0;
       maintenanceDraft.views = {};
       dirty = false;
       offset = 0;
@@ -128,40 +133,23 @@ export function createOrganizationView(
       setText(message, uiText("配置草稿已保留；保存后可刷新任务。"));
       return;
     }
+    if (!automatic) retryCount = 0;
     try {
-      let result;
-      if (automatic && lastData) {
-        result = mergeProgress(lastData, await api.progress(fixed));
-      } else {
-        // A failed catalog must not hide an already-running task or its pause control.
-        try {
-          result = await api.list(fixed, offset, query, exceptions);
-          catalogReady = true;
-        } catch (error) {
-          if ([401, 403, 404].includes(error.status)) throw error;
-          const ledger = await api.progress(fixed);
-          result = lastData ? mergeProgress(lastData, ledger) : ledger;
-          catalogChanged = true;
-          onReadError(error);
-        }
-      }
-      // Refresh the catalog once after an actual application; progress polling stays ledger-only.
-      if (
-        automatic &&
-        lastData &&
-        result.jobs.some(
-          (job) =>
-            ["completed", "partial", "cancelled"].includes(job.state) &&
-            job.index_state !== "pending" &&
-            lastData.jobs.some(
-              (prior) =>
-                prior.id === job.id &&
-                (prior.state !== job.state ||
-                  prior.index_state !== job.index_state),
-            ),
-        )
-      )
+      const cycle = await readOrganizationCycle(api, fixed, lastData, {
+        automatic,
+        offset,
+        query,
+        exceptions,
+      });
+      if (revision !== epoch || JSON.stringify(scope()) !== key) return;
+      const result = cycle.data;
+      if (cycle.catalog === true) {
+        catalogReady = true;
+        catalogChanged = false;
+      } else if (cycle.catalog === false) {
         catalogChanged = true;
+        onReadError(cycle.error);
+      }
       retryCount = 0;
       if (revision !== epoch || JSON.stringify(scope()) !== key) return;
       if (interacting() || dirty) {
@@ -185,44 +173,14 @@ export function createOrganizationView(
         schedule(result);
         return;
       }
-      if (catalogChanged && Date.now() >= catalogAfter) {
-        // Publish the ledger result before any slower catalog request can fail.
-        paint(result, fixed);
-        lastData = result;
-        try {
-          result = await api.list(fixed, offset, query, exceptions);
-          catalogReady = true;
-          catalogChanged = false;
-          catalogRetry = 0;
-          catalogAfter = 0;
-        } catch (error) {
-          if ([401, 403, 404].includes(error.status)) throw error;
-          onReadError(error);
-          catalogAfter =
-            Date.now() +
-            Math.min(10000, 1500 * 2 ** Math.min(catalogRetry++, 3));
-          setText(
-            message,
-            uiText("进度已更新；目录读取暂不可用，稍后自动重试。"),
-          );
-        }
-      }
       if (revision !== epoch || JSON.stringify(scope()) !== key) return;
-      // A request started before the user opened a control must not replace it.
-      if (interacting() || dirty) {
-        deferredPaint = true;
-        lastData = result;
-        clearTimeout(poll);
-        poll = setTimeout(() => refresh({ automatic: true }), 1500);
-        return;
-      }
       const stamp = JSON.stringify([
         result,
         result.jobs
           .filter((job) => previewInvalidated(job))
           .map((job) => job.id),
       ]);
-      if (!automatic || stamp !== lastResult) paint(result, fixed);
+      if (force || !automatic || stamp !== lastResult) paint(result, fixed);
       else
         setText(
           message,
@@ -231,7 +189,7 @@ export function createOrganizationView(
                 p0: exceptions ? uiText("待分类与异常") : uiText("全部知识"),
                 p1: result.total,
               })
-            : uiText("进度已更新；目录读取暂不可用，稍后自动重试。"),
+            : uiText("任务进度可继续更新；目录读取暂不可用，请手动刷新重试。"),
         );
       if (catalogReady && !catalogChanged) onReadSuccess();
       lastResult = stamp;
@@ -239,7 +197,7 @@ export function createOrganizationView(
       setText(
         freshness,
         catalogChanged
-          ? uiText("进度已更新；目录读取暂不可用，稍后自动重试。")
+          ? uiText("任务进度可继续更新；目录读取暂不可用，请手动刷新重试。")
           : phrase("更新于 {p0}", { p0: new Date().toLocaleTimeString() }),
       );
       deferredPaint = false;
@@ -259,10 +217,10 @@ export function createOrganizationView(
       );
       if (![401, 403, 404].includes(error.status)) {
         clearTimeout(poll);
-        poll = setTimeout(
-          () => refresh({ automatic: true }),
-          Math.min(10000, 1500 * 2 ** Math.min(retryCount++, 3)),
-        );
+        const delay = progressRetryDelay(retryCount++);
+        if (delay !== null)
+          poll = setTimeout(() => refresh({ automatic: true }), delay);
+        else setText(freshness, uiText("自动读取已暂停，请手动刷新重试。"));
       }
     }
   }
@@ -317,6 +275,13 @@ export function createOrganizationView(
         work(() => api.submit({ ...fixed, target: "全库", preview: true })),
       ),
     );
+    const coverage = coverageNotice(
+      result.coverage,
+      "organization-coverage",
+      false,
+      { scope: fixed, api },
+    );
+    if (coverage) members.append(coverage);
     members.append(actions);
     for (const item of result.items) {
       const card = el("article", null, "record-card");
@@ -550,14 +515,7 @@ export function createOrganizationView(
 
   function schedule(result) {
     clearTimeout(poll);
-    const working =
-      catalogChanged ||
-      result.package_scan?.state === "queued" ||
-      result.jobs.some(
-        (j) =>
-          ["queued", "running", "cancelling"].includes(j.state) ||
-          j.index_state === "pending",
-      );
+    const working = organizationWorking(result);
     const delay = working ? 1500 : null;
     if (delay !== null)
       poll = setTimeout(
@@ -575,8 +533,6 @@ export function createOrganizationView(
   function clear() {
     readGeneration++;
     catalogReady = false;
-    catalogRetry = 0;
-    catalogAfter = 0;
     lastData = null;
     epoch++;
     clearTimeout(poll);

@@ -2,8 +2,12 @@
 
 from typing import Any
 
+from ..config import Config
 
-def project(db: Any, link: dict[str, Any]) -> dict[str, Any]:
+
+def project(db: Any, link: dict[str, Any], config: Config | None = None) -> dict[str, Any]:
+    from ..video_progress import project as video_progress
+
     video = link.get("video_processing", {})
     ids = list(link.get("pi_processing", {}).get("runs", {}).values())
     ids += list(video.get("vision_runs", {}).values()) + list(video.get("note_runs", {}).values())
@@ -55,6 +59,7 @@ def project(db: Any, link: dict[str, Any]) -> dict[str, Any]:
             and not has_result(db, video, rid)
         )
     return {
+        "video_progress": video_progress(db, video, config) if video else None,
         "model_state": state
         or next(
             (

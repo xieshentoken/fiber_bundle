@@ -5,12 +5,14 @@ metadata/configuration change invalidates an unlocked read before it can be used
 The separate process lease prevents a second worker from executing the same unit.
 """
 
+from contextlib import nullcontext
 from typing import Any
 
-from .. import database, storage_read_scope
+from .. import database, publication_inventory_read, storage_read_scope
 from ..config import IntegrityError
 from ..storage_versions import stamp
 from . import execution_control, packages, store
+from .execution_reads import ExecutionReads
 
 
 class Unit:
@@ -31,7 +33,9 @@ class Unit:
             return operation()
         # Publish the current phase before its slow read; no source text is added.
         published = store.get(self.config, "jobs", self.job["id"])
-        if self.job.get("activity"):
+        if self.job.get("activity") and published.get("activity") != self.job["activity"]:
+            # The first read publishes a phase durably. Identical reads need no
+            # additional fullfsync; crash recovery still sees the original state.
             published["activity"] = dict(self.job["activity"])
             store.put(self.config, "jobs", self.job["id"], self.job["vault_id"], published)
         binding = self.binding()
@@ -51,13 +55,18 @@ class Unit:
         return value
 
 
-def run(config: Any, identity: str) -> None:
+def run(config: Any, identity: str, *, reads: ExecutionReads | None = None) -> None:
+    from ..cloud_helper_session import reuse as metadata_session
     from . import maintenance
 
     with execution_control.claim(config, identity) as acquired:
         if not acquired:
             return
-        with database.connect(config.state_root) as db:
+        with (
+            database.connect(config.state_root) as db,
+            publication_inventory_read.reuse(db),
+            metadata_session(),
+        ):
             unit = Unit(config, db, None)
             unit.lock.__enter__()
             token = storage_read_scope.current.set(unit.read)
@@ -70,11 +79,16 @@ def run(config: Any, identity: str) -> None:
                 if operation(db, job["vault_id"]):
                     return
                 execution_control.settle(config, job)
-                if job["state"] != "paused":
-                    maintenance.run(config, db, job)
+                with reads.scope(config, job) if reads else nullcontext():
+                    if job["state"] != "paused":
+                        maintenance.run(config, db, job)
                 execution_control.settle(config, job)
+                if reads and job["state"] not in {"queued", "running"}:
+                    reads.clear()
                 store.put(config, "jobs", identity, job["vault_id"], job)
             except Exception as error:
+                if reads:
+                    reads.clear()
                 if unit.job:
                     unit.job.update(
                         state="partial", error=type(error).__name__ + ": " + str(error)[:120]

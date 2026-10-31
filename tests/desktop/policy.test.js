@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   backendURL,
+  allowedNavigation,
   allowedRequest,
   allowedDownload,
   windowPreferences,
@@ -19,6 +20,28 @@ test("desktop accepts only an explicit IPv4 loopback root", () => {
     "http://127.0.0.1/#x",
   ])
     assert.throws(() => backendURL(url));
+});
+test("language and theme reloads retain local view fragments without widening the destination", () => {
+  const root = backendURL();
+  const offline = "file:///application/offline.html";
+  for (const value of [root, root + "#/graph", root + "#/settings", offline])
+    assert.equal(allowedNavigation(value, root, offline), true);
+  for (const value of [
+    "https://example.com/#/graph",
+    "http://localhost:8765/#/graph",
+    "http://127.0.0.1:8766/#/graph",
+    "http://u:p@127.0.0.1:8765/#/graph",
+    root + "admin/session#/graph",
+    root + "static/atlas/index.html",
+    root + "?token=secret#/graph",
+    root + "?",
+    "file:///application/other.html",
+    offline + "#fragment",
+    "javascript:alert(1)",
+    "data:text/html,example",
+    "not a URL",
+  ])
+    assert.equal(allowedNavigation(value, root, offline), false, value);
 });
 test("renderer has no Node bridge and denies remote or other loopback APIs", () => {
   assert.equal(windowPreferences.nodeIntegration, false);

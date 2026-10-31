@@ -21,6 +21,18 @@ export const windowPreferences = Object.freeze({
   allowRunningInsecureContent: false,
   partition: "persist:fiber-admin",
 });
+// A fragment selects a view inside the trusted root document. Language/theme
+// reloads retain that fragment; it does not change the network destination.
+export function allowedNavigation(value, backend, offline) {
+  if (value === offline) return true;
+  try {
+    const url = new URL(value);
+    url.hash = "";
+    return url.href === backend;
+  } catch {
+    return false;
+  }
+}
 export function allowedRequest(value, backend, localFiles = []) {
   if (localFiles.includes(value)) return true;
   try {

@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from . import note_publications
-from .config import IntegrityError, contained
-from .vault_scope import Scope
+from .config import IntegrityError, StorageError, contained
+from .vault_scope import Scope, relative_path
 
 
 @dataclass(frozen=True)
@@ -34,11 +34,26 @@ class Note:
     publication_path: str | None = None
 
 
-def read_note(vault: Path, relative: str, limit: int) -> Note:
+def read_note(
+    vault: Path,
+    relative: str,
+    limit: int,
+    *,
+    availability: Callable[[Path], None] | None = None,
+) -> Note:
     path = contained(vault, relative)
     from .cloud_files import require_available
 
-    require_available(path)
+    (availability or require_available)(path)
+    from .note_read_session import current
+
+    session = current.get()
+    if session is not None:
+        return session.note(path, limit, lambda: _read_note(path, relative, limit))
+    return _read_note(path, relative, limit)
+
+
+def _read_note(path: Path, relative: str, limit: int) -> Note:
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as stream:
         info = os.fstat(stream.fileno())
@@ -91,6 +106,8 @@ def snapshot(
     hidden_files: set[str] | None = None,
     hidden_roots: set[str] | None = None,
     exclude_path: Callable[[str], bool] | None = None,
+    known_entries: dict[str, tuple[int, int]] | None = None,
+    note_errors: dict[str, str] | None = None,
 ) -> list[Note]:
     """Managed bundles contribute only their published note; hidden/partial bundles stay out."""
     limits = limits or Limits()
@@ -115,9 +132,25 @@ def snapshot(
         if total > limits.total_bytes:
             raise IntegrityError("vault index byte limit exceeded")
 
-    reader = note_loader or (lambda relative, maximum: read_note(vault, relative, maximum))
+    from . import display_observation
+    from .cloud_read_batch import CloudReadBatch
 
-    def add(relative: str, publication_id: str | None = None) -> None:
+    cloud_batch = (
+        CloudReadBatch(vault)
+        if note_loader is None
+        and "Mobile Documents" in vault.parts
+        and display_observation.current.get() is None
+        else None
+    )
+
+    def reader(relative: str, maximum: int) -> Note:
+        if note_loader is not None:
+            return note_loader(relative, maximum)
+        if cloud_batch is not None:
+            return read_note(vault, relative, maximum, availability=cloud_batch.check)
+        return read_note(vault, relative, maximum)
+
+    def add_checked(relative: str, publication_id: str | None = None) -> None:
         if not scope.allows(relative) or relative in (hidden_files or set()):
             return
         note = reader(relative, limits.note_bytes)
@@ -131,7 +164,11 @@ def snapshot(
                 located_paths[publication_id] = (
                     managed["package_root"] or relative.rsplit("/", 1)[0]
                 )
-        consume(contained(vault, relative).stat().st_size)
+        consume(
+            known_entries[relative][1]
+            if known_entries is not None
+            else contained(vault, relative).stat().st_size
+        )
         retain(
             replace(
                 note,
@@ -140,13 +177,25 @@ def snapshot(
             )
         )
 
+    def add(relative: str, publication_id: str | None = None) -> None:
+        if note_errors is not None and relative in note_errors:
+            return
+        try:
+            add_checked(relative, publication_id)
+        except (StorageError, OSError) as error:
+            if note_errors is None:
+                raise
+            from .vault_sync.problems import reason
+
+            note_errors[relative] = reason(error)
+
     def tracked_note(directory: Path, publication_id: str, key: tuple[int, int, str]) -> None:
         nonlocal entries
         matches: list[Note] = []
         markdown = 0
         with os.scandir(directory) as items:
             for entry in items:
-                relative = Path(entry.path).relative_to(vault).as_posix()
+                relative = relative_path(vault, Path(entry.path))
                 if not scope.reachable(relative) or (exclude_path and exclude_path(relative)):
                     continue
                 entries += 1
@@ -159,7 +208,7 @@ def snapshot(
                     or path.suffix.lower() != ".md"
                 ):
                     continue
-                relative = path.relative_to(vault).as_posix()
+                relative = relative_path(vault, path)
                 if not scope.allows(relative):
                     continue
                 note = reader(relative, limits.note_bytes)
@@ -174,7 +223,7 @@ def snapshot(
                 replace(
                     matches[0],
                     publication_id=publication_id,
-                    publication_path=directory.relative_to(vault).as_posix(),
+                    publication_path=relative_path(vault, directory),
                 )
             )
 
@@ -184,38 +233,66 @@ def snapshot(
             raise IntegrityError("vault index depth limit exceeded")
         # Count entries before sorting; huge directories must not allocate an unbounded list.
         paths = []
-        with os.scandir(directory) as items:
-            for entry in items:
-                relative = Path(entry.path).relative_to(vault).as_posix()
+        if known_entries is not None:
+            parent = relative_path(vault, directory)
+            parent = "" if parent == "." else parent
+            paths = [
+                vault / relative
+                for relative in known_entries
+                if relative
+                and (relative.rsplit("/", 1)[0] if "/" in relative else "") == parent
+                and scope.reachable(relative)
+                and not (exclude_path and exclude_path(relative))
+            ]
+        else:
+            from .note_read_session import names
+
+            for name in names(directory, limits.entries):
+                path = directory / name
+                relative = relative_path(vault, path)
                 if not scope.reachable(relative) or (exclude_path and exclude_path(relative)):
                     continue
                 entries += 1
                 if entries > limits.entries:
                     raise IntegrityError("vault index entry limit exceeded")
-                paths.append(Path(entry.path))
+                paths.append(path)
         from .display_observation import current, preflight
 
-        if current.get() is not None:
-            preflight(
-                directory,
-                [
-                    path
-                    for path in paths
-                    if not path.name.startswith(".")
-                    and path.suffix.lower() == ".md"
-                    and scope.allows(path.relative_to(vault).as_posix())
-                    and path.relative_to(vault).as_posix() not in (hidden_files or set())
-                    and not path.is_symlink()
-                    and path.is_file()
-                ],
-            )
+        if current.get() is not None or cloud_batch is not None:
+            check = cloud_batch.preflight if cloud_batch is not None else preflight
+            eligible = [
+                path
+                for path in paths
+                if not path.name.startswith(".")
+                and path.suffix.lower() == ".md"
+                and scope.allows(relative_path(vault, path))
+                and relative_path(vault, path) not in (hidden_files or set())
+                and relative_path(vault, path) not in (hidden_roots or set())
+                and relative_path(vault, path) not in (note_errors or {})
+                and not path.is_symlink()
+                and path.is_file()
+            ]
+            try:
+                check(directory, eligible)
+            except (StorageError, OSError):
+                if note_errors is None:
+                    raise
+                # A failed metadata batch does not identify which member failed.
+                # Isolate it once per member; successful members retain batch proofs.
+                from .vault_sync.problems import reason
+
+                for path in eligible:
+                    try:
+                        check(directory, [path])
+                    except (StorageError, OSError) as error:
+                        note_errors[relative_path(vault, path)] = reason(error)
         for path in sorted(paths):
-            relative = path.relative_to(vault).as_posix()
+            relative = relative_path(vault, path)
             if relative in (hidden_roots or set()):
                 continue
-            if path.name.startswith(".") or path.is_symlink():
+            mode = known_entries[relative][0] if known_entries is not None else path.lstat().st_mode
+            if path.name.startswith(".") or stat.S_ISLNK(mode):
                 continue
-            mode = path.lstat().st_mode
             if stat.S_ISDIR(mode):
                 from .expert_package_boundary import detected
 
@@ -261,9 +338,14 @@ def snapshot(
                 add(relative)
 
     walk(vault, 0)
+    if cloud_batch is not None:
+        cloud_batch.verify()
     visible = {n.relative_path for n in notes}
     if any(
-        scope.allows(path) and not (exclude_path and exclude_path(path)) and path not in visible
+        scope.allows(path)
+        and not (exclude_path and exclude_path(path))
+        and path not in visible
+        and path not in (note_errors or {})
         for path in (managed_entries or {})
     ):
         raise IntegrityError("layout_rebind_required")

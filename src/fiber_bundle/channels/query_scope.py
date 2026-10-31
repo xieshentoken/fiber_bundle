@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from .. import auth, vaults
-from ..config import Config, InvalidInput
+from ..config import Config, InvalidInput, StorageError
 from ..inputs import canonical, text
 from ..payloads import Identifier, Payload
 
@@ -161,12 +161,21 @@ def describe(config: Config, db: Any, channel: dict[str, Any]) -> dict[str, Any]
     rows = []
     for item in entries(channel["value"]):
         row = db.execute("SELECT name FROM vaults WHERE id=?", (item["vault_id"],)).fetchone()
+        reason = None
         try:
             checked(config, db, bind(channel, snapshot(channel, item["alias"] or None)))
             available = True
-        except (auth.Denied, InvalidInput):
+        except auth.Denied:
+            available, reason = False, "permission_revoked"
+        except (StorageError, OSError) as error:
+            # Status remains observable; real reads still use checked() and fail closed.
+            from .query_failures import INTEGRITY_CODES
+
             available = False
-        rows.append({**item, "name": row["name"] if row else "—", "available": available})
+            reason = INTEGRITY_CODES.get(str(error), "channel_vault_unavailable")
+        rows.append(
+            {**item, "name": row["name"] if row else "—", "available": available, "reason": reason}
+        )
     return {"default": "all", "vaults": rows, "explicit": "query_vaults" in channel["value"]}
 
 

@@ -381,9 +381,9 @@ def test_zero_hit_message_and_attempt_bound(config, model_channel, monkeypatch):
     attempted = []
     original = query.evidence
 
-    def observe(*args):
+    def observe(*args, **kwargs):
         attempted.append(args[-1])
-        return original(*args)
+        return original(*args, **kwargs)
 
     monkeypatch.setattr(query, "evidence", observe)
     with database.connect(config.state_root) as db, store.readonly(config) as side:

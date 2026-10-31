@@ -71,7 +71,20 @@ def install_v3(
     subtitles=True,
     direct=True,
     empty_asr=False,
+    legacy_pi=False,
 ):
+    if legacy_pi:
+        from fiber_bundle.channels import intake_video_skill
+
+        original_snapshot = intake_video_skill.new_snapshot
+
+        def legacy(*args):
+            value = original_snapshot(*args)
+            value.pop("note_authoring")
+            value.pop("evidence_flow")
+            return value
+
+        monkeypatch.setattr(intake_video_skill, "new_snapshot", legacy)
     # Reuse the real policy/layout preparation without keeping its sample article.
     capture(config, entry, policy, monkeypatch, "pi_skill", direct)
     from fiber_bundle import model_budgets
@@ -325,11 +338,13 @@ def test_video_success_obeys_review_mode_and_uses_v3_artifacts(
     assert (link.get("publication", {}).get("state") == "published") is direct
     if direct:
         path = config.vault_path("test vault/temp_vault1") / link["publication"]["entry_note_path"]
-        assert "Diagram method" in path.read_text()
+        assert "Synthetic diagram method" in path.read_text()
+        assert "未调用 Pi" in path.read_text()
+        assert not link["video_processing"].get("note_runs")
         assert "../illustrations/" not in path.read_text()
         with database.connect(config.state_root) as db:
             hits = search.vault_search(
-                config, db, entry[1].client_id, "Diagram method", [entry[1].vault_id]
+                config, db, entry[1].client_id, "Synthetic diagram method", [entry[1].vault_id]
             )["results"]
             assert hits and hits[0]["source_kind"] == "agent_analysis"
             assert not hits[0]["independent_evidence"]
@@ -409,3 +424,101 @@ def test_video_timeout_requires_approved_new_call_and_reuses_media_and_transcrip
                 db.execute("SELECT state FROM model_calls WHERE run_id=?", (rid,)).fetchone()[0]
                 == "uncertain"
             )
+
+
+def test_resolve_failure_can_explicitly_refresh_unstarted_video(
+    config, entry, policy, monkeypatch, tmp_path, media
+):
+    from fiber_bundle import video_source_resolution
+    from fiber_bundle.video_source_transport import SourceConnectionError
+
+    batch, steps = install_v3(config, entry, policy, monkeypatch, tmp_path, media, True, True)
+    original = video_source_resolution.resolve
+    monkeypatch.setattr(
+        video_source_resolution,
+        "resolve",
+        lambda *a: (_ for _ in ()).throw(SourceConnectionError("tls_interrupted", 3, 1.0)),
+    )
+    assert intake_extraction.advance(config, entry[0]["id"])
+
+    def value():
+        return json.loads(
+            next(r for r in records(config, entry) if r["batch_id"] == batch)["value"]
+        )
+
+    failed = value()["links"][0]
+    assert failed["reason"] == "intake_video_source_tls_interrupted"
+    assert failed["diagnostic"]["attempts"] == 3
+    assert not failed["video_processing"]["completed"]
+    # Revision is the active channel intake policy, not the batch row revision.
+    from fiber_bundle.channels import intake_actions
+
+    revision = intake_actions.inspect(config, entry[0]["id"])["revision"]
+    intake_extraction.retry(
+        config, entry[0]["id"], batch, 0, revision, use_current_video_settings=True
+    )
+    assert (
+        value()["links"][0]["previous_video_processing"][0]["job_id"]
+        == failed["video_processing"]["job_id"]
+    )
+    monkeypatch.setattr(video_source_resolution, "resolve", original)
+    assert intake_extraction.advance(config, entry[0]["id"])
+    assert value()["links"][0]["state"] == "review_required"
+    for _ in range(6):
+        automatic_ingestion.tick(config)
+    assert value()["links"][0]["publication"]["state"] == "published"
+
+
+def test_note_output_truncation_keeps_completed_extraction_and_reports_specific_reason(
+    config, entry, policy, monkeypatch, tmp_path, media
+):
+    from fiber_bundle import execution
+    from fiber_bundle.config import make_directory
+
+    batch, steps = install_v3(config, entry, policy, monkeypatch, tmp_path, media, legacy_pi=True)
+
+    def truncated(config, selected, rid, prompt):
+        with database.connect(config.state_root) as db:
+            execution_ledger.start(config, db, rid, selected)
+            execution_ledger.transition(db, rid, "failed", "processing_model_incomplete")
+        folder = config.state_root / "tasks" / rid
+        make_directory(folder)
+        write_private(
+            folder / "execution-diagnostics.json",
+            canonical({"events": [{"event": "agent_end", "stop": "length"}]}).encode(),
+        )
+
+    monkeypatch.setattr(execution, "execute", truncated)
+    assert intake_extraction.advance(config, entry[0]["id"])
+    link = json.loads(next(r for r in records(config, entry) if r["batch_id"] == batch)["value"])[
+        "links"
+    ][0]
+    assert link["reason"] == "video_skill_note_output_truncated"
+    assert {"media", "transcript", "frames", "crops", "timeline"}.issubset(
+        link["video_processing"]["completed"]
+    )
+    assert "publication" not in link
+
+
+def test_note_context_overflow_retains_evidence_and_requires_explicit_recovery(
+    config, entry, policy, monkeypatch, tmp_path, media
+):
+    from fiber_bundle import execution
+
+    batch, steps = install_v3(config, entry, policy, monkeypatch, tmp_path, media, legacy_pi=True)
+
+    def overflow(config, selected, rid, prompt):
+        with database.connect(config.state_root) as db:
+            execution_ledger.start(config, db, rid, selected)
+            execution_ledger.transition(db, rid, "failed", "processing_model_usage_exceeded")
+
+    monkeypatch.setattr(execution, "execute", overflow)
+    assert intake_extraction.advance(config, entry[0]["id"])
+    link = json.loads(next(r for r in records(config, entry) if r["batch_id"] == batch)["value"])[
+        "links"
+    ][0]
+    assert link["reason"] == "video_skill_note_context_exceeded"
+    assert {"media", "transcript", "frames", "crops", "timeline"}.issubset(
+        link["video_processing"]["completed"]
+    )
+    assert "publication" not in link

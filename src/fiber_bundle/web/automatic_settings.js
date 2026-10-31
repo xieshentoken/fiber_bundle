@@ -223,7 +223,9 @@ export function automaticSettings(vault, api) {
               control(
                 status.state === "index_reconcile"
                   ? "核对后仅继续索引"
-                  : "核对后继续同一冻结任务",
+                  : job.kind === "intake" && job.phase === "publish"
+                    ? "使用已有缓存继续入库（不调用模型）"
+                    : "核对后继续同一冻结任务",
                 async () => {
                   const approve = job.requires_new_model_attempt || false;
                   if (
@@ -241,6 +243,7 @@ export function automaticSettings(vault, api) {
                     vault.id,
                     job.id,
                     approve,
+                    job.kind === "intake" && job.phase === "publish",
                   );
                   await refresh();
                 },

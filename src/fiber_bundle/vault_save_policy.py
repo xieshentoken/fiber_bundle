@@ -49,7 +49,7 @@ def _scope_binding(
         return False
     if not all(isinstance(p, str) for v in (before, after) for p in v):
         return False
-    protection = "01-Projects/GF_supply_chain"
+    protection = "01-Projects/protected-project"
     if (
         protection in catalog_exclude
         and protection in before
@@ -57,7 +57,7 @@ def _scope_binding(
         and set(before) == set(after) | {protection}
     ):
         return True
-    implicit = {"01-Projects/GF_supply_chain"} if root.name == "L2" else set()
+    implicit = {"01-Projects/protected-project"} if root.name == "ExampleVaultRoot" else set()
     if root in vault_scope.PROTECTED.parents:
         implicit.add(vault_scope.PROTECTED.relative_to(root).as_posix())
     return bool(implicit) and set(after) == set(before) | implicit

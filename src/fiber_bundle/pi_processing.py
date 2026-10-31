@@ -28,15 +28,24 @@ class Draft(Payload):
     note_markdown: str | None = Field(default=None, max_length=1000000)
 
 
-def execution_policy(policy: ExecutionConfig) -> ExecutionConfig:
-    """Allow reasoning output inside the shared budget; keep saved model settings intact."""
+def execution_policy(policy: ExecutionConfig, *, video_authoring: bool = False) -> ExecutionConfig:
+    """Reserve bounded tool context and reasoning without changing saved settings."""
     if (
+        video_authoring
+        and getattr(policy, "provider", None) == "deepseek"
+        and policy.model == "deepseek-flash"
+    ):
+        # Pi sends the draft write and prior reasoning back in its final tool round.
+        # Reserve that context up front; the normal task/Key ledger still applies.
+        incoming = max(policy.max_input_tokens, 32768)
+        outgoing = max(policy.max_output_tokens, 16384)
+        if (incoming, outgoing) != (policy.max_input_tokens, policy.max_output_tokens):
+            return replace(policy, max_input_tokens=incoming, max_output_tokens=outgoing)
+    elif (
         getattr(policy, "provider", None) == "opencodego"
         and policy.model in {"glm-5.3", "glm-5.3-flash"}
         and policy.max_output_tokens < 16384
     ):
-        # GLM reasoning consumes output tokens before emitting a tool call.
-        # This transport capacity is reserved atomically in the normal Key ledger.
         return replace(policy, max_output_tokens=16384)
     return policy
 
@@ -212,8 +221,15 @@ def result(config: Config, db: sqlite3.Connection, run: str) -> dict[str, Any]:
     execution_ledger.authorize(config, db, execution_ledger.get_run(db, run))
     path = contained(config.state_root, "tasks/" + run + "/draft.json")
     raw = read(path, 1024 * 1024)
-    draft = Draft.model_validate_json(raw)
     inputs = json.loads(binding["input_json"])
+    payload = raw
+    if inputs.get("video_skill"):
+        # Some tool responses serialize the complete object twice. Unwrap exactly
+        # one JSON string; never repair partial JSON or weaken the bound schema.
+        envelope = json.loads(raw)
+        if isinstance(envelope, str):
+            payload = envelope.encode("utf-8")
+    draft = Draft.model_validate_json(payload)
     if inputs.get("video_skill") and not (draft.note_markdown or "").strip():
         raise IntegrityError("video_skill_note_missing")
     allowed = {item["id"] for item in inputs["evidence"]}

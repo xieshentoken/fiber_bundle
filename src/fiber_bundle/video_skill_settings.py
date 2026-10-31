@@ -1,7 +1,7 @@
 """Validated video extraction choices; credentials stay in the shared model catalog."""
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator, model_validator
 
@@ -24,6 +24,7 @@ DEFAULT_TERMS = (
 
 
 class Settings(Payload):
+    max_video_tokens: Annotated[int, Field(strict=True, ge=0, le=1_000_000_000)] = 500_000
     skill_path: str | None = None
     python_path: str | None = None
     asr_python: str | None = None

@@ -1,7 +1,11 @@
+import {
+  videoProgressLines,
+  videoResumeControls,
+} from "../video_intake_status.js";
 // Channel auto-filing: allow-listed materials and sites, cumulative quotas, recent records,
 // explicit batch processing and link review. History is never replayed automatically.
 import { h, clear, icon } from "./dom.js";
-import { strings } from "./i18n.js";
+import { strings, pick as translated } from "./i18n.js";
 import {
   button,
   card,
@@ -24,6 +28,7 @@ import {
   hasUnsavedChanges,
   rememberDraft,
 } from "../unsaved_changes.js";
+import { confirmAction } from "../confirm_dialog.js";
 import { intakeLabel } from "./channel_labels.js";
 
 const t = strings({
@@ -57,10 +62,10 @@ const t = strings({
     outbound_limit: "累计飞书回执上限",
     fetch_articles: "归档链接后，提取可取得的 X 长文章 / 公众号正文及原图",
     fetch_subtitles:
-      "归档视频链接后，获取可取得的元数据 / 已有字幕（不超过 60 秒）",
+      "视频提取：字幕优先，无可用字幕时自动 ASR（按知识库处理策略）",
     receipt: "归档完成后同时发送飞书回执（消耗独立回执额度）",
     policyNote:
-      "只对之后的新消息生效，不处理历史收件。额度累计保留，暂停或重新保存不会清零。原件归档后，正文及字幕仍须审核发布；不调用模型、OCR、转录或下载整段视频。",
+      "仅对新消息自动生效；历史资料需明确恢复。处理方式与审核方式由知识库策略决定，成功后按规则人工审核或自动保存，额外摘要独立执行。",
     save: "保存自动入库策略",
     saved: "策略已保存；历史消息未回放。入口运行时将处理之后的新消息。",
     records: "最近入库记录",
@@ -68,7 +73,7 @@ const t = strings({
     choose: "选择此批次（待确认 / 明确恢复）",
     stop: "停止此批次的自动处理",
     cards: "视频号卡片已归档；正文 / 字幕待补全，不会自动转录。",
-    storedNote: "原件已保留；审核发布后才有派生笔记可检索。",
+    storedNote: "原件已保留；提取和保存结果见下方状态。",
     originals: "查看本批原件",
     retrieve: "取回原件：{name}",
     copySaved: "{name} · 原件副本已保存 · {path}",
@@ -77,6 +82,11 @@ const t = strings({
       "文字、图片和文件可在“收件箱 → 文档与文章”中选择已保存来源继续处理；图片不会自动 OCR。",
     reviewLink: "核对正文 / 图片 / 字幕并审核",
     retry: "明确重试此链接的提取",
+    refreshVideo: "使用当前视频设置恢复（仅尚未开始提取的任务）",
+    videoModels: "ASR：{asr} · 视觉：{vision} · 文字：{text}",
+    videoPhase: "视频阶段：{phase}",
+    videoUnverified: "图片输入能力需实际验证；恢复默认沿用任务快照。",
+    processingFailed: "处理失败，可恢复",
     receiptCheck: "请先暂停入口并核对手机；以下按钮只记录结果，不会重发。",
     gotReceipt: "手机已收到回执",
     noReceipt: "手机确认未收到回执",
@@ -138,11 +148,11 @@ const t = strings({
     fetch_articles:
       "After archiving a link, extract available X long posts / WeChat articles with images",
     fetch_subtitles:
-      "After archiving a video link, fetch available metadata / existing subtitles (≤ 60 s)",
+      "Extract videos: subtitles first, then ASR when unavailable (per vault policy)",
     receipt:
       "Send a Feishu receipt after archiving (uses its own receipt quota)",
     policyNote:
-      "Applies to new messages only; history is never processed. Quotas are cumulative and never reset by pausing or re-saving. Archived text and subtitles still need review and publishing; no model, OCR, transcription or full-video download.",
+      "Applies automatically to new messages; history requires explicit recovery. The vault policy controls processing and manual review or automatic saving. Extra summaries run separately.",
     save: "Save auto-filing policy",
     saved:
       "Policy saved; history wasn't replayed. New messages are processed while the channel runs.",
@@ -152,8 +162,7 @@ const t = strings({
     stop: "Stop automatic processing for this batch",
     cards:
       "Channels card archived; text / subtitles to complete — no automatic transcription.",
-    storedNote:
-      "Originals kept; derived notes become searchable after review and publishing.",
+    storedNote: "Originals kept. See extraction and saving status below.",
     originals: "Show this batch's originals",
     retrieve: "Retrieve original: {name}",
     copySaved: "{name} · original copy saved · {path}",
@@ -162,6 +171,13 @@ const t = strings({
       "Text, images and files can be processed from Inbox → Documents & articles as saved sources; images are never OCR'd automatically.",
     reviewLink: "Check text / images / subtitles and review",
     retry: "Retry extraction for this link",
+    refreshVideo:
+      "Resume with current video settings (before extraction starts only)",
+    videoModels: "ASR: {asr} · Vision: {vision} · Text: {text}",
+    videoPhase: "Video stage: {phase}",
+    videoUnverified:
+      "Image input needs actual validation. Resume keeps the original settings by default.",
+    processingFailed: "Processing failed; recovery available",
     receiptCheck:
       "Pause the channel and check the phone first; these buttons only record the result and never resend.",
     gotReceipt: "Phone received the receipt",
@@ -472,9 +488,56 @@ export function createIntake(ctx, entryOf, refreshOverview) {
             h("p", h("code", link.original_url)),
             h(
               "p.a-subtle",
-              `${intakeLabel(link.state || "link_only")}${link.reason ? " · " + intakeLabel(link.reason) : ""}`,
+              `${link.state === "needs_review" ? t("processingFailed") : intakeLabel(link.state || "link_only")}${link.reason ? " · " + intakeLabel(link.video_progress?.failure_code || link.reason) : ""}`,
             ),
           );
+          let refreshVideo, resumeVideo;
+          const video = link.video_processing;
+          if (video) {
+            node.dataset.videoTask = video.job_id;
+            line.append(
+              h(
+                "p.a-subtle",
+                t("videoPhase", { phase: intakeLabel(video.phase) }),
+              ),
+            );
+            const settings = video.skill?.settings || {};
+            line.append(
+              h(
+                "p.a-subtle",
+                t("videoModels", {
+                  asr:
+                    settings.asr_api_model_configuration_id ||
+                    settings.asr_model ||
+                    "—",
+                  vision:
+                    video.models?.vision ||
+                    settings.vision_model_configuration_id ||
+                    "—",
+                  text: video.models?.text || "—",
+                }),
+              ),
+              h("p.a-subtle", t("videoUnverified")),
+            );
+            if (
+              !link.publication &&
+              !link.receipt &&
+              !video.completed?.length &&
+              !video.source_resolution
+            ) {
+              refreshVideo = checkbox(t("refreshVideo"));
+              refreshVideo.input.dataset.draft = "ignore";
+              line.append(refreshVideo.label);
+            }
+          }
+          if (video) {
+            for (const text of videoProgressLines(link))
+              line.append(h("p.a-subtle", text));
+            if (["needs_review", "link_only"].includes(link.state)) {
+              resumeVideo = videoResumeControls(link, { atlas: true });
+              line.append(resumeVideo.root);
+            }
+          }
           const tools = h("div.a-toolbar");
           if (link.receipt)
             tools.append(
@@ -487,11 +550,35 @@ export function createIntake(ctx, entryOf, refreshOverview) {
           if (["needs_review", "extracting", "link_only"].includes(link.state))
             tools.append(
               act(t("retry"), async () => {
+                const newAttempt = Boolean(link.requires_new_model_attempt);
+                if (
+                  newAttempt &&
+                  !(await confirmAction({
+                    title: translated({
+                      zh: "恢复未完成的模型处理？",
+                      en: "Resume unfinished model processing?",
+                    }),
+                    body: [
+                      translated({
+                        zh: "旧调用与费用保留，已完成部分继续复用。历史消耗计入所填 Token 总上限；原 Key 预算同时生效。",
+                        en: "Previous calls, charges and completed results are kept. Prior usage counts toward the total token limit; the API Key budget also applies.",
+                      }),
+                    ],
+                    confirmLabel: translated({
+                      zh: "确认恢复",
+                      en: "Confirm resume",
+                    }),
+                  }))
+                )
+                  return;
                 await api.channelIntakeRetry(
                   id,
                   record.batch_id,
                   index,
                   value.revision,
+                  newAttempt,
+                  Boolean(refreshVideo?.input.checked),
+                  resumeVideo?.options(),
                 );
                 await load();
               }),

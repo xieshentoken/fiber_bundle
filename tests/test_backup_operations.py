@@ -1,4 +1,5 @@
 import json
+import os
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -138,19 +139,20 @@ def test_placeholder_preflight_does_not_open_content(config, store):
 
 
 def test_dataless_ancestor_denied_before_child_stat(tmp_path, monkeypatch):
-    base = Path.lstat
+    base = os.lstat
     calls = []
     root = tmp_path / "pending"
     root.mkdir()
 
-    def fake(self, *args, **kwargs):
+    def fake(path, *args, **kwargs):
+        self = Path(path)
         calls.append(self)
         info = base(self, *args, **kwargs)
         if self == root:
             return SimpleNamespace(st_flags=cloud_files.SF_DATALESS, st_mode=info.st_mode)
         return info
 
-    monkeypatch.setattr(Path, "lstat", fake)
+    monkeypatch.setattr(os, "lstat", fake)
     with pytest.raises(IntegrityError):
         cloud_files.require_local(root / "child")
     assert root / "child" not in calls

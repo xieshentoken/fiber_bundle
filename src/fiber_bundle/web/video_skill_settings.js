@@ -78,6 +78,27 @@ export function videoSkillSettings(api) {
       const models = (snapshot.models || []).filter((m) =>
         /^model_[a-f0-9]{32}$/.test(m.id),
       );
+      const tokenLabel = el("label", uiText("单个视频默认 Token 总上限")),
+        tokenLimit = el("input");
+      tokenLimit.name = "max_video_tokens";
+      tokenLimit.type = "number";
+      tokenLimit.min = "0";
+      tokenLimit.max = "1000000000";
+      tokenLimit.step = "1";
+      tokenLimit.required = true;
+      tokenLimit.value = snapshot.settings.max_video_tokens ?? 500000;
+      fields.max_video_tokens = tokenLimit;
+      tokenLabel.append(tokenLimit);
+      form.append(
+        tokenLabel,
+        el(
+          "p",
+          uiText(
+            "默认50万 tokens，累计输入与输出；失败和恢复不清零，原 API Key 预算同时生效。仅影响新任务，已有视频可在恢复时调整总上限。",
+          ),
+          "muted",
+        ),
+      );
       selectField(
         "vision_model_configuration_id",
         "图片提取模型（使用该模型的 Key 预算）",
@@ -268,7 +289,7 @@ export function videoSkillSettings(api) {
               ...Object.fromEntries(
                 Object.entries(fields).map(([key, input]) => [
                   key,
-                  key === "asr_api_reserve_tokens"
+                  ["asr_api_reserve_tokens", "max_video_tokens"].includes(key)
                     ? Number(input.value)
                     : input.value.trim() || null,
                 ]),

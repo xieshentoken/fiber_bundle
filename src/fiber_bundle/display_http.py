@@ -43,6 +43,9 @@ def stamp(config: Config, request: Request) -> dict[str, Any]:
             "organization.sqlite3",
             "organization.sqlite3-wal",
             "organization.sqlite3-journal",
+            "vault-sync.sqlite3",
+            "vault-sync.sqlite3-wal",
+            "vault-sync.sqlite3-journal",
         }
         if request.url.path in PATHS
         else set()
@@ -94,6 +97,18 @@ def stamp(config: Config, request: Request) -> dict[str, Any]:
             result[str(path)] = display_observation.signature(path)
         except FileNotFoundError:
             result[str(path)] = None
+    # Heartbeats and retry counters do not change visibility. Binding and source
+    # generations still invalidate a projection, including on index-status reads.
+    from .vault_sync import store as sync_store
+
+    with sync_store.connection(config) as sync:
+        if sync is not None:
+            result["vault_sync_visibility"] = [
+                tuple(row)
+                for row in sync.execute(
+                    "SELECT id,binding,root,scope,generation,indexed FROM libraries ORDER BY id"
+                )
+            ]
     from .organization import store
 
     with store.connection(config) as ledger:

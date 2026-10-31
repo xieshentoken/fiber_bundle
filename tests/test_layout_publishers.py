@@ -16,6 +16,7 @@ from test_source_imports import request, upload
 
 from fiber_bundle import (
     auth,
+    automatic_policy,
     backup_bundle,
     backup_restore,
     database,
@@ -36,6 +37,7 @@ from fiber_bundle import (
 )
 from fiber_bundle.inputs import canonical
 from fiber_bundle.objects import digest
+from fiber_bundle.vault_save_contract import settings_wire, unified_settings
 
 document_completed = _document_completed
 session_owner = _session_owner
@@ -133,8 +135,11 @@ def test_media_publisher_previews_and_replays_without_new_outputs(config, media_
 def test_expert_publisher_keeps_complete_canonical_tree_and_draft(config, owner):
     client, _, ids = owner
     vault = ids["personal"]
-    activate(config, vault)
+    settings = settings_wire(unified_settings())
+    settings.pop("layout_mode")
+    activate(config, vault, **settings)
     with database.connect(config.state_root) as db:
+        automatic_policy.save(config, db, vault, 0, automatic_policy.Policy(policy_version=2))
         item = upload(
             config, db, request(client, vault, b"synthetic source", "book.txt"), b"synthetic source"
         )
@@ -153,6 +158,9 @@ def test_expert_publisher_keeps_complete_canonical_tree_and_draft(config, owner)
         files = {
             "references/knowledge/index.json": canonical(
                 {"objects": [{"path": "one.json"}]}
+            ).encode(),
+            "references/runtime/catalog.json": canonical(
+                {"schema_version": "tkc.runtime-catalog/v0.3", "objects": [], "figures": []}
             ).encode(),
             "one.json": canonical(obj).encode(),
             "references/evidence/anchors.jsonl": b'{"id":"a","pages":[1]}\n',
@@ -184,7 +192,9 @@ def test_expert_publisher_keeps_complete_canonical_tree_and_draft(config, owner)
             == 2
         )
         entry = next(n for n in inv.notes if n.relative_path == result["entry_note_path"])
-        packet = note_placement.preview(config, db, client, vault, entry.identity, entry.sha256)
+        packet = note_placement.preview(
+            config, db, client, vault, entry.identity, entry.sha256, action="expert_archive"
+        )
         assert packet["ready"], packet
         applied = note_placement_execution.apply(config, db, client, vault, packet["operation_id"])
         assert applied["state"] == "completed" and not root.exists()

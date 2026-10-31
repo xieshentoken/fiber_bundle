@@ -14,8 +14,20 @@ from .inputs import canonical
 
 POLICY = ".knowledge-organizer-policy.json"
 PROTECTED = Path.home() / (
-    "Library/Mobile Documents/iCloud~md~obsidian/Documents/L2/01-Projects/GF_supply_chain"
+    "Library/Mobile Documents/iCloud~md~obsidian/Documents/ExampleVaultRoot/01-Projects/protected-project"
 )
+
+
+def relative_path(root: Path, path: Path) -> str:
+    """Lexical name for a traversal child, without allocating every ancestor Path.
+
+    This is not authorization: callers still filter scope before stat/read and
+    retain their fresh symlink and cloud checks.
+    """
+    base, parts = root.parts, path.parts
+    if parts[: len(base)] != base:
+        raise ValueError("path is outside root")
+    return "/".join(parts[len(base) :]) or "."
 
 
 def prefix(value: str) -> str:
@@ -82,8 +94,8 @@ def effective(root: Path, value: object) -> Scope:
     """Read ancestor policies top-down; a denied root is rejected before its lstat."""
     base = parse(value)
     denied = list(base.exclude)
-    if root.name == "L2":
-        denied.append("01-Projects/GF_supply_chain")
+    if root.name in {"ExampleVaultRoot", "ExampleVault"}:
+        denied.append("01-Projects/protected-project")
     evidence = []
     if root == PROTECTED or PROTECTED in root.parents:
         raise InvalidInput("vault_scope_protected")
@@ -201,7 +213,7 @@ def _entries(
         with os.scandir(parent) as scanned:
             for child in scanned:
                 path = parent / child.name
-                relative = path.relative_to(root).as_posix()
+                relative = relative_path(root, path)
                 if not scope.reachable(relative) or (
                     child.name.startswith(".")
                     and (

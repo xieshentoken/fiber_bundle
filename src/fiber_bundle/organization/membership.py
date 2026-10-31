@@ -11,6 +11,7 @@ from .. import (
     moc_registration,
     moc_store,
 )
+from ..cloud_observation import phase
 from ..config import Config, IntegrityError, InvalidInput
 from ..objects import digest
 from . import note_moc_sync, packages, store
@@ -28,6 +29,7 @@ def project(
     moc: Any,
     *,
     missing_block_repair: tuple[str, str] | None = None,
+    omissions: dict[str, str] | None = None,
 ) -> bool:
     wrote = False
     # A crash after metadata commit is reconciled before generating another file plan.
@@ -42,19 +44,22 @@ def project(
         raise IntegrityError("organization_moc_not_registered")
     root, allowed = packages.context(config, db, client, vault, write=True)
     data = packages.scoped_read(root, allowed, moc["path"])
-    plan = moc_files.plan_file(
-        config,
-        db,
-        client,
-        vault,
-        moc["id"],
-        current.revision,
-        moc["path"],
-        digest(data),
-        missing_block_repair=missing_block_repair,
-    )
-    if plan.get("plan_id"):
-        moc_files.apply_file(config, db, client, vault, moc["id"], plan["plan_id"])
+    with phase("moc_plan"):
+        plan = moc_files.plan_file(
+            config,
+            db,
+            client,
+            vault,
+            moc["id"],
+            current.revision,
+            moc["path"],
+            digest(data),
+            missing_block_repair=missing_block_repair,
+            omissions=omissions,
+        )
+    with phase("moc_apply"):
+        if plan.get("plan_id"):
+            moc_files.apply_file(config, db, client, vault, moc["id"], plan["plan_id"])
     return wrote or bool(plan.get("plan_id"))
 
 
@@ -70,6 +75,7 @@ def apply(
     action: str = "link",
     record_decision: bool = True,
     missing_block_repair: tuple[str, str] | None = None,
+    omissions: dict[str, str] | None = None,
 ) -> Any:
     root, allowed = packages.context(config, db, client, vault, write=True)
     if not allowed.allows(entity["path"]) or not allowed.allows(moc["path"]):
@@ -93,7 +99,9 @@ def apply(
     if current is None:
         if action != "link":
             raise InvalidInput("organization_moc_not_registered")
-        preview = moc_registration.preview(config, db, client, vault, moc["path"], moc["sha256"])
+        preview = moc_registration.preview(
+            config, db, client, vault, moc["path"], moc["sha256"], omissions=omissions
+        )
         moc_registration.apply(config, db, client, vault, preview["operation_id"], "apply")
         current = moc_store.load(config, vault, moc["id"])
     if current is None:
@@ -128,7 +136,15 @@ def apply(
         moc_store.save(
             config, vault, moc["id"], client, value, "organization-" + action, current.revision
         )
-    wrote = project(config, db, client, vault, moc, missing_block_repair=missing_block_repair)
+    wrote = project(
+        config,
+        db,
+        client,
+        vault,
+        moc,
+        missing_block_repair=missing_block_repair,
+        omissions=omissions,
+    )
     wrote = note_moc_sync.sync(config, db, client, vault, entity) or wrote
     if record_decision and (changed or wrote):
         from .jobs import request_index
