@@ -1,5 +1,6 @@
 """Request-local observations for display reads; never enabled for preview or writes."""
 
+import sqlite3
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,42 @@ current: ContextVar[dict[Path, tuple[int, ...]] | None] = ContextVar(
 )
 
 pending_indexes: ContextVar[set[str] | None] = ContextVar("display_pending_indexes", default=None)
+authorizations: ContextVar[dict[tuple[str, str, str], Any] | None] = ContextVar(
+    "display_authorizations", default=None
+)
+
+
+def remember_authorization(
+    db: sqlite3.Connection, client: str, vault: str, action: str, row: Any
+) -> None:
+    observed = authorizations.get()
+    if observed is None:
+        return
+    epoch = db.execute(
+        "SELECT revision FROM graph_permission_epochs WHERE client_id=? AND vault_id=?",
+        (client, vault),
+    ).fetchone()
+    value = (tuple(row), tuple(epoch) if epoch else None)
+    key = (client, vault, action)
+    if key in observed and observed[key] != value:
+        raise IntegrityError("display_source_changed")
+    if len(observed) >= 1000 and key not in observed:
+        raise IntegrityError("display_observation_limit")
+    observed[key] = value
+
+
+def verify_authorizations(config: Any, observed: Any) -> None:
+    from . import auth, database
+
+    with database.connect(config.state_root, readonly=True) as db:
+        for (client, vault, action), before in observed.items():
+            row = auth.grant(db, client, vault, action)
+            epoch = db.execute(
+                "SELECT revision FROM graph_permission_epochs WHERE client_id=? AND vault_id=?",
+                (client, vault),
+            ).fetchone()
+            if (tuple(row), tuple(epoch) if epoch else None) != before:
+                raise IntegrityError("display_source_changed")
 
 
 def error_code(error: Exception) -> str | None:

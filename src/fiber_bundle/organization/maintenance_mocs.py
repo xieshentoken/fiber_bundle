@@ -3,9 +3,10 @@
 import os
 from typing import Any
 
-from .. import moc_registration, vault_directories
+from .. import moc_registration, moc_write_scope, vault_directories
 from ..config import IntegrityError
 from ..objects import digest
+from ..partial_notes import for_job as read_omissions
 from ..publication_file_io import read
 from . import packages, store
 
@@ -39,7 +40,14 @@ def create(config: Any, db: Any, job: Any) -> None:
                 if key[:2] != moc["claim"] or digest(raw) != moc["sha256"]:
                     raise IntegrityError("maintenance_new_moc_changed")
                 packet = moc_registration.preview(
-                    config, db, job["client_id"], job["vault_id"], moc["path"], moc["sha256"]
+                    config,
+                    db,
+                    job["client_id"],
+                    job["vault_id"],
+                    moc["path"],
+                    moc["sha256"],
+                    omissions=read_omissions(job),
+                    read_scope=moc_write_scope.intent(moc["path"], None, raw, moc["id"]),
                 )
                 moc["registration"] = packet["operation_id"]
                 store.put(config, "jobs", job["id"], job["vault_id"], job)

@@ -49,6 +49,7 @@ import { createDocumentsView } from "./documents.js";
 
 import { createModelsView } from "./models.js";
 import { createKnowledgeGraphView } from "./knowledge_graph.js";
+import { createNoteCloudView } from "./note_cloud.js";
 import { createInventoryView } from "./management.js";
 import { createExecutionView } from "./execution.js";
 import { createSupplierView } from "./suppliers_view.js";
@@ -58,6 +59,8 @@ import { enhanceSelects } from "./select_controls.js";
 import { createCreationView } from "./creation.js";
 import { createBackendView } from "./backend.js";
 import { createBackupsView } from "./backups.js";
+import { createIndexActivity } from "./index_activity.js";
+import { openVaultIndexDetails } from "./vault_index_details.js";
 
 bindStatic();
 createLanguageControls();
@@ -118,6 +121,19 @@ const api = createAdminApi(session, {
     );
   },
 });
+const indexActivity = createIndexActivity({
+  read: (options) => api.indexActivity(options),
+  onOpen: (vaultId) => navigate("vaults", null, { indexVaultId: vaultId }),
+});
+document.querySelector("header .connection").prepend(indexActivity.node);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) indexActivity.stop();
+  else if (session.csrf) indexActivity.start();
+});
+window.addEventListener("pagehide", () => indexActivity.stop());
+window.addEventListener("pageshow", () => {
+  if (session.csrf && !document.hidden) indexActivity.start();
+});
 const modelsView = createModelsView(api);
 const documentsView = createDocumentsView(api);
 const mediaView = createMediaView(api);
@@ -146,14 +162,19 @@ const managementViews = {
   vaults: createVaultCatalogView(api),
   channels: createChannelsView(api),
   inventory: createInventoryView(api),
-  suppliers: createSupplierView(api,$("suppliers-panel")),
-  graph: createKnowledgeGraphView(api),
+  suppliers: createSupplierView(api, $("suppliers-panel")),
+  graph: createKnowledgeGraphView(api, {
+    onOpenIndex: (vaultId) =>
+      navigate("vaults", null, { indexVaultId: vaultId }),
+  }),
+  "note-cloud": createNoteCloudView(api),
   execution: createExecutionView(api),
   settings: createSettingsView(api, appearance, session, themePicker),
   creation: createCreationView(api),
   backend: createBackendView(api),
   backups: createBackupsView(api),
 };
+$("note-cloud-panel").append(managementViews["note-cloud"].node);
 let latestLoad = 0;
 mountWorkSections();
 mountManagementSections({ vaultScope });
@@ -178,6 +199,7 @@ window.addEventListener("unhandledrejection", (event) => {
 });
 
 function signedOut(expired = false) {
+  indexActivity.stop({ clear: true });
   vaultScope.clear();
   themePicker.close();
   commands.close();
@@ -216,6 +238,9 @@ function signedIn(value) {
   message("");
   sidebar.setAuthenticated(true);
   session.accept(value);
+  if (window.location.hash === "#/note-cloud")
+    selectPage(document.querySelector('[data-tab="note-cloud"]'));
+  if (!document.hidden) indexActivity.start();
   const page = document.querySelector('[data-tab][aria-current="page"]')
     ?.dataset.tab;
   setFeedbackPage(page);
@@ -362,7 +387,7 @@ function navigate(page, engine, target = {}) {
   if (!button) return;
   const currentTab = button.getAttribute("aria-current") === "page";
   // Clicking current tab does nothing, preventing accidental clear of unsaved changes
-  if (currentTab && !target.taskId) {
+  if (currentTab && !target.taskId && !target.indexVaultId) {
     sidebar.navigated();
     return;
   }
@@ -384,6 +409,14 @@ function navigate(page, engine, target = {}) {
   batchesView.setVisible(button.dataset.tab === "batches");
   setFeedbackPage(button.dataset.tab);
   selectPage(button);
+  if (page === "note-cloud")
+    window.history.replaceState(null, "", "#/note-cloud");
+  else if (window.location.hash === "#/note-cloud")
+    window.history.replaceState(
+      null,
+      "",
+      window.location.pathname + window.location.search,
+    );
   pageHeader.show(page);
   sidebar.navigated();
   const panel = $(button.dataset.tab + "-panel");
@@ -410,6 +443,12 @@ function navigate(page, engine, target = {}) {
       if (load === latestPageLoad && changed) {
         rememberDraft(panel);
         enterList(panel);
+        if (page === "vaults" && target.indexVaultId)
+          await openVaultIndexDetails(
+            api,
+            target.indexVaultId,
+            () => load === latestPageLoad,
+          );
         if (page === "clients" && target.connectionVaultId)
           managementViews.clients.prefillVault(target.connectionVaultId);
         if (
@@ -471,6 +510,10 @@ function navigate(page, engine, target = {}) {
       finish();
     });
 }
+window.addEventListener("hashchange", () => {
+  if (session.csrf && window.location.hash === "#/note-cloud")
+    navigate("note-cloud");
+});
 document.addEventListener("click", (event) => {
   const button = event.target.closest("[data-tab], [data-page-target]");
   if (button)

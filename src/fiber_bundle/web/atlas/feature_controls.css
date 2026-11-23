@@ -1,3 +1,5 @@
+@import url("../graph_scope.css");
+@import url("../organization_inbox_review.css");
 @import url("../channel_query_scope.css");
 :root {
   --duration-fast: 120ms;

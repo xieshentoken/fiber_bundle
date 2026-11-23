@@ -7,6 +7,19 @@ const scope = {
     { vault_id: "b", alias: "供应商", name: "Suppliers", available: false },
   ],
 };
+test("MOC content scope is explicit and independent from library-wide index health", () => {
+  const lines = relationLines({
+    query_scope: { ...scope, content_scope: "moc_members" },
+    configuration: { settings: { purpose: "query" } },
+  });
+  assert(lines.some((line) => line.includes("仅已挂载 MOC 的笔记")));
+  assert(lines.some((line) => line.includes("全库索引异常不阻断查询")));
+  assert(
+    !relationLines({ query_scope: scope }).some((line) =>
+      line.includes("内容范围"),
+    ),
+  );
+});
 test("query relationships explicitly show the union and exact alias destinations", () => {
   const lines = relationLines({
     query_scope: scope,
@@ -26,4 +39,28 @@ test("saving relationship uses the actual intake target and does not imply union
     configuration: { settings: { purpose: "intake", add: true } },
   });
   assert.deepEqual(lines, ["独立入库 → Suppliers"]);
+});
+
+test("cloud availability warnings do not mislabel channel connectivity", () => {
+  const lines = relationLines({
+    query_scope: {
+      vaults: [
+        {
+          vault_id: "a",
+          alias: "",
+          name: "L2",
+          available: false,
+          reason: "channel_cloud_not_ready",
+        },
+      ],
+    },
+    configuration: { settings: { purpose: "query" } },
+  });
+  assert(
+    lines.some((line) =>
+      line.includes(
+        "L2：iCloud 同步状态未就绪，暂不可查询；入口连接单独检测。",
+      ),
+    ),
+  );
 });

@@ -192,3 +192,14 @@ test("ledger progress preserves an invalidated preview only for the identical pl
     undefined,
   );
 });
+
+test("committed archive recheck distinguishes automatic retry from pause", () => {
+  const job = {
+    state: "running",
+    archive_recheck: { attempt: 1, next_at: 100 },
+    error_detail: { phase: "archive_finalize_inventory" },
+  };
+  assert.match(maintenancePhase(job), /正在重试归档核验/);
+  assert.match(maintenancePhase({ ...job, state: "paused" }), /整理已暂停/);
+  assert.match(maintenancePhase({ ...job, pause_requested: true }), /正在暂停/);
+});

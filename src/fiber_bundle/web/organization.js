@@ -1,17 +1,28 @@
-import { joinText, phrase, setText, uiText } from "./i18n/index.js";
+import {
+  appendRetainedMembers,
+  appendCatalogObservation,
+} from "./organization_catalog_feedback.js";
+import { joinText, msg, phrase, setText, uiText } from "./i18n/index.js";
+import { classificationActions } from "./organization_task_controls.js";
 // Organization view: scope-bound policy drafts, exceptions and native Skill membership.
 import { el } from "./ui.js";
 import { scopedRead } from "./organization_refresh_request.js";
 import { maintenanceSection } from "./organization_maintenance.js";
+import { executionProgress } from "./organization_progress_view.js";
 import { control } from "./record_ui.js";
 import { organizationSettings } from "./organization_settings.js";
 import { createSections, disclosure, retainView } from "./view_sections.js";
-import { memberControls } from "./organization_members.js";
+import {
+  readOrganizationCycle,
+  progressRetryDelay,
+  organizationWorking,
+} from "./organization_read_cycle.js";
+import { coverageNotice } from "./organization_coverage.js";
+import { memberControls, renderMemberResult } from "./organization_members.js";
+import { createMemberSession } from "./organization_member_session.js";
 import {
   maintenancePhase,
-  maintenanceSummary,
   previewInvalidated,
-  mergeProgress,
 } from "./organization_progress.js";
 
 const states = {
@@ -31,16 +42,32 @@ const states = {
 export function createOrganizationView(
   api,
   scope,
-  { onReadError = () => {}, onReadSuccess = () => {} } = {},
+  { onReadError = () => {}, onReadSuccess = () => {}, onOpenIndex } = {},
 ) {
-  const maintenanceDraft = { mode: "quick", title: "", topic: "" };
+  const maintenanceDraft = { mode: "quick", title: "", topic: "", onOpenIndex };
   const host = el("section", null, "record-card"),
     message = el("p"),
     freshness = el("p", "", "muted"),
+    memberResult = el("aside", null, "record-card"),
     body = el("div");
   message.setAttribute("role", "status");
   host.classList.add("organization-workspace");
-  host.append(message, freshness, body);
+  memberResult.hidden = true;
+  memberResult.setAttribute("role", "status");
+  memberResult.setAttribute("aria-live", "polite");
+  host.append(message, freshness, memberResult, body);
+  const membersSession = createMemberSession({
+    scope,
+    submit: (request) => api.members(request),
+    refresh: () => refresh(),
+    changed: (result, unresolved) =>
+      renderMemberResult(memberResult, result, () => refresh(), unresolved),
+    denied: (error) => {
+      clear();
+      onReadError(error);
+      setText(message, uiText(error.message));
+    },
+  });
   const analysisHost = el("div"),
     mocHost = el("div");
   const parking = el("div");
@@ -52,6 +79,7 @@ export function createOrganizationView(
   let epoch = 0,
     offset = 0,
     query = "",
+    searchDraft = "",
     exceptions = true,
     dirty = false,
     fixedKey = "";
@@ -61,13 +89,12 @@ export function createOrganizationView(
     deferredPaint = false,
     catalogChanged = false,
     catalogReady = false,
-    catalogRetry = 0,
-    catalogAfter = 0,
+    catalogError = null,
     readGeneration = 0,
-    memberPending = 0;
+    writing = 0;
   function interacting() {
     return (
-      memberPending > 0 ||
+      membersSession.busy() ||
       host.querySelector('[role="combobox"][aria-expanded="true"]') ||
       (host.contains(document.activeElement) &&
         document.activeElement.matches("input,textarea,select,[role=combobox]"))
@@ -75,6 +102,7 @@ export function createOrganizationView(
   }
   const requestRead = scopedRead(refreshNow);
   function refresh(options = {}) {
+    if (options.force) readGeneration++;
     return requestRead({
       ...options,
       key: JSON.stringify(scope()) + ":" + readGeneration,
@@ -83,23 +111,29 @@ export function createOrganizationView(
   function paint(result, fixed) {
     retainView(body, () => {
       if (catalogReady) render(result, fixed);
-      else
+      else {
+        // Analysis/MOC controls are shared with the graph view and must survive
+        // a catalog failure just as they survive an ordinary catalog repaint.
+        parking.append(analysisHost, mocHost);
         body.replaceChildren(
           maintenanceSection(
             {
               ...result,
-              jobs: result.jobs.filter((job) => job.state !== "preview"),
               mocs: [],
             },
             fixed,
             api,
             refresh,
             maintenanceDraft,
+            { catalogReady: false, catalogError },
           ),
         );
+        appendRetainedMembers(body, result.retained_member_issues);
+        appendCatalogObservation(body, catalogError);
+      }
     });
   }
-  async function refreshNow({ automatic = false } = {}) {
+  async function refreshNow({ automatic = false, force = false } = {}) {
     const fixed = scope(),
       key = JSON.stringify(fixed),
       revision = ++epoch;
@@ -112,6 +146,7 @@ export function createOrganizationView(
       return;
     }
     if (fixedKey !== key) {
+      membersSession.activate(fixed);
       Object.assign(maintenanceDraft, { mode: "quick", title: "", topic: "" });
       parking.append(analysisHost, mocHost);
       body.replaceChildren();
@@ -119,49 +154,46 @@ export function createOrganizationView(
       lastResult = "";
       lastData = null;
       catalogReady = false;
+      catalogChanged = false;
+      catalogError = null;
+      retryCount = 0;
       maintenanceDraft.views = {};
+      delete maintenanceDraft.inboxReview;
+      delete maintenanceDraft.submissions;
+      delete maintenanceDraft.confirmations;
+      delete maintenanceDraft.previewTextSaved;
+      delete maintenanceDraft.previewTextEdited;
+      delete maintenanceDraft.previewSubmitting;
+      maintenanceDraft.closePanels = new Map();
       dirty = false;
       offset = 0;
+      query = searchDraft = "";
       fixedKey = key;
     }
     if (dirty && !automatic) {
       setText(message, uiText("配置草稿已保留；保存后可刷新任务。"));
       return;
     }
+    if (!automatic) retryCount = 0;
     try {
-      let result;
-      if (automatic && lastData) {
-        result = mergeProgress(lastData, await api.progress(fixed));
-      } else {
-        // A failed catalog must not hide an already-running task or its pause control.
-        try {
-          result = await api.list(fixed, offset, query, exceptions);
-          catalogReady = true;
-        } catch (error) {
-          if ([401, 403, 404].includes(error.status)) throw error;
-          const ledger = await api.progress(fixed);
-          result = lastData ? mergeProgress(lastData, ledger) : ledger;
-          catalogChanged = true;
-          onReadError(error);
-        }
-      }
-      // Refresh the catalog once after an actual application; progress polling stays ledger-only.
-      if (
-        automatic &&
-        lastData &&
-        result.jobs.some(
-          (job) =>
-            ["completed", "partial", "cancelled"].includes(job.state) &&
-            job.index_state !== "pending" &&
-            lastData.jobs.some(
-              (prior) =>
-                prior.id === job.id &&
-                (prior.state !== job.state ||
-                  prior.index_state !== job.index_state),
-            ),
-        )
-      )
+      const cycle = await readOrganizationCycle(api, fixed, lastData, {
+        automatic,
+        offset,
+        query,
+        exceptions,
+      });
+      if (revision !== epoch || JSON.stringify(scope()) !== key) return;
+      const result = cycle.data;
+      if (cycle.catalog === true) {
+        catalogReady = true;
+        catalogChanged = false;
+        catalogError = null;
+      } else if (cycle.catalog === false) {
+        catalogReady = false;
         catalogChanged = true;
+        catalogError = cycle.error;
+        onReadError(cycle.error);
+      }
       retryCount = 0;
       if (revision !== epoch || JSON.stringify(scope()) !== key) return;
       if (interacting() || dirty) {
@@ -170,12 +202,12 @@ export function createOrganizationView(
             ["queued", "running", "cancelling"].includes(j.state),
           ) || result.jobs.find((j) => j.maintenance);
         if (job?.maintenance) {
-          const stats = maintenanceSummary(job);
+          const stats = executionProgress(job);
           setText(
             message,
             phrase("后台进度：{p0} · {p1}/{p2} 项", {
               p0: uiText(maintenancePhase(job)),
-              p1: job.stage === "planning" ? stats.evaluated : stats.done,
+              p1: stats.completed,
               p2: stats.total,
             }),
           );
@@ -185,44 +217,14 @@ export function createOrganizationView(
         schedule(result);
         return;
       }
-      if (catalogChanged && Date.now() >= catalogAfter) {
-        // Publish the ledger result before any slower catalog request can fail.
-        paint(result, fixed);
-        lastData = result;
-        try {
-          result = await api.list(fixed, offset, query, exceptions);
-          catalogReady = true;
-          catalogChanged = false;
-          catalogRetry = 0;
-          catalogAfter = 0;
-        } catch (error) {
-          if ([401, 403, 404].includes(error.status)) throw error;
-          onReadError(error);
-          catalogAfter =
-            Date.now() +
-            Math.min(10000, 1500 * 2 ** Math.min(catalogRetry++, 3));
-          setText(
-            message,
-            uiText("进度已更新；目录读取暂不可用，稍后自动重试。"),
-          );
-        }
-      }
       if (revision !== epoch || JSON.stringify(scope()) !== key) return;
-      // A request started before the user opened a control must not replace it.
-      if (interacting() || dirty) {
-        deferredPaint = true;
-        lastData = result;
-        clearTimeout(poll);
-        poll = setTimeout(() => refresh({ automatic: true }), 1500);
-        return;
-      }
       const stamp = JSON.stringify([
         result,
         result.jobs
           .filter((job) => previewInvalidated(job))
           .map((job) => job.id),
       ]);
-      if (!automatic || stamp !== lastResult) paint(result, fixed);
+      if (force || !automatic || stamp !== lastResult) paint(result, fixed);
       else
         setText(
           message,
@@ -231,7 +233,7 @@ export function createOrganizationView(
                 p0: exceptions ? uiText("待分类与异常") : uiText("全部知识"),
                 p1: result.total,
               })
-            : uiText("进度已更新；目录读取暂不可用，稍后自动重试。"),
+            : catalogReadMessage(),
         );
       if (catalogReady && !catalogChanged) onReadSuccess();
       lastResult = stamp;
@@ -239,15 +241,24 @@ export function createOrganizationView(
       setText(
         freshness,
         catalogChanged
-          ? uiText("进度已更新；目录读取暂不可用，稍后自动重试。")
+          ? catalogReadMessage()
           : phrase("更新于 {p0}", { p0: new Date().toLocaleTimeString() }),
       );
       deferredPaint = false;
       schedule(result);
     } catch (error) {
-      if (revision !== epoch) return;
+      if (revision !== epoch || JSON.stringify(scope()) !== key) return;
       onReadError(error);
       if ([401, 403, 404].includes(error.status)) {
+        membersSession.clear();
+        fixedKey = "";
+        maintenanceDraft.closePanels = new Map();
+        delete maintenanceDraft.inboxReview;
+        delete maintenanceDraft.submissions;
+        delete maintenanceDraft.confirmations;
+        delete maintenanceDraft.previewTextSaved;
+        delete maintenanceDraft.previewTextEdited;
+        delete maintenanceDraft.previewSubmitting;
         parking.append(analysisHost, mocHost);
         body.replaceChildren();
         clearTimeout(poll);
@@ -259,20 +270,37 @@ export function createOrganizationView(
       );
       if (![401, 403, 404].includes(error.status)) {
         clearTimeout(poll);
-        poll = setTimeout(
-          () => refresh({ automatic: true }),
-          Math.min(10000, 1500 * 2 ** Math.min(retryCount++, 3)),
-        );
+        const delay = progressRetryDelay(retryCount++);
+        if (delay !== null)
+          poll = setTimeout(() => refresh({ automatic: true }), delay);
+        else setText(freshness, uiText("自动读取已暂停，请手动刷新重试。"));
       }
     }
+  }
+  function catalogReadMessage() {
+    return catalogError?.message
+      ? phrase("目录读取未完成：{p0}；任务进度仍按后台记录显示。", {
+          p0: String(uiText(catalogError.message)).replace(
+            /[。.!！？?]+$/u,
+            "",
+          ),
+        })
+      : uiText("任务进度可继续更新；目录读取暂不可用，请手动刷新重试。");
   }
   function render(result, fixed) {
     parking.append(analysisHost, mocHost);
     body.replaceChildren();
+    appendRetainedMembers(body, result.retained_member_issues);
     dirty = false;
     const work = async (fn) => {
       const key = JSON.stringify(scope());
-      const result = await fn();
+      let result;
+      writing++;
+      try {
+        result = await fn();
+      } finally {
+        writing--;
+      }
       if (key === JSON.stringify(scope())) await refresh();
       return result;
     };
@@ -296,7 +324,10 @@ export function createOrganizationView(
       history = el("div");
     const actions = el("div", null, "panel-actions"),
       search = el("input");
-    search.value = query;
+    search.value = searchDraft;
+    search.addEventListener("input", () => {
+      searchDraft = search.value;
+    });
     setText(search, uiText("查找标题、路径或ID"), "placeholder");
     actions.append(
       control(exceptions ? "查看全部知识" : "只看待分类与异常", async () => {
@@ -317,6 +348,13 @@ export function createOrganizationView(
         work(() => api.submit({ ...fixed, target: "全库", preview: true })),
       ),
     );
+    const coverage = coverageNotice(
+      result.coverage,
+      "organization-coverage",
+      false,
+      { scope: fixed, api },
+    );
+    if (coverage) members.append(coverage);
     members.append(actions);
     for (const item of result.items) {
       const card = el("article", null, "record-card");
@@ -343,28 +381,7 @@ export function createOrganizationView(
                 .join("、") || "未挂载",
           }),
         ),
-        memberControls(
-          item,
-          result.mocs,
-          async (moc_ids, action) => {
-            memberPending++;
-            let value;
-            try {
-              value = await api.members({
-                ...fixed,
-                entity_id: item.id,
-                moc_ids,
-                action,
-              });
-            } finally {
-              memberPending--;
-            }
-            if (JSON.stringify(fixed) === JSON.stringify(scope()))
-              await refresh();
-            return value;
-          },
-          () => refresh(),
-        ),
+        memberControls(item, result.mocs, membersSession),
       );
       members.append(card);
     }
@@ -425,11 +442,9 @@ export function createOrganizationView(
             }),
           ),
         );
-      if (job.index_state === "failed")
+      if (job.resume_mode === "cached_writeback")
         card.append(
-          control("重试索引更新", () =>
-            work(() => api.action(job.id, "resume", fixed)),
-          ),
+          el("p", msg("organization.recovery.cached_intro"), "muted"),
         );
       if (job.taxonomy?.requires_review) {
         const review = el("details");
@@ -486,23 +501,12 @@ export function createOrganizationView(
               ]),
             ),
           );
-      for (const [op, label, visible] of [
-        ["confirm", "确认此预览", job.state === "preview"],
-        [
-          "cancel",
-          "取消剩余项",
-          ["queued", "running", "preview"].includes(job.state),
-        ],
-        [
-          "resume",
-          "恢复未完成项",
-          ["partial", "failed", "cancelled"].includes(job.state),
-        ],
-      ])
-        if (visible)
-          card.append(
-            control(label, () => work(() => api.action(job.id, op, fixed))),
-          );
+      for (const { operation, label } of classificationActions(job))
+        card.append(
+          control(label, () =>
+            work(() => api.action(job.id, operation, fixed)),
+          ),
+        );
       history.append(card);
     }
     history.append(
@@ -550,14 +554,7 @@ export function createOrganizationView(
 
   function schedule(result) {
     clearTimeout(poll);
-    const working =
-      catalogChanged ||
-      result.package_scan?.state === "queued" ||
-      result.jobs.some(
-        (j) =>
-          ["queued", "running", "cancelling"].includes(j.state) ||
-          j.index_state === "pending",
-      );
+    const working = organizationWorking(result);
     const delay = working ? 1500 : null;
     if (delay !== null)
       poll = setTimeout(
@@ -573,28 +570,36 @@ export function createOrganizationView(
       );
   }
   function clear() {
+    membersSession.clear();
     readGeneration++;
     catalogReady = false;
-    catalogRetry = 0;
-    catalogAfter = 0;
     lastData = null;
     epoch++;
     clearTimeout(poll);
     retryCount = 0;
     deferredPaint = false;
     catalogChanged = false;
+    catalogError = null;
     parking.append(analysisHost, mocHost);
     body.replaceChildren();
     setText(message, uiText(""));
     setText(freshness, "");
     dirty = false;
     fixedKey = "";
+    query = searchDraft = "";
     Object.assign(maintenanceDraft, {
       mode: "quick",
       title: "",
       topic: "",
       views: {},
+      closePanels: new Map(),
     });
+    delete maintenanceDraft.inboxReview;
+    delete maintenanceDraft.submissions;
+    delete maintenanceDraft.confirmations;
+    delete maintenanceDraft.previewTextSaved;
+    delete maintenanceDraft.previewTextEdited;
+    delete maintenanceDraft.previewSubmitting;
     selectedSection = "maintenance";
     lastResult = "";
   }
@@ -608,7 +613,24 @@ export function createOrganizationView(
     host,
     refresh,
     clear,
-    dirty: () => dirty || memberPending > 0,
+    dirty: ({ manual = true } = {}) =>
+      dirty ||
+      membersSession.busy() ||
+      (manual && membersSession.dirty()) ||
+      !!maintenanceDraft.previewTextEdited,
+    busy: () =>
+      maintenanceDraft.previewSubmitting ||
+      writing > 0 ||
+      membersSession.busy() ||
+      [...(maintenanceDraft.submissions?.values() || [])].some(
+        (state) => state.pending,
+      ) ||
+      [...(maintenanceDraft.inboxReview?.panels?.values() || [])].some(
+        (state) =>
+          ["applying_operation", "checking_operation", "generating"].includes(
+            state.busy,
+          ),
+      ),
     attachAnalysis: (nodes) => analysisHost.append(...nodes),
     attachMoc: (nodes) => mocHost.append(...nodes),
   };

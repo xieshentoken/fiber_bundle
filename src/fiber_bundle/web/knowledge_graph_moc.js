@@ -199,5 +199,8 @@ export function createGraphMocView(graph, scope, epoch) {
     refresh,
     clear,
     hasPending: () => intent?.state === "prepared",
+    busy: () =>
+      !!$("graph-moc-form").querySelector('[aria-busy="true"]') ||
+      !!list.querySelector('[aria-busy="true"]'),
   };
 }

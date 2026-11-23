@@ -3,7 +3,7 @@
 import os
 import re
 from pathlib import PurePosixPath
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 from . import moc_associations, note_inventory
 from .config import IntegrityError
@@ -33,10 +33,8 @@ def split(data: bytes, moc_id: str) -> tuple[bytes, bytes, bytes]:
     return data[:start], data[start:stop], data[stop:]
 
 
-def manual_paths(data: bytes, inventory: note_inventory.Inventory) -> set[str]:
-    # Only unambiguous existing wikilinks suppress an additional system link.
-    notes = inventory.notes
-    paths: set[str] = set()
+def manual_targets(data: bytes) -> set[str]:
+    """Human wikilink targets, excluding comments, code and embedded resources."""
     text = re.sub(r"<!--.*?-->", "", data.decode("utf-8-sig"), flags=re.DOTALL)
     visible = []
     fence = None
@@ -50,8 +48,17 @@ def manual_paths(data: bytes, inventory: note_inventory.Inventory) -> set[str]:
             continue
         if fence is None:
             visible.append(re.sub(r"`[^`]*`", "", line))
-    for target in re.findall(r"(?<!!)\[\[([^\[\]\n]+)\]\]", "\n".join(visible)):
-        target = target.split("|", 1)[0].split("#", 1)[0].strip().removesuffix(".md")
+    return {
+        target.split("|", 1)[0].split("#", 1)[0].strip().removesuffix(".md")
+        for target in re.findall(r"(?<!!)\[\[([^\[\]\n]+)\]\]", "\n".join(visible))
+    }
+
+
+def manual_paths(data: bytes, inventory: note_inventory.Inventory) -> set[str]:
+    # Only unambiguous existing wikilinks suppress an additional system link.
+    notes = inventory.notes
+    paths: set[str] = set()
+    for target in manual_targets(data):
         matches = [
             n.relative_path
             for n in notes
@@ -81,10 +88,23 @@ def render(
     begin, end = markers(moc_id)
     lines = [begin.decode(), "## 系统增量关联", ""]
     preserved = 0
+    missing = (inventory.coverage or {}).get("member_paths", {})
+    omitted = (inventory.coverage or {}).get("omissions", {})
+    retained = {}
+    for line in old.decode("utf-8-sig").splitlines():
+        match = re.match(r"^- \[.*\]\(<(.*?)>\)", line)
+        if match:
+            path = os.path.normpath(
+                os.path.join(str(PurePosixPath(relative).parent), unquote(match[1]))
+            )
+            if path in omitted:
+                retained[path] = line
     for identity, owners in sorted(record.members.items()):
         note = notes.get(identity)
         if identity.startswith("expert:"):
             lines.append(f"- 专家 Skill：`{identity}`（通过 Fiber Agent 接口调用）")
+        elif note is None and missing.get(identity) in retained:
+            lines.append(retained.pop(missing[identity]))
         elif note is None:
             lines.append(f"- 当前不可见：{identity}（归属保留）")
         elif note.relative_path in human:
@@ -94,6 +114,7 @@ def render(
             label = moc_associations.escape(PurePosixPath(note.relative_path).name)
             ownership = "、".join("人工登记" if o == "manual" else "系统" for o in owners)
             lines.append(f"- [{label}](<{quote(destination, safe='/')}>)（{ownership}）")
+    lines.extend(line for line in retained.values() if line not in lines)
     if len(lines) == 3:
         lines.append("暂无额外关联；已有人工链接保持。")
     lines.extend([end.decode(), ""])

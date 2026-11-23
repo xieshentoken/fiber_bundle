@@ -87,8 +87,8 @@ export function validSystemSettings(value) {
   return (
     value &&
     Number.isInteger(value.session_ttl) &&
-    value.session_ttl >= 1 &&
-    value.session_ttl <= 86400 &&
+    value.session_ttl >= 0 &&
+    value.session_ttl <= 2592000 &&
     integer(value.revision) &&
     value.timing === "fixed_from_login" &&
     value.effective === "next_login"

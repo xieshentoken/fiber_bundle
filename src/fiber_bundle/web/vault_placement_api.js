@@ -88,6 +88,8 @@ export function createVaultPlacementApi(request) {
   };
 }
 const errors = {
+  layout_metadata_inventory_limit:
+    "允许范围内的文件和目录超过 20000 项，本次核对未完成。请先核对知识库范围；不会自动忽略超出部分。",
   layout_tracked_note_replaced:
     "普通笔记或 Map 的文件身份已变化，请在批量核对外部改动中保留原身份重新绑定。",
   layout_note_identity_vault_changed:

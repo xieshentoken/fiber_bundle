@@ -10,7 +10,7 @@ from typing import Any
 from .. import auth, cloud_answer_tasks, database, local_query_tasks, query_jobs
 from ..config import Config, InvalidInput
 from ..inputs import canonical
-from . import query, query_scope, store
+from . import idle, query, query_scope, store
 from .services import policy as service_policy
 
 
@@ -109,7 +109,12 @@ def advance(config: Config, identity: str, revision: int, *, independent: bool =
     selected_service = service_policy.get(config, identity, "query")
     if selected_service and not selected_service["enabled"]:
         return
+    if not idle.query_pending(config, identity, revision, independent=independent):
+        return
     with database.locked(config), store.opened(config) as db:
+        selected_service = service_policy.get(config, identity, "query")
+        if selected_service and not selected_service["enabled"]:
+            return
         main = database.connect(config.state_root)
         try:
             from ..vault_relocation.guard import operation
@@ -217,7 +222,12 @@ def prepare_delivery(
     selected_service = service_policy.get(config, identity, "query")
     if selected_service and not selected_service["enabled"]:
         return "idle"
+    if not idle.delivery_pending(config, identity, revision):
+        return "idle"
     with database.locked(config), store.opened(config) as db:
+        selected_service = service_policy.get(config, identity, "query")
+        if selected_service and not selected_service["enabled"]:
+            return "idle"
         main = database.connect(config.state_root)
         try:
             from ..vault_relocation.guard import operation

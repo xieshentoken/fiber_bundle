@@ -2,23 +2,41 @@
 
 import posixpath
 import re
+from collections.abc import Callable
 from urllib.parse import quote, unquote, urlsplit
 
 from . import note_transfer_links as links
 from .config import IntegrityError
 
 
+class LinkReviewError(IntegrityError):
+    def __init__(self, offset: int) -> None:
+        super().__init__("layout_link_review_required")
+        self.offset = offset
+
+
 def references(text: str) -> list[tuple[int, int, bool, int, int]]:
     visible = links.mask(text)
-    if re.search(r"\bsrcset\s*=", visible, re.I):
-        raise IntegrityError("layout_link_review_required")
+
+    def escaped(offset: int) -> bool:
+        start = offset
+        while start and visible[start - 1] == "\\":
+            start -= 1
+        return (offset - start) % 2 == 1
+
+    if found := re.search(r"\bsrcset\s*=", visible, re.I):
+        raise LinkReviewError(found.start())
     result = []
     supported = list(links.MARKDOWN.finditer(visible))
     for opening in re.finditer(r"!?\[[^\]\n]*\]\(", visible):
+        if escaped(opening.start()):
+            continue
         if not any(m.start() == opening.start() for m in supported):
-            raise IntegrityError("layout_link_review_required")
+            raise LinkReviewError(opening.start())
     for pattern, wiki in [(links.WIKI, True), (links.MARKDOWN, False), (links.REFERENCE, False)]:
         for match in pattern.finditer(visible):
+            if escaped(match.start()):
+                continue
             group = 1 if match[1] is not None else 2
             begin, end = match.span(group)
             result.append((begin, end, wiki, match.start(), match.end()))
@@ -40,7 +58,7 @@ def references(text: str) -> list[tuple[int, int, bool, int, int]]:
         if any(
             n.lower() not in matched for n in re.findall(r"\b(src|href|data)\s*=", tag[0], re.I)
         ):
-            raise IntegrityError("layout_link_review_required")
+            raise LinkReviewError(tag.start())
     return result
 
 
@@ -141,13 +159,30 @@ def relocate(
     moves: dict[str, str],
     *,
     affected_only: bool = False,
+    parsed_references: list[tuple[int, int, bool, int, int]] | None = None,
+    issues_out: list[dict[str, object]] | None = None,
+    check_target: Callable[[str], None] | None = None,
 ) -> tuple[str, list[str]]:
     """Rewrite guarded local links; optionally restrict stationary notes to moved targets."""
     from pathlib import Path
 
     edits = []
     unresolved = []
-    for begin, end, wiki, _, _ in references(text):
+
+    def missing(path: str, begin: int) -> None:
+        unresolved.append(path)
+        if issues_out is not None:
+            issues_out.append(
+                {
+                    "target": path,
+                    "line": text.count("\n", 0, begin) + 1,
+                    "column": begin - text.rfind("\n", 0, begin),
+                }
+            )
+
+    for begin, end, wiki, _, _ in (
+        references(text) if parsed_references is None else parsed_references
+    ):
         raw = text[begin:end]
         path = raw.split("|", 1)[0].split("#", 1)[0] if wiki else raw.split("#", 1)[0]
         if not path or urlsplit(path).scheme or path.startswith("//"):
@@ -159,16 +194,18 @@ def relocate(
             if not any(posixpath.basename(old).removesuffix(".md") == basename for old in moves):
                 continue
         if "?" in path:
-            unresolved.append(path)
+            missing(path, begin)
             continue
         try:
             resolved = links.resolve(path, Path(str(root)), source, candidates, wiki=wiki)
         except IntegrityError:
-            unresolved.append(path)
+            missing(path, begin)
             continue
         if resolved not in candidates:
-            unresolved.append(path)
+            missing(path, begin)
             continue
+        if check_target is not None:
+            check_target(resolved)
         destination = moves.get(resolved, resolved)
         if wiki:
             replacement = destination

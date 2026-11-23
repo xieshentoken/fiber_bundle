@@ -29,7 +29,12 @@ def verify(
     inventories = {}
     for vid in scope:
         vault = auth.grant(db, cid, vid, "query")
-        if note_search_cache.status(config, db, vault)["state"] == "stale":
+        from ..indexed_sources import managed
+
+        if (
+            not managed(config, vid)
+            and note_search_cache.status(config, db, vault)["state"] == "stale"
+        ):
             raise store.Conflict("agent_index_stale")
         selected = {s["note_id"] for s in sources if s.get("vault_id") == vid and s.get("note_id")}
         if any(s.get("vault_id") == vid for s in sources):
@@ -42,14 +47,15 @@ def verify(
         if not isinstance(vid, str) or vid not in inventories:
             raise auth.Denied(404)
         vault, inventory = inventories[vid]
-        from ..organization import packages
         from ..organization import store as organization_store
 
         module_id = source.get("expert_module_id", "")
-        if source.get("expert_projection") and organization_store.get(
-            config, "packages", module_id[7:]
+        if source.get("expert_projection") and (
+            not source.get("note_id") or organization_store.get(config, "packages", module_id[7:])
         ):
-            fresh = packages.verify_evidence(config, db, cid, source)
+            from ..indexed_expert_search import verify as verify_expert
+
+            fresh = verify_expert(config, db, cid, source)
             envelope = {
                 "scope": "vault_notes",
                 "searched_vault_ids": [vid],

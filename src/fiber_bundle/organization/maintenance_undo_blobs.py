@@ -35,7 +35,9 @@ def pack(config: Any, row: Any, *, persist: bool = False) -> Any:
         make_directory(home)
         path = contained(home, identity)
         if path.exists():
-            read(path, identity)
+            from .maintenance_undo_blob_reads import check
+
+            check(path, identity, read)
         else:
             handle, temporary = tempfile.mkstemp(prefix=".snapshot-", dir=home)
             try:

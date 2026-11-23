@@ -87,11 +87,13 @@ def router(config: Config) -> APIRouter:
         request: Request,
         q: str = Query(default="", max_length=200),
         offset: int = Query(default=0, ge=0, le=10000),
-    ) -> list[dict[str, Any]]:
-        from .note_listing import listing
+        include_coverage: bool = False,
+    ) -> Any:
+        from .note_listing import page
 
         with access(config, request, admin=True) as (db, _):
-            return listing(config, db, client_id, vault_id, q, offset)
+            result = page(config, db, client_id, vault_id, q, offset)
+            return result if include_coverage else result["items"]
 
     @routes.get("/suggestions")
     def suggestions(client_id: str, vault_id: str, request: Request) -> dict[str, Any]:

@@ -1,4 +1,4 @@
-import { setText, uiText } from "./i18n/index.js";
+import { setText, uiText, msg } from "./i18n/index.js";
 // Navigation presentation only. Feature loading and authorization stay in app/session.
 import { $ } from "./ui.js";
 import { icon } from "./icons.js";
@@ -42,8 +42,10 @@ export function decorateNavigation() {
     return tooltip;
   }
   for (const button of document.querySelectorAll("[data-tab]")) {
-    const label = button.textContent.trim();
-    button.dataset.label = label;
+    const label = button.dataset.i18n
+      ? msg(button.dataset.i18n)
+      : uiText(button.textContent.trim());
+    button.dataset.label = button.textContent.trim();
     const text = document.createElement("span");
     text.className = "nav-label";
     setText(text, uiText(label));
@@ -91,7 +93,12 @@ export function selectPage(button) {
     );
     $(other.dataset.tab + "-panel").hidden = !active;
   }
-  setText($("page-name"), uiText(button.dataset.label));
+  setText(
+    $("page-name"),
+    button.dataset.i18n
+      ? msg(button.dataset.i18n)
+      : uiText(button.dataset.label),
+  );
   // Only scroll the bounded navigation container, never the page or focused field.
   if (button.hidden) return;
   const nav = button.parentElement;

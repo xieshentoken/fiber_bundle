@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from .. import auth, vaults
-from ..config import Config, InvalidInput
+from ..config import Config, InvalidInput, StorageError
 from ..inputs import canonical, text
 from ..payloads import Identifier, Payload
 
@@ -66,9 +66,17 @@ def referenced(value: dict[str, Any]) -> set[str]:
 
 
 def signature(channel: dict[str, Any]) -> str:
-    return hashlib.sha256(
-        canonical({"revision": channel["revision"], "vaults": entries(channel["value"])}).encode()
-    ).hexdigest()
+    value = {"revision": channel["revision"], "vaults": entries(channel["value"])}
+    if "query_note_scope" in channel["value"]:
+        value["content_scope"] = content_scope(channel)
+    return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
+def content_scope(channel: dict[str, Any]) -> str:
+    value = channel["value"].get("query_note_scope", "vault_notes")
+    if value not in {"vault_notes", "moc_members"}:
+        raise InvalidInput("channel_query_scope_invalid")
+    return str(value)
 
 
 def snapshot(channel: dict[str, Any], alias: str | None = None) -> dict[str, Any]:
@@ -77,7 +85,10 @@ def snapshot(channel: dict[str, Any], alias: str | None = None) -> dict[str, Any
         selected = [item for item in selected if item["alias"] == alias]
         if not selected:
             raise InvalidInput("channel_query_alias_unknown")
-    return {"schema": SCHEMA, "configuration_sha256": signature(channel), "vaults": selected}
+    result = {"schema": SCHEMA, "configuration_sha256": signature(channel), "vaults": selected}
+    if content_scope(channel) == "moc_members":
+        result["content_scope"] = "moc_members"
+    return result
 
 
 def selected(channel: dict[str, Any]) -> dict[str, Any]:
@@ -86,13 +97,14 @@ def selected(channel: dict[str, Any]) -> dict[str, Any]:
 
 def bind(channel: dict[str, Any], scope: Any) -> dict[str, Any]:
     if scope is None:
-        if "query_vaults" in channel["value"]:
+        if "query_vaults" in channel["value"] or content_scope(channel) == "moc_members":
             raise InvalidInput("channel_query_scope_changed")
         scope = snapshot(channel)
     if (
         not isinstance(scope, dict)
         or scope.get("schema") != SCHEMA
         or scope.get("configuration_sha256") != signature(channel)
+        or scope.get("content_scope", "vault_notes") != content_scope(channel)
         or not isinstance(scope.get("vaults"), list)
         or not scope["vaults"]
         or len(scope["vaults"]) != len({canonical(v) for v in scope["vaults"]})
@@ -152,6 +164,8 @@ def hint(channel: dict[str, Any], code: str) -> dict[str, Any]:
     }
     aliases = [v["alias"] for v in entries(channel["value"]) if v["alias"]]
     answer = messages[code]
+    if code == "channel_query_scope_unavailable" and content_scope(channel) == "moc_members":
+        answer = "本次所选知识库连接不可用或权限不足。请核对知识库连接与权限。"
     if aliases:
         answer += " 可用命令：" + "、".join("查询[" + a + "]：问题" for a in aliases)
     return {"status": "query_hint", "answer": answer, "sources": [], "error_code": code}
@@ -161,13 +175,27 @@ def describe(config: Config, db: Any, channel: dict[str, Any]) -> dict[str, Any]
     rows = []
     for item in entries(channel["value"]):
         row = db.execute("SELECT name FROM vaults WHERE id=?", (item["vault_id"],)).fetchone()
+        reason = None
         try:
             checked(config, db, bind(channel, snapshot(channel, item["alias"] or None)))
             available = True
-        except (auth.Denied, InvalidInput):
+        except auth.Denied:
+            available, reason = False, "permission_revoked"
+        except (StorageError, OSError) as error:
+            # Status remains observable; real reads still use checked() and fail closed.
+            from .query_failures import INTEGRITY_CODES
+
             available = False
-        rows.append({**item, "name": row["name"] if row else "—", "available": available})
-    return {"default": "all", "vaults": rows, "explicit": "query_vaults" in channel["value"]}
+            reason = INTEGRITY_CODES.get(str(error), "channel_vault_unavailable")
+        rows.append(
+            {**item, "name": row["name"] if row else "—", "available": available, "reason": reason}
+        )
+    return {
+        "default": "all",
+        "vaults": rows,
+        "explicit": "query_vaults" in channel["value"],
+        "content_scope": content_scope(channel),
+    }
 
 
 def annotate(config: Config, db: Any, channel: dict[str, Any], result: dict[str, Any]) -> None:

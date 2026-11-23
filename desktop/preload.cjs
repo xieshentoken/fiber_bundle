@@ -3,6 +3,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld(
   "fiberDesktop",
   Object.freeze({
+    revealCloudNote: (value) =>
+      ipcRenderer.invoke("fiber:reveal-cloud-note", value),
     openNote: (value) => ipcRenderer.invoke("fiber:open-note", value),
     trashIntent: (value) => ipcRenderer.invoke("fiber:trash-intent", value),
     selectDirectory: (currentPath) =>

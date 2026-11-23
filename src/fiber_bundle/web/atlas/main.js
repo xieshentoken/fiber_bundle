@@ -1,5 +1,6 @@
 // Atlas composition root: session, routing, view lifecycle. HTTP goes only through the
 // shared API client (../api.js); views never call fetch directly.
+import { pageRefreshAction } from "./page_refresh.js";
 import { setFeedbackPage } from "../ui.js";
 import { createAppearance } from "../appearance.js";
 import { locale } from "../i18n/index.js";
@@ -19,6 +20,7 @@ import { createLogin } from "./login.js";
 import { createPalette } from "./palette.js";
 import { enhanceSelects } from "../select_controls.js";
 import { createConnectionMonitor } from "./connection.js";
+import { createIndexActivity } from "../index_activity.js";
 import { switchLocale } from "./locale_switch.js";
 import { openThemePicker } from "./theme_choices.js";
 
@@ -128,21 +130,34 @@ const connection = createConnectionMonitor(
   (options) => api.health(options),
   (state) => shell.setConnection(state),
 );
+const indexActivity = createIndexActivity({
+  read: (options) => api.indexActivity(options),
+  onOpen: (vault) => navigate("vaults", "detail", { vault, index: "1" }),
+});
+shell.mountStatus(indexActivity.node);
 const selects = enhanceSelects(document.body, {
   dialogs: true,
   popupClass: "a-select-popup",
 });
 window.addEventListener("pagehide", () => {
   connection.stop();
+  indexActivity.dispose();
+  shell.dispose();
   selects.destroy();
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) connection.stop();
-  else connection.start();
+  if (document.hidden) {
+    connection.stop();
+    indexActivity.stop();
+  } else {
+    connection.start();
+    if (session.csrf) indexActivity.start();
+  }
 });
 const workspace = shell.view;
 const guard = createDraftGuard(workspace, {
-  extraChanges: () => Boolean(current?.view.dirty?.()),
+  extraChanges: (_panel, purpose) =>
+    Boolean(current?.view.dirty?.({ refresh: purpose === "refresh" })),
   signedIn: () => !!session.csrf,
 });
 const expiry = createSessionExpiry(session, workspace, shell.warning);
@@ -194,8 +209,10 @@ function signedIn(value) {
   login.hide();
   $("#atlas-app").hidden = false;
   palette.setEnabled(true);
+  if (!document.hidden) indexActivity.start();
 }
 function signedOut(expired = false) {
+  indexActivity.stop({ clear: true });
   palette.close();
   palette.setEnabled(false);
   if (expired) expiry.capture();
@@ -257,6 +274,7 @@ const loaders = {
   imports: () => import("./view_imports.js"),
   inventory: () => import("./view_inventory.js"),
   graph: () => import("./view_graph.js"),
+  "note-cloud": () => import("./view_note_cloud.js"),
   creation: () => import("./view_creation.js"),
   clients: () => import("./view_clients.js"),
   channels: () => import("./view_channels.js"),
@@ -299,11 +317,7 @@ async function show(route, { restore = false } = {}) {
   const view = module.createView(ctx, route);
   const header = pageHeader(route.page, {
     ...(view.header || {}),
-    onRefresh: view.refresh
-      ? () => {
-          if (guard.confirmLeave(t("reload"))) void refreshCurrent();
-        }
-      : null,
+    onRefresh: view.refresh ? pageRefreshAction(guard, refreshCurrent) : null,
   });
   current = { route, view, header };
   section.replaceChildren(header.node, view.node);
@@ -322,7 +336,7 @@ async function refreshCurrent() {
   const button = active.header.refreshButton;
   button?.setAttribute("aria-busy", "true");
   try {
-    if (["vaults", "graph"].includes(active.route.page))
+    if (["vaults", "graph", "note-cloud"].includes(active.route.page))
       store.invalidate("vaults", "clients");
     await active.view.refresh();
     if (active === current) {

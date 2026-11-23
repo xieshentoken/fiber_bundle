@@ -52,7 +52,15 @@ def analysis_binding(config: Any, db: Any, vault: str) -> dict[str, Any]:
     return {"model": route, "graph": profile.digest if profile else None}
 
 
-def snapshot(config: Any, db: Any, client: str, vault: str, mode: str) -> Any:
+def snapshot(
+    config: Any,
+    db: Any,
+    client: str,
+    vault: str,
+    mode: str,
+    *,
+    capture_candidates: bool = False,
+) -> Any:
     from . import jobs
 
     if mode not in MODES:
@@ -73,7 +81,7 @@ def snapshot(config: Any, db: Any, client: str, vault: str, mode: str) -> Any:
         )
     if not include:
         raise InvalidInput("maintenance_scope_empty")
-    es, ms, _ = jobs.snapshot(
+    es, ms, catalog_context = jobs.snapshot(
         config,
         db,
         client,
@@ -81,6 +89,8 @@ def snapshot(config: Any, db: Any, client: str, vault: str, mode: str) -> Any:
         include=include,
         exclude=p["settings"]["exclude"],
         scope_packages=True,
+        partial=True,
+        candidate_coverage=capture_candidates and mode == "quick",
     )
     es = [e for e in es if any(inside(e["path"], base) for base in include)]
     root, allowed = packages.context(config, db, client, vault, write=True)
@@ -97,6 +107,10 @@ def snapshot(config: Any, db: Any, client: str, vault: str, mode: str) -> Any:
         "include": include,
         "analysis_binding": analysis_binding(config, db, vault),
     }
+    if not catalog_context["coverage"]["complete"]:
+        fixed["coverage"] = catalog_context["coverage"]
+    if "candidate_coverage" in catalog_context:
+        fixed["candidate_coverage"] = catalog_context["candidate_coverage"]
     return es, ms, fixed
 
 
@@ -216,6 +230,11 @@ def item(
         "evaluated": bool(selected) or (mode == "quick" and bool(set(before) & visible)),
         "existing_reliable": bool(set(before) & visible),
         "phase": "analysis",
+        **(
+            {"defer_archive": True}
+            if fixed.get("coverage") and fixed.get("unavailable_action") == "moc_only"
+            else {}
+        ),
     }
     return difference(record, mode, fixed["save_policy"]["settings"])
 
@@ -248,6 +267,9 @@ def difference(value: Any, mode: str, settings: Any) -> Any:
     if mode == "quick" and reliable and after and inside(value["path"], settings["inbox_dir"]):
         folder = settings["book_dir"] if value["kind"] == "expert" else settings["archive_dir"]
         target = folder + "/" + PurePosixPath(value["path"]).name
+    if value.get("defer_archive"):
+        value["deferred_target"] = target
+        target = None
     value["target"] = target
     return value
 
@@ -260,5 +282,6 @@ def seal(job: Any) -> str:
                 for k in ["id", "mode", "client_id", "vault_id", "fixed", "items", "new_mocs"]
             }
             | ({"cache_recovery": job["cache_recovery"]} if job.get("cache_recovery") else {})
+            | ({"archive_scope": job["archive_scope"]} if job.get("archive_scope") else {})
         ).encode()
     )

@@ -1,10 +1,15 @@
-import { phrase, setText, uiText } from "./i18n/index.js";
+import { indexDependencyText, noteIndexOutcome } from "./note_index_errors.js";
+import { phrase, setText, uiText, msg } from "./i18n/index.js";
 // Persistent recovery controls; detection is explicit and never starts a note analysis.
 import { el } from "./ui.js";
 import { control } from "./record_ui.js";
 import { noteIndexErrorText } from "./note_index_errors.js";
+import { createIndexCompletionObserver } from "./index_completion_observer.js";
 
 export function graphLoadFailure(error) {
+  if (error?.dependency) return indexDependencyText(error.dependency);
+  if (error?.code === "placement_reconciliation_required")
+    return noteIndexErrorText(error.code);
   if (error?.code === "note_index_update_required")
     return "笔记列表暂不可用：全文索引已过期。请更新索引；若更新提示位置变化，先核对笔记位置。";
   if (
@@ -25,6 +30,19 @@ export function createGraphSetup(graph, scope, refresh, profile) {
     actions = el("div", null, "panel-actions"),
     candidate = el("div");
   message.setAttribute("role", "status");
+  let observing = null;
+  const observer = graph.indexActivity
+    ? createIndexCompletionObserver(graph.indexActivity, scope, async () => {
+        observing = null;
+        await refresh();
+      })
+    : null;
+  function visibility() {
+    if (document.hidden) observer?.stop();
+    else if (observing && JSON.stringify(observing) === JSON.stringify(scope()))
+      observer?.start(observing);
+  }
+  document.addEventListener("visibilitychange", visibility);
   const go = control("打开知识库核对位置", async () => {});
   go.dataset.pageTarget = "vaults";
   actions.append(
@@ -33,15 +51,16 @@ export function createGraphSetup(graph, scope, refresh, profile) {
       const fixed = scope();
       if (!fixed.client_id || !fixed.vault_id)
         throw new Error("请先选择分析身份与知识库。");
-      setText(message, uiText("正在更新索引，完成前请保留此页面…"));
+      setText(message, uiText("正在提交索引更新任务…"));
       try {
         const result = await graph.updateIndex(fixed);
         if (JSON.stringify(fixed) !== JSON.stringify(scope())) return;
-        setText(
-          message,
-          phrase("索引已更新，共 {p0} 篇笔记。", { p0: result.notes }),
-        );
-        await refresh();
+        setText(message, noteIndexOutcome(result));
+        if (["ready", "partial"].includes(result.state)) await refresh();
+        else {
+          observing = fixed;
+          observer?.start(fixed);
+        }
       } catch (error) {
         if (JSON.stringify(fixed) === JSON.stringify(scope()))
           setText(message, uiText(graphLoadFailure(error)));
@@ -111,8 +130,30 @@ export function createGraphSetup(graph, scope, refresh, profile) {
   );
   return {
     host,
-    fail(error) {
-      setText(message, uiText(graphLoadFailure(error)));
+    stop() {
+      observing = null;
+      observer?.stop();
+    },
+    dispose() {
+      observing = null;
+      observer?.stop();
+      document.removeEventListener("visibilitychange", visibility);
+    },
+    reset() {
+      setText(message, "");
+    },
+    fail(error, { source = "notes" } = {}) {
+      setText(
+        message,
+        source === "organization"
+          ? msg("graph_scope.organization_failed", {
+              p0: String(uiText(error?.message || "")).replace(
+                /[。.!！？?]+$/u,
+                "",
+              ),
+            })
+          : uiText(graphLoadFailure(error)),
+      );
     },
     loaded(warnings = []) {
       setText(

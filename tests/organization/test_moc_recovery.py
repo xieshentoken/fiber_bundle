@@ -10,6 +10,7 @@ from test_maintenance_apply import execute
 from fiber_bundle import database, moc_file_journal, moc_files, moc_markdown, moc_store
 from fiber_bundle.config import IntegrityError
 from fiber_bundle.organization import (
+    execution,
     jobs,
     maintenance,
     membership,
@@ -84,8 +85,10 @@ def test_map_change_after_confirmation_is_not_repaired_or_overwritten(config, re
         before_record = moc_store.load(config, vid, mid)
         human = moc.read_bytes() + "\n新的人工补充\n".encode()
         moc.write_bytes(human)
-        result = maintenance.run(config, db, job)
-        assert result["state"] == "partial" and result["error"] == "maintenance_moc_changed"
+        execution.run(config, job["id"])
+        result = store.get(config, "jobs", job["id"])
+        assert result["state"] == "partial"
+        assert result["error"] == "IntegrityError: maintenance_moc_changed"
         assert moc.read_bytes() == human
         assert moc_store.load(config, vid, mid) == before_record
         assert "moc:" not in note.read_text()
@@ -97,22 +100,20 @@ def test_repair_proof_cannot_authorize_a_later_file_change(config, ready, monkey
         historical_map(config, db, ready)
         job = preview(config, db, cid, vid, "quick")
         maintenance.action(config, db, job, "confirm", job["plan_sha256"])
-        original = membership.project
-        rejected = []
+        original = moc_store.save
 
         def changed(*args, **kwargs):
+            result = original(*args, **kwargs)
+            # Change the actual target after membership metadata commits, before
+            # the file writer captures its fresh projection/CAS inputs.
             moc.write_bytes(moc.read_bytes() + "\n保留并发修改\n".encode())
-            try:
-                return original(*args, **kwargs)
-            except IntegrityError as error:
-                rejected.append(str(error))
-                raise
+            return result
 
-        monkeypatch.setattr(membership, "project", changed)
+        monkeypatch.setattr(moc_store, "save", changed)
         result = maintenance.run(config, db, job)
         assert result["state"] == "partial"
-        assert rejected == ["MOC managed block missing or human edited"]
-        assert result["error"] == "maintenance_undo_file_conflict"
+        assert result["error"] == "MOC managed block missing or human edited"
+        assert result["recovery_error"]["error"] == "maintenance_undo_file_conflict"
         assert "保留并发修改" in moc.read_text() and b"<!-- fiber-moc:" not in moc.read_bytes()
 
 
@@ -145,7 +146,7 @@ def test_resume_finishes_remaining_projection_without_duplicate_relation(
         job = preview(config, db, cid, vid, "quick")
         maintenance.action(config, db, job, "confirm", job["plan_sha256"])
         if point == "metadata":
-            target, name = membership, "project"
+            target, name = moc_store, "save"
         elif point == "exchange":
             target, name = moc_file_journal, "finish"
         else:
@@ -153,7 +154,7 @@ def test_resume_finishes_remaining_projection_without_duplicate_relation(
         original = getattr(target, name)
 
         def interrupted(*args, **kwargs):
-            if point == "property":
+            if point in {"property", "metadata"}:
                 original(*args, **kwargs)
             raise OSError("interrupted after " + point)
 

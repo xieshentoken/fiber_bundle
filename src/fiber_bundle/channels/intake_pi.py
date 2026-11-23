@@ -72,7 +72,11 @@ def run(config: Config, identity: str, batch: str, index: int) -> bool:
             with database.locked(config), database.connect(config.state_root) as db:
                 resume_analysis(config, db, identity, batch, index, previous_gaps)
         return True
-    kind = "article" if intake_links.site(link["original_url"]) in {"x", "wechat"} else "video"
+    kind = (
+        "article"
+        if intake_links.site(link["original_url"]) in {"x", "wechat", "fibermall"}
+        else "video"
+    )
     # Freeze both the archive identity and old cautions before changing the durable state.
     frozen.setdefault(
         "archive_event_id", link["attempt_id"] + (":analysis-v2" if resume_legacy else "")

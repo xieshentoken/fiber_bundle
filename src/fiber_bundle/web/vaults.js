@@ -129,6 +129,7 @@ export function renderVaults(
       info = el("div", null, "vault-info"),
       heading = el("div", null, "vault-heading"),
       title = el("h3", vault.name);
+    row.dataset.vaultId = vault.id;
     title.id = `vault-title-${vault.id}`;
     heading.append(title, el("span", uiText("已启用"), "status-badge success"));
     info.append(heading, el("p", uiText("原件与来源版本独立保留")));

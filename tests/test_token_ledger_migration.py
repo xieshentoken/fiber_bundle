@@ -37,7 +37,7 @@ def test_migration_preserves_settled_money_tokens_and_foreign_keys(config, bound
     backup = database.migrate(config)
     assert backup is not None
     with database.connect(config.state_root) as db:
-        assert db.execute("PRAGMA user_version").fetchone()[0] == 35
+        assert db.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
         assert db.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
         assert db.execute("PRAGMA foreign_key_check").fetchall() == []
         for table, original in rows.items():

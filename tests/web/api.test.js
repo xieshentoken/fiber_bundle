@@ -28,6 +28,60 @@ function fixture(fetcher) {
     },
   };
 }
+test("channel evidence test waits for a cold local read without repeating it", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let finish,
+    signal,
+    calls = 0;
+  const f = fixture(async (path, options) => {
+    assert.equal(path, "/admin/channels/synthetic/test");
+    assert.equal(JSON.parse(options.body).execute_model, false);
+    signal = options.signal;
+    calls++;
+    return new Promise((resolve) => {
+      finish = resolve;
+    });
+  });
+  const pending = f.api.channelTest("synthetic", "coolant");
+  t.mock.timers.tick(20_000);
+  assert.equal(signal.aborted, false);
+  finish(ok({ result: { model_used: false, sources: [] } }));
+  assert.equal((await pending).result.model_used, false);
+  assert.equal(calls, 1);
+});
+test("channel evidence timeout stays bounded at sixty seconds without retry", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let calls = 0;
+  const f = fixture(async (_, options) => {
+    calls++;
+    return new Promise((resolve, reject) =>
+      options.signal.addEventListener("abort", () =>
+        reject(new Error("aborted")),
+      ),
+    );
+  });
+  const pending = f.api.channelTest("synthetic", "coolant", false);
+  t.mock.timers.tick(60_000);
+  await assert.rejects(pending, (error) => error.code === "timeout");
+  assert.equal(calls, 1);
+});
+test("model test admission retains its existing timeout and is never replayed", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let calls = 0;
+  const f = fixture(async (_, options) => {
+    calls++;
+    assert.equal(JSON.parse(options.body).execute_model, true);
+    return new Promise((resolve, reject) =>
+      options.signal.addEventListener("abort", () =>
+        reject(new Error("aborted")),
+      ),
+    );
+  });
+  const pending = f.api.channelTest("synthetic", "coolant", true);
+  t.mock.timers.tick(10_000);
+  await assert.rejects(pending, (error) => error.code === "timeout");
+  assert.equal(calls, 1);
+});
 test("manual batches wait beyond ten seconds and return all three results without retry", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   let finish,

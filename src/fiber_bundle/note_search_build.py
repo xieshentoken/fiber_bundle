@@ -4,7 +4,6 @@ import os
 import sqlite3
 import time
 from collections.abc import Callable
-from dataclasses import asdict
 from itertools import chain
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
@@ -32,6 +31,11 @@ def build(
     *,
     cancelled: Callable[[sqlite3.Connection], bool] | None = None,
 ) -> dict[str, object]:
+    from .vault_sync import commands
+    from .vault_sync import store as sync_store
+
+    if sync_store.library(config, vault_id) is not None:
+        return commands.refresh(config, client_id, vault_id, cancelled)
     # The local command owns one Vault index; unrelated query/import locks stay free.
     with run_lock(config, str(uuid5(NAMESPACE_URL, "fiber-note-index:" + vault_id))):
         with Lease(config, vault_id) as lease:
@@ -72,7 +76,7 @@ def build(
                     raise InvalidInput("note_index_cancelled")
                 index.execute(
                     "INSERT INTO notes VALUES(?,?)",
-                    (note.relative_path, canonical({**asdict(note), "text": ""})),
+                    (note.relative_path, canonical({**note_index.metadata(note), "text": ""})),
                 )
                 index.execute(
                     "INSERT INTO observations VALUES(?,?)",
@@ -107,6 +111,9 @@ def build(
                     )
 
             with database.transaction(index):
+                from . import indexed_sources
+
+                indexed_experts = indexed_sources.capture_experts(config, db, client_id, vault_id)
                 inventory = note_inventory.read(
                     config,
                     db,
@@ -120,11 +127,12 @@ def build(
                 for note in inventory.notes:
                     index.execute(
                         "UPDATE notes SET metadata=? WHERE path=?",
-                        (canonical(asdict(note)), note.relative_path),
+                        (canonical(note_index.metadata(note)), note.relative_path),
                     )
                 index.execute(
                     "INSERT INTO generation VALUES(?,?,?)", (before, "ready", time.time())
                 )
+                indexed_sources.publish_experts(index, indexed_experts)
             # Validate source/permission again before atomically making this generation visible.
             with Lease(config, vault_id) as lease:
                 if cancelled is not None and cancelled(db):
@@ -139,6 +147,10 @@ def build(
                     or lease.read(lambda: cache.fingerprint(config, db, current)) != before
                 ):
                     raise IntegrityError("note index source or permission changed")
+                if indexed_experts != indexed_sources.capture_experts(
+                    config, db, client_id, vault_id
+                ):
+                    raise IntegrityError("note index expert version changed")
                 index.close()
                 os.replace(temporary, destination)
                 sync_directory(destination.parent)
@@ -164,16 +176,6 @@ def build(
                         for key in ("notes", "chunks", "reused_notes", "updated_notes")
                     },
                 )
-            from .organization.jobs import notify
-            from .organization.jobs import policy as organization_policy
-
-            with database.locked(config):
-                target = (
-                    "全库"
-                    if organization_policy(config, vault_id)["settings"]["full_review"]
-                    else "Inbox"
-                )
-                notify(config, vault_id, "changed", target)
             return result
         except BaseException:
             with database.locked(config):

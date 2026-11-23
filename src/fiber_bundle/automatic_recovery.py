@@ -17,10 +17,18 @@ def resume(
     identity: str,
     *,
     approve_new_model_attempt: bool = False,
+    publication_only: bool = False,
 ) -> dict[str, Any]:
     job = jobs.get(db, identity)
     if job["vault_id"] != vault or job["state"] not in {"reconcile", "needs_review"}:
         raise InvalidInput("automatic_reconciliation_unavailable")
+    if publication_only and (
+        job["kind"] != "intake"
+        or job["phase"] != "publish"
+        or approve_new_model_attempt
+        or job["value"].get("pending_model")
+    ):
+        raise InvalidInput("automatic_publication_only_unavailable")
     if job["phase"] == "index":
         from .automatic_index_recovery import acknowledge
 
@@ -79,6 +87,9 @@ def resume(
         ):
             raise InvalidInput("automatic_launch_unknown_use_task_reconciliation")
     elif phase == "publish":
+        from .note_placement import guard
+
+        guard(db, vault)
         if not job["value"].get("review_id"):
             raise InvalidInput("automatic_valid_review_required")
         review = db.execute(
@@ -135,6 +146,9 @@ def resume(
     job["value"].setdefault("failure_history", []).append(
         {"phase": phase, "reason": job.get("reason"), "failure": job["value"].pop("failure", None)}
     )
+    if publication_only:
+        job["value"]["recovery_scope"] = "publication_and_index"
+    job["value"].pop("availability_wait", None)
     jobs.settle(db, job, "queued", phase)
     return {
         "state": "queued",

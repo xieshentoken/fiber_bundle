@@ -25,9 +25,19 @@ async def _owned[**P, T](
     task = asyncio.create_task(asyncio.to_thread(invoke))
     try:
         return await asyncio.shield(task)
-    except asyncio.CancelledError:
+    except asyncio.CancelledError as cancelled:
         # Stop owns and joins work already started; no detached writer survives cancellation.
+        # Repeated cancellation must not cancel the Task wrapping the still-running thread.
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+            except Exception:
+                break
         try:
-            await task
-        finally:
-            raise
+            task.result()
+        except BaseException as error:
+            # A late storage failure must not turn shutdown into ordinary intake recovery.
+            raise cancelled from error
+        raise cancelled

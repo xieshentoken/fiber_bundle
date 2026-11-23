@@ -6,7 +6,7 @@ import time
 from typing import Any
 
 from .. import auth, feishu_runtime, query_policy_store
-from ..config import Config, InvalidInput
+from ..config import Config, InvalidInput, StorageError
 from ..inputs import canonical
 from . import configuration, control, intake_repository, legacy, operations, store
 
@@ -70,8 +70,11 @@ def present(config: Config, main: sqlite3.Connection, channel: dict[str, Any]) -
     from . import query_scope
 
     scope_info = query_scope.describe(config, main, channel)
-    if "query_vaults" in value:
-        permissions["query"] = any(v["available"] for v in scope_info["vaults"])
+    permissions["query"] = any(v["available"] for v in scope_info["vaults"])
+    scope_reason = next(
+        (v["reason"] for v in scope_info["vaults"] if not v["available"]),
+        None,
+    )
     used: dict[str, int] = {"query": 0, "model": 0, "outbound": 0}
     last_received = None
     unresolved = 0
@@ -144,7 +147,7 @@ def present(config: Config, main: sqlite3.Connection, channel: dict[str, Any]) -
         if not bound
         else "delivery_requires_reconciliation"
         if unresolved
-        else "permission_revoked"
+        else scope_reason or "permission_revoked"
         if not permissions["query"]
         else policy_reason
         if not policy_ready
@@ -256,6 +259,10 @@ def present(config: Config, main: sqlite3.Connection, channel: dict[str, Any]) -
             blocked = (
                 str(error) if str(error).startswith("intake_") else "intake_target_unavailable"
             )
+        except (StorageError, OSError) as error:
+            from .query_failures import INTEGRITY_CODES
+
+            blocked = INTEGRITY_CODES.get(str(error), "intake_target_unavailable")
         blocked = (
             blocked
             or ("intake_binding_changed" if not intake["binding_current"] else None)

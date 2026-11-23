@@ -19,6 +19,7 @@ ROOT_FILES = (
     "docs/STATUS.md",
     "docs/HANDOFF.md",
     "docs/SPEC.md",
+    "docs/PLAN.md",
     "docs/DECISIONS.md",
     "docs/ARCHITECTURE.md",
     "MANIFEST.in",

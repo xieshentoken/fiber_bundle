@@ -10,6 +10,15 @@ await build({
   legalComments: "inline",
 });
 await build({
+  entryPoints: ["frontend/graph/note_cloud_renderer.js"],
+  bundle: true,
+  format: "esm",
+  minify: true,
+  target: "chrome120",
+  outfile: "src/fiber_bundle/web/note_cloud_renderer.bundle.js",
+  legalComments: "inline",
+});
+await build({
   entryPoints: ["frontend/graph/force_worker.js"],
   bundle: true,
   format: "esm",

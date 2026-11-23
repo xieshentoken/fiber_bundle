@@ -190,6 +190,9 @@ def recover(config: Config, db: sqlite3.Connection, client: str, vault: str, rec
     record["location_synced"] = True
     record.pop("pending")
     store.put(config, "note_moc", key(vault, record["entity"]), vault, record)
+    from ..vault_sync.maintenance import dirty
+
+    dirty(config, vault, [record["path"]])
 
 
 def _location(config: Config, db: sqlite3.Connection, client: str, vault: str, record: Any) -> None:

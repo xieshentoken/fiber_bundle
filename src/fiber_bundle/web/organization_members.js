@@ -1,37 +1,99 @@
-import { joinText, setText, uiText, phrase } from "./i18n/index.js";
-// Explicit manual selections are additive; existing membership stays visible.
+import { joinText, setText, uiText, phrase, msg } from "./i18n/index.js";
 import { checkbox, el } from "./ui.js";
 import { control } from "./record_ui.js";
 
 export function manualError(code) {
-  return (
-    {
-      timeout:
-        "等待挂载结果超时，后台可能仍在执行。请先刷新核对所选 MOC，不要立即重复提交。",
-      network:
-        "连接中断，暂时无法确认挂载结果。后台可能仍在执行，请先刷新核对所选 MOC。",
-      maintenance_moc_managed_block_edited:
-        "Map 系统关联区块内有人工作改动，已保留原文，请先核对该 Map。",
-      maintenance_moc_pending_write:
-        "Map 有未完成的文件写入，请先恢复对应整理任务。",
-      maintenance_moc_changed: "Map 在操作期间发生变化，请刷新后重新选择。",
-      note_moc_expert_package_untouched:
-        "这是专家包内部文件，请在设置中扫描 Book，并对整包增挂 MOC。",
-      note_moc_source_changed: "笔记原文已变化，请刷新后重新选择。",
-      organization_member_not_visible:
-        "笔记或 MOC 已变化，或不在当前权限范围内，请刷新。",
-    }[code] || "写入未完成，已保留现有关系与资料；可重试所选 MOC 以完成同步。"
-  );
+  const key = {
+    timeout: "timeout",
+    network: "network",
+    manual_response_invalid: "invalid_response",
+    organization_catalog_pending: "catalog_pending",
+    organization_catalog_changed: "catalog_changed",
+    organization_moc_unavailable: "catalog_unavailable",
+    organization_member_not_visible: "not_visible",
+  }[code];
+  if (key) return msg("manual_members." + key);
+  const message = {
+    maintenance_moc_managed_block_edited:
+      "Map 系统关联区块内有人工作改动，已保留原文，请先核对该 Map。",
+    maintenance_moc_pending_write:
+      "Map 有未完成的文件写入，请先恢复对应整理任务。",
+    maintenance_moc_changed: "Map 在操作期间发生变化，请刷新后重新选择。",
+    note_moc_expert_package_untouched:
+      "这是专家包内部文件，请在设置中扫描 Book，并对整包增挂 MOC。",
+    note_moc_source_changed: "笔记原文已变化，请刷新后重新选择。",
+  }[code];
+  return message ? uiText(message) : msg("manual_members.incomplete_help");
 }
 
-export function memberControls(item, mocs, apply, refresh) {
-  const host = el("div"),
+export function renderMemberResult(host, result, refresh, unresolved = []) {
+  host.replaceChildren();
+  host.hidden = !result && !unresolved.length;
+  for (const [index, operation] of [result, ...unresolved]
+    .filter(Boolean)
+    .entries()) {
+    const section = el("section");
+    appendMemberResult(section, operation, refresh, index > 0);
+    host.append(section);
+  }
+}
+
+function appendMemberResult(host, result, refresh, earlier) {
+  host.append(
+    el("h3", msg("manual_members." + (earlier ? "unresolved" : "recent"))),
+    el("p", joinText([result.entity.title, " · ", result.entity.path])),
+    el(
+      "p",
+      uiText(
+        {
+          link: "人工增挂并锁定",
+          unlink: "人工移除并阻止自动加回",
+          unlock: "解除所选关系的人工限制",
+        }[result.action],
+      ),
+    ),
+    el("p", msg("manual_members." + result.phase)),
+  );
+  for (const row of result.results || result.targets)
+    host.append(
+      el(
+        "p",
+        joinText([
+          row.title,
+          "：",
+          msg("manual_members.item_" + (row.state || "pending")),
+          row.state && row.state !== "completed" ? " · " : "",
+          row.state && row.state !== "completed" ? manualError(row.error) : "",
+        ]),
+      ),
+    );
+  if (result.resolved)
+    host.append(el("p", uiText("原整理任务中的对应项已标记为已人工处理。")));
+  if (result.phase === "unknown")
+    host.append(el("p", msg("manual_members.unknown_help"), "task-impact"));
+  const verify = control("刷新核对挂载结果", refresh);
+  verify.disabled = result.phase === "pending";
+  verify.dataset.policyDisabled = String(verify.disabled);
+  host.append(verify);
+}
+
+// A card owns presentation; its selection and request state belong to the session.
+export function memberControls(item, mocs, session) {
+  const state = session.entry(item, mocs),
+    host = el("div"),
     picker = el("details"),
-    summary = el("summary", uiText("选择 MOC（可多选）")),
+    summary = el("summary"),
     list = el("div"),
-    selected = new Set();
+    search = el("input"),
+    buttons = [];
+  host.dataset.manualEntity = item.id;
+  host.dataset.draft = "ignore";
+  picker.open = state.open;
+  picker.addEventListener("toggle", () => {
+    state.open = picker.open;
+  });
   picker.append(summary, list);
-  const search = el("input");
+  search.value = state.search;
   setText(search, uiText("筛选 MOC"), "placeholder");
   setText(search, uiText("筛选 MOC"), "aria-label");
   list.append(search);
@@ -41,26 +103,22 @@ export function memberControls(item, mocs, apply, refresh) {
         moc.title,
         item.moc_ids.includes(moc.id) ? uiText("（已挂载）") : "",
       ]),
-      false,
+      state.selected.has(moc.id),
     );
     box.input.addEventListener("change", () => {
-      if (box.input.checked) selected.add(moc.id);
-      else selected.delete(moc.id);
-      setText(
-        summary,
-        selected.size
-          ? phrase("已选择 {p0} 个 MOC（可多选）", { p0: selected.size })
-          : uiText("选择 MOC（可多选）"),
-      );
+      session.update(state, () => {
+        if (box.input.checked) state.selected.add(moc.id);
+        else state.selected.delete(moc.id);
+      });
+      update();
     });
     list.append(box.label);
-    return { moc, label: box.label };
+    return { moc, ...box };
   });
   search.addEventListener("input", () => {
-    for (const { moc, label } of choices)
-      label.hidden = !moc.title
-        .toLowerCase()
-        .includes(search.value.toLowerCase());
+    session.update(state, () => {
+      state.search = search.value;
+    });
   });
   host.append(
     picker,
@@ -71,58 +129,45 @@ export function memberControls(item, mocs, apply, refresh) {
       ),
     ),
   );
-  const status = el("p");
-  status.setAttribute("role", "status");
-  status.setAttribute("aria-live", "polite");
-  host.append(status);
-  const buttons = [];
-  const verify = control("刷新核对挂载结果", async () => {
-    await refresh();
-  });
-  verify.hidden = true;
   for (const [action, label] of [
     ["link", "人工增挂并锁定"],
     ["unlink", "人工移除并阻止自动加回"],
     ["unlock", "解除所选关系的人工限制"],
   ]) {
-    const button = control(label, async (notify) => {
-      if (!selected.size) throw new Error("请先勾选一个或多个 MOC。");
-      let uncertain = false;
-      for (const b of buttons) b.disabled = true;
-      setText(
-        status,
-        uiText("正在逐项同步所选 MOC，请等待结果；请勿重复提交。"),
-      );
-      try {
-        const result = await apply([...selected], action);
-        const failed = result.results.filter((r) => !r.completed);
-        const done = result.results.length - failed.length;
-        const feedback = failed.length
-          ? `已完成 ${done} 项；` +
-            failed.map((r) => `${r.title}：${manualError(r.error)}`).join("；")
-          : `已完成 ${done} 个 MOC 的关系调整，关系与 Map 已同步。` +
-            (result.resolved_items
-              ? "原整理任务中的对应项已标记为已人工处理。"
-              : "");
-        setText(status, uiText(feedback));
-        notify(feedback, !!failed.length);
-      } catch (error) {
-        uncertain = ["timeout", "network"].includes(error.code);
-        setText(status, uiText(manualError(error.code)));
-        verify.hidden = !uncertain || !refresh;
-        if (error.code)
-          throw new Error(manualError(error.code), { cause: error });
-        throw error;
-      } finally {
-        for (const b of buttons) {
-          b.dataset.policyDisabled = String(uncertain);
-          b.disabled = uncertain;
-        }
-      }
-    });
+    const button = control(label, () => session.apply(state, action));
     buttons.push(button);
     host.append(button);
   }
-  host.append(verify);
+  const reset = control(msg("manual_members.clear_selection"), () =>
+    session.clearSelection(state),
+  );
+  host.append(reset);
+  function update() {
+    const blocked = !session.editable(state);
+    for (const node of [
+      ...buttons,
+      search,
+      ...choices.map((box) => box.input),
+    ]) {
+      node.disabled = blocked;
+      node.dataset.policyDisabled = String(blocked);
+    }
+    reset.disabled = session.busy();
+    reset.dataset.policyDisabled = String(reset.disabled);
+    for (const { moc, label, input } of choices) {
+      input.checked = state.selected.has(moc.id);
+      label.hidden = !moc.title
+        .toLowerCase()
+        .includes(state.search.toLowerCase());
+    }
+    setText(
+      summary,
+      state.selected.size
+        ? phrase("已选择 {p0} 个 MOC（可多选）", { p0: state.selected.size })
+        : uiText("选择 MOC（可多选）"),
+    );
+  }
+  state.update = update;
+  update();
   return host;
 }

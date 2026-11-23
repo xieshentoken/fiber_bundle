@@ -16,6 +16,9 @@ export const jobNames = {
   paused: "已暂停",
   cancelling: "撤销中",
   rollback_conflict: "撤销待核对",
+  waiting_task: "等待原任务",
+  waiting_file: "等待文件就绪",
+  closed: "已结束 · 保留结果",
 };
 export function evidenceFailure(reason) {
   const messages = {
@@ -34,8 +37,79 @@ export function manuallyResolved(item) {
     item.manual_resolution.method === "manual_moc"
   );
 }
+export function verifiedArchive(item, job) {
+  return (
+    item.state === "done" &&
+    Boolean(item.archive_operation) &&
+    (
+      job.archive_verifications ||
+      job.archive_verification?.receipts ||
+      []
+    ).some(
+      (receipt) =>
+        receipt.state === "verified" &&
+        receipt.operations.includes(item.archive_operation),
+    )
+  );
+}
+// A verified receipt settles its original archive error, not the remaining task.
+export function archiveFinalizationVerified(job) {
+  const detail = job.error_detail || {};
+  if (
+    !["archive_committed_verify", "archive_finalize_inventory"].includes(
+      detail.phase,
+    ) ||
+    !job.confirmed ||
+    !["partial", "failed", "blocked", "paused", "completed", "closed"].includes(
+      job.state,
+    ) ||
+    job.stage === "rollback" ||
+    job.blocking_task ||
+    job.index_observation?.state === "blocked" ||
+    job.index_dependency ||
+    (job.execution_progress?.counts?.archive_pending || 0) > 0
+  )
+    return false;
+  const owned = (job.items || []).filter((item) => item.archive_operation);
+  if (
+    !owned.length ||
+    owned.some((item) => item.state !== "done" || item.phase !== "archived")
+  )
+    return false;
+  if (!job.error || !owned.some((item) => item.error === job.error))
+    return false;
+  const receipts =
+    job.archive_verifications || job.archive_verification?.receipts || [];
+  if (!Array.isArray(receipts)) return false;
+  if (
+    receipts.some((receipt) => ["unknown", "verifying"].includes(receipt.state))
+  )
+    return false;
+  const operation = detail.operation_id || detail.operation;
+  if (operation && !owned.some((item) => item.archive_operation === operation))
+    return false;
+  return owned.every((item) => {
+    const latest = receipts.findLast(
+      (receipt) =>
+        Array.isArray(receipt.operations) &&
+        receipt.operations.includes(item.archive_operation),
+    );
+    return (
+      latest?.state === "verified" &&
+      Number.isFinite(latest.verified_at) &&
+      latest.verified_at > 0 &&
+      (detail.observed_at == null ||
+        (Number.isFinite(detail.observed_at) &&
+          detail.observed_at >= 0 &&
+          latest.verified_at >= detail.observed_at))
+    );
+  });
+}
 export function itemCategory(item, job) {
+  if (verifiedArchive(item, job)) return "processed";
   if (manuallyResolved(item)) return "processed";
+  if (["waiting_file", "waiting_archive"].includes(item.state))
+    return "waiting";
   if (item.error || item.analysis_error) return "error";
   if (job.stage === "planning" && !item.evaluated) return "waiting";
   if (item.status === "review") return "review";
@@ -73,7 +147,8 @@ export function previewInvalidated(job) {
 }
 export function orderedMaintenance(jobs) {
   const active = (job) =>
-    !["completed", "cancelled"].includes(job.state) && !previewInvalidated(job);
+    !["completed", "cancelled", "closed"].includes(job.state) &&
+    !previewInvalidated(job);
   return jobs
     .filter((j) => j.maintenance)
     .slice()
@@ -89,6 +164,17 @@ export function mergeProgress(previous, incoming) {
     ...incoming,
     jobs: incoming.jobs.map((job) => {
       const prior = previous.jobs.find((item) => item.id === job.id);
+      if (prior?.updated_at > job.updated_at) {
+        const observation =
+          job.index_observation?.observed_at >
+          (prior.index_observation?.observed_at || 0)
+            ? job.index_observation
+            : prior.index_observation;
+        return {
+          ...prior,
+          ...(observation ? { index_observation: observation } : {}),
+        };
+      }
       return job.state === "preview" &&
         prior?.state === "preview" &&
         job.plan_sha256 === prior.plan_sha256 &&
@@ -98,8 +184,41 @@ export function mergeProgress(previous, incoming) {
     }),
   };
 }
+export function effectiveIndexState(job) {
+  const observed = job.index_observation;
+  if (!observed || observed.state === "unknown") return job.index_state;
+  if (observed.state !== "ready" || observed.after_task) return observed.state;
+  return job.index_state;
+}
 export function maintenancePhase(job) {
+  if (job.state === "closed") return "已结束 · 已完成结果保留";
   if (job.pause_requested) return "正在暂停 · 等待当前安全步骤完成";
+  if (job.state === "paused" && job.archive_recheck)
+    return "整理已暂停 · 归档待核验";
+  if (job.state === "running" && job.archive_recheck)
+    return "已写入 · 正在重试归档核验";
+  const archiveVerified = archiveFinalizationVerified(job);
+  if (
+    archiveVerified &&
+    ["partial", "failed", "blocked", "paused"].includes(job.state)
+  )
+    return job.state === "paused"
+      ? "归档已核验 · 整理已暂停"
+      : "归档已核验 · 整理仍中断";
+  if (
+    !archiveVerified &&
+    (job.execution_progress?.phase === "finalizing" ||
+      ["archive_committed_verify", "archive_finalize_inventory"].includes(
+        job.error_detail?.phase,
+      ))
+  )
+    return "已写入 · 归档收尾待核对";
+  if (job.state === "waiting_file")
+    return job.items?.some((i) => i.archive_wait)
+      ? "部分已完成 · 归档待核对"
+      : "部分已完成 · 等待文件就绪";
+  if (job.blocking_task || job.state === "waiting_task")
+    return "等待原任务处理";
   if (job.state === "cancelled")
     return job.rollback_completed
       ? "已取消 · 本次变更已撤销"
@@ -107,8 +226,12 @@ export function maintenancePhase(job) {
   if (job.stage === "rollback") return "撤销本次整理变更";
   if (previewInvalidated(job)) return "预览已失效";
   if (job.state === "preview") return "差异预览 · 等待确认";
+  if (["partial", "failed", "blocked"].includes(job.state)) return "整理已中断";
+  if (job.state === "paused") return "整理已暂停";
   if (job.stage === "planning") return "分析与生成预览";
-  if (job.index_state === "pending") return "更新索引";
-  if (job.index_state === "failed") return "索引更新失败";
+  if (["queued", "running"].includes(job.state)) return "应用分类与归档";
+  if (effectiveIndexState(job) === "blocked") return "等待归档核验";
+  if (effectiveIndexState(job) === "pending") return "更新索引";
+  if (effectiveIndexState(job) === "failed") return "索引更新失败";
   return job.state === "completed" ? "整理完成" : "应用分类与归档";
 }

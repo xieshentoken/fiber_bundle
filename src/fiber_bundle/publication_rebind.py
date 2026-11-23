@@ -112,7 +112,7 @@ def observe(
         files[path] = {"sha256": digest(raw), "file_key": key}
     # A second copy cannot steal the still-visible physical identity of the original.
     old_keys = {tuple(k[:2]) for k in location["plan"]["file_keys"].values()}
-    for path, info in vault_scope.entries(root, scope):
+    for path, info in vault_scope.metadata_entries(root, scope):
         if stat.S_ISREG(info.st_mode) and (info.st_dev, info.st_ino) in old_keys:
             if path.relative_to(root).as_posix() not in files:
                 raise IntegrityError("layout_rebind_original_still_present")

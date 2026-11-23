@@ -9,11 +9,12 @@ from . import auth, database, model_budgets, system_fonts, system_settings, usag
 from .config import Config
 from .execution_config import ExecutionConfig
 from .http_guard import Settings
+from .session_policy import MAX_TTL
 
 
 class LoginPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    session_ttl: StrictInt = Field(ge=1, le=86400)
+    session_ttl: StrictInt = Field(ge=0, le=MAX_TTL)
     expected_revision: StrictInt = Field(ge=0)
 
 

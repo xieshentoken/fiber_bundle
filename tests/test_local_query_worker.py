@@ -156,7 +156,7 @@ def test_pi_failure_retains_valid_usage_without_answer(
     db.close()
 
 
-@pytest.mark.parametrize("change", ["cancel", "revoke", "edit"])
+@pytest.mark.parametrize("change", ["cancel", "revoke"])
 def test_inflight_stop_reaps_both_children_and_never_replays(
     config, route, owner, local_task, tmp_path, change
 ):

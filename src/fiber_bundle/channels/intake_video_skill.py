@@ -14,6 +14,7 @@ from .. import (
     video_skill,
     video_skill_model,
     video_skill_notes,
+    video_token_budget,
     video_visual,
 )
 from ..config import Config, InvalidInput, contained
@@ -22,6 +23,23 @@ from ..inputs import canonical
 from ..objects import digest
 from . import intake_repository, store
 from .intake_fetch import Content
+
+
+def new_snapshot(
+    config: Config, binding: dict[str, Any], url: str, model_sha: str, job_id: str
+) -> dict[str, Any]:
+    frozen = {
+        "skill": video_skill.freeze(config),
+        "binding": binding,
+        "url": url,
+        "model_sha256": model_sha,
+        "completed": [],
+        "job_id": job_id,
+        "note_authoring": video_evidence_notes.CAPTURED_MODE,
+        "evidence_flow": 2,
+    }
+    video_token_budget.configure(frozen)
+    return frozen
 
 
 def acquire(
@@ -49,14 +67,18 @@ def acquire(
         if binding is None:
             raise InvalidInput("video_skill_processing_policy_required")
         model = automatic_policy.processing_route(config, binding["settings"])
-        frozen = link.get("video_processing") or {
-            "skill": video_skill.freeze(config),
-            "binding": binding,
-            "url": link["original_url"],
-            "model_sha256": model.digest,
-            "completed": [],
-            "job_id": str(uuid5(NAMESPACE_URL, f"fiber-video-v3:{identity}:{batch}:{index}")),
-        }
+        frozen = link.get("video_processing") or new_snapshot(
+            config,
+            binding,
+            link["original_url"],
+            model.digest,
+            str(uuid5(NAMESPACE_URL, f"fiber-video-v3:{identity}:{batch}:{index}")),
+        )
+        if not link.get("video_processing") and link.get("pending_video_call_allowance"):
+            frozen["call_allowance"] = link["pending_video_call_allowance"]
+        if not link.get("video_processing") and link.get("pending_video_token_budget"):
+            frozen["token_budget"] = link["pending_video_token_budget"]
+        video_token_budget.configure(frozen)
         if frozen["binding"] != binding or frozen["model_sha256"] != model.digest:
             raise InvalidInput("video_skill_configuration_changed")
         vision_model: ExecutionConfig
@@ -69,6 +91,7 @@ def acquire(
             vision_model = model
         if frozen.setdefault("vision_model_sha256", vision_model.digest) != vision_model.digest:
             raise InvalidInput("video_skill_configuration_changed")
+        frozen["models"] = {"text": model.model, "vision": vision_model.model}
         version = value["receipts"][0]["source_version_id"]
     job = contained(config.state_root, "video-skill-jobs/" + frozen["job_id"])
 
@@ -189,10 +212,13 @@ def acquire(
         else [str(job), "--video", str(media[0]), "--profile", "balanced", "--max-width", "640"],
         1800,
     )
-    run_policy = pi_processing.execution_policy(model)
+    run_policy = pi_processing.execution_policy(model, video_authoring=True)
     frozen["phase"] = "visual_analysis"
     save()
-    if frozen.get("note_authoring") == video_evidence_notes.MODE:
+    if (
+        frozen.get("note_authoring") in video_evidence_notes.MODES
+        and frozen.get("evidence_flow") != 2
+    ):
         with database.locked(config), database.connect(config.state_root) as db:
             video_evidence_notes.require_cached(db, frozen, job)
     else:
@@ -214,10 +240,13 @@ def acquire(
         raise
     if visual_primary:
         run("fiber_visual", ["ready-for-note"], 60)
+    if frozen.get("note_authoring") in video_evidence_notes.MODES:
+        with database.locked(config), database.connect(config.state_root) as db:
+            video_evidence_notes.require_cached(db, frozen, job)
     if "note" not in frozen["completed"]:
         frozen["phase"] = (
             "evidence_note"
-            if frozen.get("note_authoring") == video_evidence_notes.MODE
+            if frozen.get("note_authoring") in video_evidence_notes.MODES
             else "note_authoring"
         )
         save()
@@ -264,27 +293,81 @@ def prepare_retry(
     *,
     approve_new_attempt: bool = False,
     video_note_mode: str | None = None,
+    max_new_model_calls: int | None = None,
+    max_video_tokens: int | None = None,
 ) -> None:
     from .intake_pi import prepare_retry as retry_runs
 
     frozen = link["video_processing"]
-    if (
-        video_note_mode == video_evidence_notes.MODE
-        or frozen.get("note_authoring") == video_evidence_notes.MODE
+    rebind = (
+        max_new_model_calls is not None
+        or max_video_tokens is not None
+        or not frozen.get("token_budget")
+    )
+    video_token_budget.configure(frozen, max_video_tokens)
+    if frozen.get("visual_response_error"):
+        frozen.setdefault("previous_visual_errors", []).append(frozen.pop("visual_response_error"))
+    if max_new_model_calls is not None:
+        from .. import video_call_allowance
+
+        if frozen.get("call_allowance"):
+            frozen.setdefault("previous_call_allowances", []).append(frozen["call_allowance"])
+        frozen["call_allowance"] = video_call_allowance.new(max_new_model_calls)
+    if video_note_mode == "direct":
+        frozen.update(note_authoring=video_evidence_notes.CAPTURED_MODE, evidence_flow=2)
+    selected_mode = (
+        frozen.get("note_authoring")
+        if video_note_mode == "direct"
+        else video_note_mode or frozen.get("note_authoring")
+    )
+    if selected_mode in video_evidence_notes.MODES and (
+        video_note_mode in video_evidence_notes.MODES or frozen.get("evidence_flow") != 2
     ):
-        video_evidence_notes.require_cached(db, frozen)
-        frozen["note_authoring"] = video_evidence_notes.MODE
+        video_evidence_notes.require_cached(db, frozen, mode=selected_mode)
+        frozen["note_authoring"] = selected_mode
+        frozen.pop("evidence_flow", None)
         frozen["completed"] = [s for s in frozen["completed"] if s != "note"]
         frozen["state"] = "queued"
         return  # Failed Pi runs and their reservations remain immutable and unused.
     video_asr_api.prepare_retry(db, frozen, approve_new_attempt)
+    if rebind:
+        for key, rid in list(frozen.get("asr_runs", {}).items()):
+            row = db.execute(
+                "SELECT state FROM model_configuration_calls WHERE id=?", (rid,)
+            ).fetchone()
+            if row and row[0] == "queued":
+                frozen.setdefault("previous_asr_runs", []).append(
+                    {"run_id": rid, "chunk": key, "reason": "allowance_rebound_before_call"}
+                )
+                del frozen["asr_runs"][key]
     vision_before = dict(frozen.get("vision_runs", {}))
-    for name in ("vision_runs", "note_runs"):
+    for name in (
+        ("vision_runs",)
+        if frozen.get("note_authoring") in video_evidence_notes.MODES
+        else ("vision_runs", "note_runs")
+    ):
         part = {
             "runs": frozen.setdefault(name, {}),
             "previous_runs": frozen.setdefault("previous_" + name, []),
         }
         retry_runs(db, {"pi_processing": part}, approve_new_attempt=approve_new_attempt)
+        if rebind:
+            # Uncalled queued runs are retained in history and replaced so their
+            # immutable binding cannot carry an older allowance into this resume.
+            for key, rid in list(part["runs"].items()):
+                state = db.execute("SELECT state FROM execution_runs WHERE id=?", (rid,)).fetchone()
+                if (
+                    state
+                    and state[0] in {"queued", "waiting_budget"}
+                    and not db.execute(
+                        "SELECT 1 FROM model_calls WHERE run_id=?",
+                        (rid,),
+                    ).fetchone()
+                ):
+                    part["previous_runs"].append(
+                        {"run_id": rid, "chunk": key, "reason": "allowance_rebound_before_call"}
+                    )
+                    del part["runs"][key]
         for key, rid in list(part["runs"].items()):
             if rid not in frozen.get("rejected_" + name, []):
                 continue

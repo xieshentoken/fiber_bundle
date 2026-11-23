@@ -51,7 +51,7 @@ def planning_mocs(config: Any, db: Any, job: Any, mocs: Any) -> Any:
     return result
 
 
-def preflight(config: Any, db: Any, job: Any) -> None:
+def preflight(config: Any, db: Any, job: Any, *, item: Any = None) -> None:
     """Read all affected Maps before changing any relationship.
 
     A missing block may be appended only if it was already absent in this
@@ -61,7 +61,7 @@ def preflight(config: Any, db: Any, job: Any) -> None:
     root, allowed = packages.context(config, db, job["client_id"], job["vault_id"], write=True)
     handled = manual_resolution.resolved(config, job)
     active = [i for i in job["items"] if i.get("entity") not in handled]
-    touched = {mid for i in active for mid in i["add"] + i["remove"]}
+    touched = {mid for i in ([item] if item else active) for mid in i["add"] + i["remove"]}
     for moc in job["mocs"]:
         mid = moc["id"]
         if mid not in touched or moc.get("new"):

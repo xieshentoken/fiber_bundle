@@ -1,3 +1,5 @@
+import { noteIndexOutcome } from "../note_index_errors.js";
+import { openDraftImporter } from "../draft_import_ui.js";
 // Import: resumable bounded uploads into an explicit identity + vault scope. The backend owns
 // originals, permissions and processing; drafts and publishing are separate stages.
 import { h, clear, icon } from "./dom.js";
@@ -24,7 +26,7 @@ import {
   rememberDraft,
 } from "../unsaved_changes.js";
 import { expertControls } from "./import_expert.js";
-import { bytes, number } from "./format.js";
+import { bytes } from "./format.js";
 
 const t = strings({
   zh: {
@@ -785,11 +787,7 @@ export function createView(ctx, route) {
         mine = epoch;
       indexState.textContent = t("indexUpdating");
       const result = await ctx.api.updateNoteIndex(owner);
-      if (current(mine))
-        indexState.textContent = t("indexDone", {
-          u: number(result.updated_notes),
-          r: number(result.reused_notes),
-        });
+      if (current(mine)) indexState.textContent = noteIndexOutcome(result);
     }),
   );
   function itemRow(item) {
@@ -1028,6 +1026,19 @@ export function createView(ctx, route) {
     node,
     header: {
       actions: [
+        button(
+          document.documentElement.lang.startsWith("en")
+            ? "Import expert Draft package"
+            : "导入专家 Draft 包",
+          {
+            iconName: "folder",
+            onClick: () =>
+              openDraftImporter(ctx.api.organization.drafts, {
+                client_id: identity.value,
+                vault_id: vault.value,
+              }),
+          },
+        ),
         button(t("settings"), {
           variant: "ghost",
           iconName: "settings",

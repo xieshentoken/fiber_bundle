@@ -1,12 +1,10 @@
 """Mode tasks share the existing private queue; no application before bound confirmation."""
 
-import time
 from typing import Any
-from uuid import uuid4
 
 from ..config import IntegrityError, InvalidInput
+from . import maintenance_admission, manual_resolution, packages, store
 from . import maintenance_plan as plans
-from . import manual_resolution, packages, store
 
 
 def submit(
@@ -18,76 +16,24 @@ def submit(
     new_mocs: Any = None,
     *,
     recovery: Any = None,
+    unavailable_action: str = "moc_only",
 ) -> Any:
-    es, ms, fixed = plans.snapshot(config, db, client, vault, mode)
-    fresh = plans.virtual_mocs(vault, fixed["save_policy"]["settings"], ms, new_mocs or [])
-    context = plans.plan_context(config, vault, ms + fresh)
-    root, allowed = packages.context(config, db, client, vault, write=True)
-    for m in fresh:
-        if not allowed.allows(m["path"]) or (root / m["path"]).exists():
-            raise IntegrityError("maintenance_moc_target_exists_or_denied")
-    job = {
-        "id": str(uuid4()),
-        "maintenance": plans.VERSION,
-        "mode": mode,
-        "client_id": client,
-        "vault_id": vault,
-        "target": "Inbox" if mode == "quick" else "全库",
-        "source": "manual",
-        "state": "queued",
-        "stage": "planning",
-        "created_at": time.time(),
-        "fixed": fixed,
-        "items": [
-            plans.item(config, vault, e, ms + fresh, fixed, mode, context=context) for e in es
-        ],
-        "new_mocs": fresh,
-        "mocs": ms + fresh,
-        "completed": 0,
-        "model_called": False,
-        "error": None,
-        "permission_epoch": fixed["permission_epoch"],
-        "policy": fixed["policy"],
-        "confirmed": False,
-    }
-    from ..inputs import canonical
-    from ..objects import digest
+    from .maintenance_submission import commit, prepare
 
-    if recovery:
-        job["cache_recovery"] = recovery
-        job["items"] = [i for i in job["items"] if i["entity"] in recovery["entities"]]
-        for item in job["items"]:
-            item.update(evaluated=False, phase="analysis", selected=[])
-            plans.difference(item, mode, fixed["save_policy"]["settings"])
-
-    job["request_key"] = digest(
-        canonical(
-            [
-                mode,
-                client,
-                vault,
-                fixed,
-                [[i["entity"], i["fingerprint"]] for i in job["items"]],
-                fresh,
-                *([recovery] if recovery else []),
-            ]
-        ).encode()
+    return commit(
+        config,
+        db,
+        prepare(
+            config,
+            db,
+            client,
+            vault,
+            mode,
+            new_mocs,
+            recovery=recovery,
+            unavailable_action=unavailable_action,
+        ),
     )
-    for prior in store.rows(config, "jobs", vault):
-        if prior.get("request_key") == job["request_key"] and prior["state"] in {
-            "queued",
-            "running",
-            "preview",
-            "blocked",
-            "paused",
-        }:
-            try:
-                validate(config, db, prior)
-            except IntegrityError:
-                continue
-            return prior
-    store.put(config, "jobs", job["id"], vault, job)
-    return job
 
 
 def validate(config: Any, db: Any, job: Any, *, sources: bool = True) -> Any:
@@ -119,6 +65,8 @@ def validate(config: Any, db: Any, job: Any, *, sources: bool = True) -> Any:
             raise IntegrityError("maintenance_authorization_or_policy_changed")
         return [], []
     es, ms, fixed = plans.snapshot(config, db, job["client_id"], job["vault_id"], job["mode"])
+    if "unavailable_action" in job["fixed"]:
+        fixed["unavailable_action"] = job["fixed"]["unavailable_action"]
     if fixed != job["fixed"]:
         raise IntegrityError("maintenance_authorization_or_policy_changed")
     if sources:
@@ -140,10 +88,23 @@ def validate(config: Any, db: Any, job: Any, *, sources: bool = True) -> Any:
                 continue
             if item["entity"] not in current or item["fingerprint"] != current[item["entity"]]:
                 raise IntegrityError("maintenance_preview_changed")
+    if job.get("archive_scope") and job["state"] == "preview":
+        from .maintenance_archive_preview import prepare
+
+        prepare(config, db, job, validate=True)
     return es, ms
 
 
 def action(config: Any, db: Any, job: Any, operation: str, expected: str | None) -> Any:
+    from ..cloud_helper_session import reuse as metadata_session
+    from ..note_read_session import reuse
+    from ..publication_inventory_read import reuse as publication_session
+
+    with reuse(), publication_session(db), metadata_session():
+        return _action(config, db, job, operation, expected)
+
+
+def _action(config: Any, db: Any, job: Any, operation: str, expected: str | None) -> Any:
     packages.context(config, db, job["client_id"], job["vault_id"], write=True)
     from . import execution_control
 
@@ -152,15 +113,34 @@ def action(config: Any, db: Any, job: Any, operation: str, expected: str | None)
             raise InvalidInput("organization_execution_pause_required")
         execution_control.request(config, job)
         return job
+    if operation == "verify_committed_archives":
+        from .maintenance_committed_verification import apply
+
+        return apply(config, db, job, expected)
+    if operation == "defer_archive_preview":
+        from .maintenance_archive_recovery import preview
+
+        return {**job, "archive_deferral_preview": preview(config, db, job)}
+    if operation == "defer_archives":
+        from .maintenance_archive_recovery import apply
+
+        return apply(config, db, job, expected)
+    if operation == "finish_preview":
+        return {**job, "close_preview": maintenance_admission.close_evidence(config, db, job)}
+    if operation == "finish":
+        return maintenance_admission.close(config, db, job, expected)
+    if job["state"] == "closed":
+        raise InvalidInput("maintenance_not_resumable")
+    if operation == "resume" and job.get("confirmed"):
+        if maintenance_admission.hold(config, job):
+            return job
+    if operation == "confirm" and job.get("confirmed") and expected == job.get("confirmed_sha256"):
+        return job
     if operation == "recover_cache":
         from . import cache_recovery
 
         return cache_recovery.submit(config, db, job)
-    if (
-        operation == "resume"
-        and job.get("index_state") == "failed"
-        and job["state"] in {"completed", "partial"}
-    ):
+    if operation == "resume" and job.get("index_state") == "failed" and job["state"] == "completed":
         job["index_state"] = "pending"
         job.pop("index_error", None)
         store.put(config, "jobs", job["id"], job["vault_id"], job)
@@ -170,16 +150,36 @@ def action(config: Any, db: Any, job: Any, operation: str, expected: str | None)
 
         cancel(config, db, job)
     elif operation == "confirm":
+        if "candidate_coverage" in job and not job["items"] and not job["new_mocs"]:
+            raise InvalidInput("maintenance_no_actionable_candidates")
         if (
             job["state"] != "preview"
             or expected != job["plan_sha256"]
             or expected != plans.seal(job)
         ):
             raise InvalidInput("maintenance_preview_confirmation_required")
+        if maintenance_admission.hold(config, job, preview=True):
+            return job
         from .maintenance_timing import measure
 
         with measure(job, "confirmation_check"):
             validate(config, db, job)
+        from ..partial_notes import for_job as read_omissions
+
+        read_omissions(job)  # Reject truncated or invalid omission scope before any write.
+        if (
+            job["fixed"].get("coverage")
+            and any(i["target"] for i in job["items"])
+            and job["fixed"].get("unavailable_action") != "defer_links"
+        ):
+            # Moving files also rewrites inbound links. Unknown source bodies must not
+            # silently disappear from that proof or fail after memberships were written.
+            from .catalog_inventory import Unavailable
+
+            raise Unavailable(
+                "organization_archive_scope_incomplete",
+                {i["path"]: i["reason"] for i in job["fixed"]["coverage"]["unavailable"]},
+            )
         from .maintenance_moc_recovery import preflight
 
         preflight(config, db, job)
@@ -216,8 +216,11 @@ def action(config: Any, db: Any, job: Any, operation: str, expected: str | None)
     return job
 
 
-def make_preview(job: Any, entities: Any, mocs: Any) -> Any:
+def make_preview(config: Any, db: Any, job: Any, entities: Any, mocs: Any) -> Any:
     from . import engine
+    from .maintenance_archive_preview import prepare
+
+    prepare(config, db, job)
 
     job["taxonomy"] = engine.taxonomy(entities, mocs, job["items"])
     job.update(state="preview", completed=0)
@@ -238,23 +241,34 @@ def run(config: Any, db: Any, job: Any) -> Any:
         if any(not i["evaluated"] and i["entity"] not in handled for i in job["items"]):
             return job
         es, ms = validate(config, db, job)
-        make_preview(job, es, ms + job["new_mocs"])
+        make_preview(config, db, job, es, ms + job["new_mocs"])
         store.put(config, "jobs", job["id"], job["vault_id"], job)
         return job
     if not job["confirmed"]:
         raise InvalidInput("maintenance_preview_confirmation_required")
+    if maintenance_admission.hold(config, job):
+        return job
     from .maintenance_apply import run as apply
 
     return apply(config, db, job)
 
 
-def public(job: Any, *, config: Any = None, db: Any = None) -> Any:
+def public(
+    job: Any,
+    *,
+    config: Any = None,
+    db: Any = None,
+    admission: Any = None,
+    membership_observation: Any = None,
+    validate_preview: bool = True,
+) -> Any:
     if config is not None:
         from .manual_resolution import project
 
         job = project(config, job)
     hidden = {
         "fixed",
+        "archive_scope",
         "mocs",
         "policy",
         "moc_expected",
@@ -264,18 +278,46 @@ def public(job: Any, *, config: Any = None, db: Any = None) -> Any:
         "analysis_history",
     }
     value = {k: v for k, v in job.items() if k not in hidden | {"expires_at"}}
+    if job["fixed"].get("coverage"):
+        value["coverage"] = job["fixed"]["coverage"]
+        value["application_blocked"] = (
+            "organization_archive_scope_incomplete"
+            if any(i["target"] for i in job["items"])
+            and job["fixed"].get("unavailable_action") != "defer_links"
+            else None
+        )
+    value["unavailable_action"] = job["fixed"].get("unavailable_action", "legacy")
+    value["deferred_archives"] = sum(bool(i.get("deferred_target")) for i in job["items"])
+    value["links_pending"] = any(i.get("links_pending") for i in job["items"])
     if config is not None:
         from .execution_control import requested
 
         value["pause_requested"] = requested(config, job)
+        value["blocking_task"] = maintenance_admission.blocker(config, job, admission=admission)
+    from .maintenance_waiting import pending_sources
 
-    if config is not None and db is not None and job["state"] == "preview":
+    value["waiting_sources"] = pending_sources(job)
+    value["archive_mode"] = job["fixed"]["save_policy"]["settings"].get("moc_archive_mode", "off")
+
+    if config is not None and db is not None and validate_preview and job["state"] == "preview":
         from .preview_validity import status
 
         value["preview_validity"] = status(config, db, job)
+    if config is not None and db is not None:
+        from .maintenance_committed_verification import projection
+
+        value["archive_verification"] = projection(config, db, job)
     value["items"] = [
         {k: v for k, v in i.items() if k not in {"source", "decisions", "fingerprint", "intent"}}
         for i in job["items"]
     ]
+    if config is not None and db is not None:
+        from .maintenance_membership_validation import Observation
+
+        observation = membership_observation or Observation(config, db, [job])
+        for item in value["items"]:
+            item["membership_observation"] = observation.project(item)
     value["new_mocs"] = [{k: m[k] for k in ("id", "path", "title")} for m in job["new_mocs"]]
-    return value
+    from .progress_projection import project_progress
+
+    return project_progress(value)

@@ -10,7 +10,10 @@ def measure(job: Any, phase: str) -> Any:
     start = time.monotonic()
     job["activity"] = {"phase": phase, "started_at": time.time()}
     try:
-        yield
+        from ..cloud_observation import phase as observed_phase
+
+        with observed_phase(phase):
+            yield
     finally:
         elapsed = time.monotonic() - start
         totals = job.setdefault("timings", {}).setdefault(phase, {"seconds": 0.0, "units": 0})

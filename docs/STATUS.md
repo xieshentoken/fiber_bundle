@@ -1,7 +1,7 @@
-# Project status
+# Source snapshot status
 
-This source snapshot is derived from the maintained Fiber bundle 0.6.0a2 Projects package.
+This source snapshot corresponds to Fiber bundle 0.6.0a2 and build c5fab0516cc7.
 
-The local application's data, configuration, credentials, task history, checkpoints, backups and installed environments are excluded from this source publication. This repository does not indicate that a recipient installation has been configured or verified.
+The application includes finite image retries, resumable article downloads, complete-image publication checks and separate index status. Validation performed on the originating build covers synthetic first capture, real HTTP response framing and installed-runtime recovery. Real-provider recovery reused stored article HTML. A complete fresh Feishu event acceptance run remains unverified.
 
-See README.md for setup, TECHNICAL_REFERENCE.md for configuration and interfaces, and SPEC.md and DECISIONS.md for product and architecture constraints. Optional external providers, channels, Hermes and knowledge-graph runtimes must be configured separately by the recipient.
+Public-copy validation results and privacy exclusions are recorded in PRIVACY.md.

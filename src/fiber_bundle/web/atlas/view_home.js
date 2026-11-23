@@ -1,5 +1,5 @@
 // Home: a read-only overview. Nothing here starts models, channels, indexing or publishing.
-import { summaryCost, ledgerCost, knownCost } from "./usage_model.js";
+import { summaryCost } from "./usage_model.js";
 import { createArchitecture } from "./home_architecture.js";
 import { h, clear } from "./dom.js";
 import { strings, lang } from "./i18n.js";
@@ -25,8 +25,8 @@ import {
   skeleton,
   stat,
 } from "./ui.js";
-import { chartWithTable } from "./chart.js";
-import { relative, usd, number } from "./format.js";
+import { homeUsageCard, createUsageState } from "./home_usage.js";
+import { relative, number } from "./format.js";
 
 const t = strings({
   zh: {
@@ -148,6 +148,7 @@ function today() {
 export function createView(ctx) {
   const root = h("div.a-home");
   const dashboard = createArchitecture(ctx);
+  const usageState = createUsageState();
   let frame = 0;
   const loader = createHomeLoader(ctx.api, ctx.session, () => {
     cancelAnimationFrame(frame);
@@ -232,7 +233,7 @@ export function createView(ctx) {
         importsCard(records),
         agentCard(agents, records),
       ),
-      costCard(cost, records),
+      homeUsageCard(cost, records.usage, usageState),
     );
   }
   function attentionCard(rows, records) {
@@ -464,53 +465,6 @@ export function createView(ctx) {
                   onClick: go("clients", "agents"),
                 }),
               }),
-    );
-  }
-  function costCard(cost, records) {
-    if (!cost)
-      return card(
-        { title: t("costCard") },
-        records.usage?.error
-          ? empty(readText(records.usage), { iconName: "alert" })
-          : empty(t("costUnread"), { iconName: "coin" }),
-      );
-    return card(
-      {
-        title: t("costCard"),
-        subtitle: t("costNote", {
-          start: cost.start,
-          end: cost.end,
-          calls: number(cost.calls),
-          reserved: usd(cost.reserved),
-        }),
-        actions:
-          cost.localCalls !== null
-            ? h(
-                "span.a-subtle",
-                t("localCalls", { n: number(cost.localCalls) }),
-              )
-            : null,
-      },
-      chartWithTable({
-        title: t("costCard"),
-        rows: cost.days.map((day) => ({
-          day: day.day,
-          ...day,
-          value: knownCost(day),
-          calls: day.calls,
-        })),
-        format: (value, row) =>
-          row ? ledgerCost(row) : usd(Math.round(value)),
-        scale: 1e9,
-        extra: (row) => `${t("calls")} ${row.calls}`,
-        columns: [
-          {
-            label: t("calls"),
-            value: (row) => number(row.calls),
-            className: "is-num",
-          },
-        ],
-      }),
     );
   }
   draw();

@@ -147,15 +147,23 @@ def resolve(raw: str, root: Path, source: str, candidates: list[str], *, wiki: b
         choices.append(root_relative)
     exact = [p for p in set(choices) if p in candidates]
     if not exact and wiki and PurePosixPath(decoded).suffix == "":
-        exact = [p for p in candidates if p.lower().endswith(".md") and p[:-3] in choices]
+        exact = (
+            [p for choice in set(choices) for p in candidates.stems.get(choice, [])]
+            if hasattr(candidates, "stems")
+            else [p for p in candidates if p.lower().endswith(".md") and p[:-3] in choices]
+        )
     if not exact and wiki and "/" not in decoded:
-        exact = [
-            p
-            for p in candidates
-            if PurePosixPath(p).name == decoded
-            or PurePosixPath(p).suffix.lower() == ".md"
-            and PurePosixPath(p).stem == decoded
-        ]
+        exact = (
+            list(dict.fromkeys(candidates.names.get(decoded, [])))
+            if hasattr(candidates, "names")
+            else [
+                p
+                for p in candidates
+                if PurePosixPath(p).name == decoded
+                or PurePosixPath(p).suffix.lower() == ".md"
+                and PurePosixPath(p).stem == decoded
+            ]
+        )
     if len(exact) > 1:
         raise IntegrityError("ambiguous migration attachment link")
     if exact:

@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 import time
+from collections.abc import Collection
 from pathlib import PurePosixPath
 from typing import Any
 from uuid import NAMESPACE_URL, uuid5
@@ -147,17 +148,22 @@ def project(
         raise
 
 
-def hidden_roots(db: sqlite3.Connection, vault: str) -> set[str]:
+def hidden_roots(
+    db: sqlite3.Connection, vault: str, *, location_roots: Collection[str] | None = None
+) -> set[str]:
     """Exclude attachment namespaces even after a policy is disabled or replaced."""
-    result = set()
+    result = set(location_roots or ())
     current = db.execute(
         "SELECT value FROM vault_save_policies WHERE vault_id=? AND state='active'", (vault,)
     ).fetchone()
     values = [json.loads(current[0])] if current else []
-    values.extend(
-        json.loads(row[0])["policy_binding"]
-        for row in db.execute("SELECT value FROM publication_locations WHERE vault_id=?", (vault,))
-    )
+    if location_roots is None:
+        values.extend(
+            json.loads(row[0])["policy_binding"]
+            for row in db.execute(
+                "SELECT value FROM publication_locations WHERE vault_id=?", (vault,)
+            )
+        )
     for value in values:
         if value["settings"].get("policy_version") == 2:
             result.add(value["settings"]["attachment_root"])

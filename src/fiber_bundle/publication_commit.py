@@ -26,6 +26,9 @@ def check(
     from .intake_abort_publication import guard_publication
 
     guard_publication(config, db, row)
+    from .organization.inbox_review_publication import guard as guard_inbox_review
+
+    guard_inbox_review(config, row)
     grant = auth.grant(db, client, row["vault_id"], "add")
     root, scope, vault = vault_directories.vault_root(config, db, row["vault_id"])
     if (

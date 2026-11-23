@@ -13,6 +13,10 @@ const paths = {
   models: ["M4 4h10v10H4zM10 10h10v10H10z"],
   channels: ["M3 4h18v13H9l-5 4v-4H3z", "M7 8h10M7 12h6"],
   graph: ["M5 5h4v4H5zM15 15h4v4h-4zM15 3h4v4h-4z", "M9 7h6M7 9v8h8"],
+  "note-cloud": [
+    "M6 7h.01M13 4h.01M19 9h.01M16 17h.01M7 18h.01M11 12h.01",
+    "M6 7l5 5 2-8M11 12l8-3-3 8-9 1 4-6",
+  ],
   inventory: ["M4 4h16v16H4z", "M8 8h8M8 12h8M8 16h5"],
   creation: ["M5 3h9l5 5v13H5z", "M9 14h6M12 11v6"],
   execution: ["M5 5h4v14H5zM11 10h4v9h-4zM17 3h4v16h-4z"],

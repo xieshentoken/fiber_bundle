@@ -18,6 +18,17 @@ def successor(db: sqlite3.Connection, job: dict[str, Any]) -> str | None:
 
 def display_state(job: dict[str, Any]) -> str:
     state = job["state"]
+    if (
+        state in {"waiting", "reconcile", "needs_review"}
+        and job["phase"] == "publish"
+        and job.get("reason") == "placement_reconciliation_required"
+    ):
+        return "waiting_publication"
+    if state == "waiting" and job.get("reason") in {
+        "automatic_waiting_for_local_folder",
+        "automatic_saved_index_updating",
+    }:
+        return "waiting_dependency" if job["phase"] != "index" else "index_updating"
     if state == "reviewed":
         return "awaiting_review"
     if state in {"needs_review", "reconcile"}:
@@ -73,13 +84,21 @@ def publication(db: sqlite3.Connection, job: dict[str, Any]) -> dict[str, Any]:
 
 def project(db: sqlite3.Connection, job: dict[str, Any]) -> dict[str, Any]:
     from .processing_errors import MESSAGES
+    from .publication_blockers import pending
 
     replacement = successor(db, job)
     state = "superseded" if replacement else display_state(job)
+    blockers = pending(db, job["vault_id"]) if job["phase"] == "publish" and not replacement else []
+    if blockers and job["state"] in {"waiting", "reconcile", "needs_review"}:
+        state = "waiting_publication"
     saved = publication(db, job)
     path = saved.get("entry_note_path")
     message = (
         {
+            "waiting_publication": (
+                "正文和附件已保留，等待本库归档操作完成核对后发布；无需重新转发或提取。"
+                + ("阻塞操作：" + ", ".join(b["id"] for b in blockers) if blockers else "")
+            ),
             "superseded": "已有后续任务接替，旧记录保留，不需重复处理。",
             "index_reconcile": (
                 "保存记录已保留，索引尚未完成；请检查知识库中已登记笔记的位置，再继续索引。"
@@ -92,6 +111,10 @@ def project(db: sqlite3.Connection, job: dict[str, Any]) -> dict[str, Any]:
             "queued": "已入队，由后台继续处理。",
             "claimed": "后台正在处理。",
             "waiting": "等待后台处理结果。",
+            "waiting_dependency": (
+                "目标目录暂未就绪；原件和提取结果已保留，后台将按退避时间重新检查。"
+            ),
+            "index_updating": "笔记已保存，正在更新检索索引，无需重复导入。",
         }.get(state)
         or MESSAGES.get(job.get("reason") or "")
         or {
@@ -101,6 +124,7 @@ def project(db: sqlite3.Connection, job: dict[str, Any]) -> dict[str, Any]:
     )
     return {
         "display_state": state,
+        "publication_blockers": blockers,
         "display_message": message or "处理未完成，请进入任务记录核对原因。",
         "superseded_by": replacement,
         "action_required": state
@@ -109,6 +133,7 @@ def project(db: sqlite3.Connection, job: dict[str, Any]) -> dict[str, Any]:
             "index_reconcile",
             "waiting_budget",
             "waiting_dependency",
+            "waiting_publication",
             "needs_supplement",
             "failed",
             "reconcile",

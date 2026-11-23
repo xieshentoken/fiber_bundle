@@ -5,7 +5,6 @@ observed source files must still match under the delivery lease. Nothing is cach
 across sessions or reused by preview, confirmation, query execution or writeback.
 """
 
-import json
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -16,6 +15,7 @@ from starlette.responses import JSONResponse
 
 from . import auth, database, display_observation
 from .config import Config, IntegrityError, InvalidInput, StorageError
+from .display_dependencies import stamp
 from .http_admission import dispatch
 
 PATHS = frozenset(
@@ -27,99 +27,6 @@ PATHS = frozenset(
         "/admin/note-index/status",
     }
 )
-
-
-def stamp(config: Config, request: Request) -> dict[str, Any]:
-    """Cheap local generations, including missing policy paths and sidecar journals."""
-    root = config.state_root
-    # These audited projections read permissions, publications, MOC/organization
-    # ledgers and the live note index, never the message transport ledger.
-    # Transport polling is independent of their result and must not invalidate it.
-    unrelated = (
-        {
-            "message-channels.sqlite3",
-            "message-channels.sqlite3-wal",
-            "message-channels.sqlite3-journal",
-            "organization.sqlite3",
-            "organization.sqlite3-wal",
-            "organization.sqlite3-journal",
-        }
-        if request.url.path in PATHS
-        else set()
-    )
-    paths = [
-        p
-        for p in root.iterdir()
-        if p.name not in unrelated
-        and p.name.endswith((".sqlite3", ".sqlite3-wal", ".sqlite3-journal", ".json"))
-    ]
-    for name in (
-        "configs",
-        "query-policies",
-        "model-secrets",
-        "moc-files",
-        "moc-note-files",
-        "note-search",
-    ):
-        directory = root / name
-        if directory.exists():
-            paths.extend(
-                p
-                for p in (directory.iterdir() if name == "configs" else directory.rglob("*"))
-                if p.is_file()
-                and not (
-                    name == "note-search"
-                    and p.name.endswith(
-                        (".building", ".building-journal", ".building-wal", ".building-shm")
-                    )
-                )
-            )
-    with database.connect(root, readonly=True) as db:
-        auth.admin(db, request.cookies.get(auth.COOKIE, ""))
-        vault_id = request.query_params.get("vault_id")
-        row = db.execute("SELECT * FROM vaults WHERE id=?", (vault_id,)).fetchone()
-        if row is not None:
-            from .vault_catalog import physical_path
-
-            vault_root = physical_path(config, row)
-            paths.extend(
-                parent / ".knowledge-organizer-policy.json"
-                for parent in [*vault_root.parents, vault_root]
-            )
-    if len(paths) > 20000:
-        raise IntegrityError("display_observation_limit")
-    result: dict[str, Any] = {}
-    for path in paths:
-        try:
-            result[str(path)] = display_observation.signature(path)
-        except FileNotFoundError:
-            result[str(path)] = None
-    from .organization import store
-
-    with store.connection(config) as ledger:
-        if ledger is not None:
-            tables = {
-                r[0] for r in ledger.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            }
-            result["organization_business"] = {
-                table: [
-                    tuple(row)
-                    for row in ledger.execute(f"SELECT id,updated FROM {table} ORDER BY id")
-                ]
-                for table in sorted((store.TABLES & tables) - {"jobs", "package_scans"})
-            }
-            if "jobs" in tables:
-                result["organization_intents"] = [
-                    (
-                        row[0],
-                        value.get("generation"),
-                        value.get("plan_sha256"),
-                        value.get("confirmed"),
-                    )
-                    for row in ledger.execute("SELECT id,value FROM jobs ORDER BY id")
-                    for value in [json.loads(row[1])]
-                ]
-    return result
 
 
 async def respond(
@@ -142,6 +49,7 @@ async def respond(
     before = None
     messages: list[Any] = []
     observations: dict[Path, tuple[int, ...]] = {}
+    authorizations: dict[tuple[str, str, str], Any] = {}
     delivery_started = False
 
     async def error(code: str, status: int = 503) -> None:
@@ -157,12 +65,20 @@ async def respond(
     async def deliver(*_: Any) -> None:
         nonlocal delivery_started
         # Authorization is checked again, including expiry, even if no file changed.
-        after = await anyio.to_thread.run_sync(stamp, config, request)
+        try:
+            after = await anyio.to_thread.run_sync(stamp, config, request)
+        except InvalidInput as exc:
+            # The request was valid at preparation. A newly invalid/revoked source
+            # policy is a changed observation, never a reason to deliver old data.
+            raise IntegrityError("display_source_changed") from exc
         if before != after:
             timing["stage"] = "display_changed"
             await error("display_changed")
             return
         try:
+            await anyio.to_thread.run_sync(
+                display_observation.verify_authorizations, config, authorizations
+            )
             await anyio.to_thread.run_sync(display_observation.verify, observations)
         except FileNotFoundError:
             timing["stage"] = "display_changed"
@@ -202,12 +118,14 @@ async def respond(
             return
         token = display_observation.current.set(observations)
         pending_token = display_observation.pending_indexes.set(pending_indexes)
+        authorization_token = display_observation.authorizations.set(authorizations)
         try:
             timing["display_phase"] = "compute"
             await app(scope, receive, capture)
         finally:
             display_observation.current.reset(token)
             display_observation.pending_indexes.reset(pending_token)
+            display_observation.authorizations.reset(authorization_token)
         timing["display_phase"] = "deliver"
         await admitted(deliver)
     except auth.Denied as exc:

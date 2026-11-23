@@ -7,6 +7,20 @@ from fiber_bundle.config import IntegrityError, InvalidInput
 from fiber_bundle.organization import packages, store
 
 
+def test_register_package_without_name_based_exclusion(config, scope, package):
+    cid, vid, root = scope
+    relative = "01-Projects/protected_project/fake-thermal"
+    target = root / relative
+    target.parent.mkdir(parents=True)
+    package.rename(target)
+    before = {str(p): p.read_bytes() for p in target.rglob("*") if p.is_file()}
+    with database.connect(config.state_root) as db:
+        first = packages.register(config, db, cid, vid, relative)
+        assert first["path"] == relative
+        assert published_expert.text(config, db, cid, first["id"])["knowledge_verified"] is False
+    assert before == {str(p): p.read_bytes() for p in target.rglob("*") if p.is_file()}
+
+
 def test_register_repeat_and_lazy_text(config, scope, package, monkeypatch):
     cid, vid, root = scope
     before = {str(p): p.read_bytes() for p in package.rglob("*") if p.is_file()}

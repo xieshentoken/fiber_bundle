@@ -18,6 +18,7 @@ from .config import Config, IntegrityError, InvalidInput, contained
 from .inputs import canonical
 
 DATABASES = {
+    "vault-sync.sqlite3": 1,
     "supplier-intelligence.sqlite3": 1,
     "metadata.sqlite3": database.SCHEMA_VERSION,
     "weixin-inbox.sqlite3": 1,

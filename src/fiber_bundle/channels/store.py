@@ -13,26 +13,63 @@ from .. import auth, vaults
 from ..config import Config, InvalidInput, contained, make_directory
 from ..inputs import canonical
 
+SCHEMA_OBJECTS = {
+    ("table", "channels"),
+    ("table", "events"),
+    ("table", "legacy_channels"),
+    ("table", "channel_operations"),
+    ("index", "channel_operation_history"),
+    ("table", "channel_intake_policies"),
+    ("table", "channel_intake_records"),
+    ("table", "channel_intake_consumption"),
+}
+
+
+def schema_ready(db: sqlite3.Connection) -> bool:
+    if db.execute("PRAGMA user_version").fetchone()[0] != 3:
+        return False
+    present = {tuple(row) for row in db.execute("SELECT type,name FROM sqlite_master")}
+    return SCHEMA_OBJECTS <= present
+
+
+def initialize(db: sqlite3.Connection) -> None:
+    """Upgrade missing schema once; ordinary connections never reserve a writer.
+
+    Older version-3 databases can lack later additive intake tables. Check the
+    required objects on this connection, not a process-global readiness cache.
+    """
+    version = db.execute("PRAGMA user_version").fetchone()[0]
+    if version not in {0, 1, 2, 3}:
+        raise InvalidInput("channel_schema_unsupported")
+    if schema_ready(db):
+        return
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        # Another initializer may have completed while this connection waited.
+        version = db.execute("PRAGMA user_version").fetchone()[0]
+        if version not in {0, 1, 2, 3}:
+            raise InvalidInput("channel_schema_unsupported")
+        _schema(db)
+        if version != 3:
+            db.execute("PRAGMA user_version=3")
+        db.execute("COMMIT")
+    except BaseException:
+        db.execute("ROLLBACK")
+        raise
+
 
 def connection(config: Config) -> sqlite3.Connection:
     path = contained(config.state_root, "message-channels.sqlite3")
     db = sqlite3.connect(path, isolation_level=None, timeout=5)
-    path.chmod(0o600)
-    db.row_factory = sqlite3.Row
-    version = db.execute("PRAGMA user_version").fetchone()[0]
-    if version not in {0, 1, 2, 3}:
-        db.close()
-        raise InvalidInput("channel_schema_unsupported")
-    db.execute("PRAGMA foreign_keys=ON")
-    db.execute("PRAGMA synchronous=EXTRA")
-    db.execute("PRAGMA fullfsync=ON")
-    db.execute("BEGIN IMMEDIATE")
     try:
-        _schema(db)
-        db.execute("PRAGMA user_version=3")
-        db.execute("COMMIT")
+        if path.stat().st_mode & 0o777 != 0o600:
+            path.chmod(0o600)
+        db.row_factory = sqlite3.Row
+        db.execute("PRAGMA foreign_keys=ON")
+        db.execute("PRAGMA synchronous=EXTRA")
+        db.execute("PRAGMA fullfsync=ON")
+        initialize(db)
     except BaseException:
-        db.execute("ROLLBACK")
         db.close()
         raise
     return db
@@ -110,10 +147,12 @@ def home(config: Config, identity: str) -> Path:
     return contained(config.state_root, "configs/hermes-feishu-gui-" + identity)
 
 
-def authorize(config: Config, main: sqlite3.Connection, channel: dict[str, Any]) -> None:
+def authorize(
+    config: Config, main: sqlite3.Connection, channel: dict[str, Any], *, transport: bool = False
+) -> None:
     from .validation import require_permissions
 
-    require_permissions(config, main, channel)
+    require_permissions(config, main, channel, transport=transport)
 
 
 def save(

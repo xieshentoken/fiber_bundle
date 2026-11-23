@@ -37,7 +37,11 @@ def status(config: Any, db: Any, job: Any) -> dict[str, Any]:
     try:
         validate(config, db, job)
     except (IntegrityError, InvalidInput) as error:
-        return {"state": "invalidated", "reason": str(error)}
+        return {
+            "state": "invalidated",
+            "reason": str(error),
+            **({"issues": error.issues} if hasattr(error, "issues") else {}),
+        }
     except auth.Denied:
         return {"state": "invalidated", "reason": "maintenance_authorization_or_policy_changed"}
     return {"state": "valid"}

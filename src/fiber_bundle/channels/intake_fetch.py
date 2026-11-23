@@ -1,9 +1,12 @@
 """Finite literal webpage acquisition; source hosts and auxiliary CDNs are distinct."""
 
+from __future__ import annotations
+
+import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import parse_qs, urlsplit
 
 from .. import article_fetch, articles
@@ -14,6 +17,21 @@ from ..inputs import AssetInput, canonical
 from ..objects import digest
 from . import intake_links
 
+if TYPE_CHECKING:
+    from .intake_article_checkpoint import ArticleCheckpoint
+
+_log = logging.getLogger(__name__)
+
+
+def checkpoint_io[T, **P](operation: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T | None:
+    try:
+        return operation(*args, **kwargs)
+    except InvalidInput as exc:
+        if str(exc) != "intake_checkpoint_unavailable":
+            raise
+        _log.warning("intake_checkpoint_unavailable: %s", operation.__name__)
+        return None
+
 
 @dataclass(frozen=True)
 class Content:
@@ -23,7 +41,13 @@ class Content:
 
 
 def acquire(
-    url: str, settings: dict[str, Any], reserve: Callable[[str], None], guard: Callable[[], None]
+    url: str,
+    settings: dict[str, Any],
+    reserve: Callable[[str], None],
+    guard: Callable[[], None],
+    *,
+    checkpoint: ArticleCheckpoint | None = None,
+    progress: Callable[[int, int], None] | None = None,
 ) -> Content:
     deadline = time.monotonic() + 180
     acquired: dict[str, article_fetch.Response] = {}
@@ -34,7 +58,12 @@ def acquire(
             raise InvalidInput("intake_fetch_timeout")
 
     def fetch(
-        value: str, limit: int, *, auxiliary: set[str] | None = None
+        value: str,
+        limit: int,
+        *,
+        auxiliary: set[str] | None = None,
+        image_retry: bool = False,
+        cached: article_fetch.Response | None = None,
     ) -> article_fetch.Response:
         check()
         if value in acquired:
@@ -42,7 +71,6 @@ def acquire(
             if len(previous.data) > limit:
                 raise InvalidInput("intake_resource_over_limit")
             return previous
-        reserve(value)
 
         def validate(hop: str) -> None:
             check()
@@ -66,7 +94,19 @@ def acquire(
                 elif expected.path.startswith("/bfs/subtitle/") and target.path != expected.path:
                     raise InvalidInput("intake_subtitle_binding_invalid")
 
-        response = article_fetch.fetch_public(value, limit, validate=validate)
+        if cached is not None:
+            for hop in (*cached.redirects, cached.url):
+                validate(hop)
+            response = cached
+        else:
+            reserve(value)
+            response = (
+                article_fetch.fetch_image(
+                    value, limit, validate=validate, guard=guard, deadline=deadline
+                )
+                if image_retry
+                else article_fetch.fetch_public(value, limit, validate=validate)
+            )
         check()
         if len(response.data) > limit:
             raise InvalidInput("intake_resource_over_limit")
@@ -74,7 +114,8 @@ def acquire(
         return response
 
     source = intake_links.normalize(url)
-    response = fetch(source, articles.MAX_HTML_BYTES)
+    cached_source = checkpoint_io(checkpoint.load_source) if checkpoint else None
+    response = fetch(source, articles.MAX_HTML_BYTES, cached=cached_source)
     chain = list(response.redirects) or [source, response.url]
     final = intake_links.checked_redirects(chain, settings)
     kind = intake_links.site(final)
@@ -86,7 +127,7 @@ def acquire(
         "source_sha256": digest(response.data),
         "site": kind,
     }
-    if kind in {"x", "wechat"}:
+    if kind in {"x", "wechat", "fibermall"}:
         if not settings["fetch_articles"]:
             raise InvalidInput("intake_article_extraction_off")
         parsed = articles.parse_article(
@@ -97,15 +138,52 @@ def acquire(
         )
         if kind == "x" and parsed.marker not in {"x:article+content_state", "x:article+draftjs"}:
             raise InvalidInput("intake_x_article_serialization_required")
-        cdns = {"mmbiz.qpic.cn", "mmbiz.qlogo.cn"} if kind == "wechat" else {"pbs.twimg.com"}
-        images = {}
+        if checkpoint is not None and kind == "wechat" and cached_source is None:
+            check()
+            checkpoint_io(checkpoint.save_source, response)
+        cdns = {
+            "wechat": {"mmbiz.qpic.cn", "mmbiz.qlogo.cn"},
+            "x": {"pbs.twimg.com"},
+            "fibermall": {"fibermall.com", "www.fibermall.com"},
+        }[kind]
+        images: dict[int, articles.ImageBytes] = {}
         total = 0
+        image_count = len(parsed.images)
+        if progress is not None and kind == "wechat":
+            progress(0, image_count)
         for reference in parsed.images:
-            image = fetch(reference.url, articles.MAX_IMAGE_BYTES, auxiliary=cdns)
+            new_resource = reference.url not in acquired
+            cached = (
+                checkpoint_io(checkpoint.load_image, response, reference.url)
+                if checkpoint and kind == "wechat" and new_resource
+                else None
+            )
+            image = fetch(
+                reference.url,
+                articles.MAX_IMAGE_BYTES,
+                auxiliary=cdns,
+                image_retry=kind == "wechat",
+                cached=cached,
+            )
             total += len(image.data)
             if total > articles.MAX_TOTAL_IMAGE_BYTES:
-                raise InvalidInput("intake_image_total_limit")
-            images[reference.index] = articles.ImageBytes(image.data, image.content_type)
+                raise InvalidInput(
+                    "intake_article_image_total_limit"
+                    if kind == "wechat"
+                    else "intake_image_total_limit"
+                )
+            entry = articles.ImageBytes(image.data, image.content_type)
+            if kind == "wechat":
+                try:
+                    articles.validate_image(entry, reference.index)
+                except articles.ArticleError as exc:
+                    raise InvalidInput("intake_article_image_response_invalid") from exc
+                if checkpoint is not None and cached is None and new_resource:
+                    check()
+                    checkpoint_io(checkpoint.save_image, response, reference.url, image)
+            images[reference.index] = entry
+            if progress is not None and kind == "wechat":
+                progress(len(images), image_count)
         draft = articles.complete_article(parsed, images)
         files = content_files(VerifiedCapture(draft, response.data, response.content_type, final))
         return Content(

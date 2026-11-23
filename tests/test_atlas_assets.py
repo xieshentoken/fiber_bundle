@@ -12,6 +12,9 @@ def test_root_admits_one_renderer_and_packages_atlas(http):
         "atlas/index.html",
         "atlas/main.js",
         "atlas/vault_index.js",
+        "index_activity.js",
+        "index_activity_api.js",
+        "index_activity.css",
         "atlas/mark.svg",
     ]:
         asset = http.get("/static/" + path)

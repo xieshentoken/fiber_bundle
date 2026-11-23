@@ -15,7 +15,6 @@ from . import (
     file_exchange,
     moc_store,
     note_identity_store,
-    note_inventory,
     note_placement,
     publication_links,
     publication_locations,
@@ -24,6 +23,7 @@ from . import (
 )
 from .config import Config, IntegrityError, contained
 from .inputs import canonical
+from .note_read_session import reuse
 from .objects import digest
 from .publication_file_io import read
 
@@ -151,6 +151,9 @@ def move(
 ) -> None:
     if value["action"] == "associate_only":
         return
+    from .archive_link_planning import verify
+
+    verify(root, scope, value)
     source, target = value["source_root"], value["target_root"]
     old, new = contained(root, source), contained(root, target)
     updates = {u["path"]: u for u in value["updates"]}
@@ -201,17 +204,44 @@ def complete(
     updates = {u["path"]: u for u in value["updates"]}
     candidates = list(value["all_paths"]) if "all_paths" in value else []
     # Baseline hashes follow only controlled link rewrites; human differences remain revisions.
-    from .vault_scope import entries, for_vault
+    from .vault_scope import for_vault, metadata_entries, relative_path
 
     scope = for_vault(root, auth.grant(db, value["client_id"], value["vault_id"], "query"))
     import stat
 
-    candidates.extend(
-        p.relative_to(root).as_posix() for p, i in entries(root, scope) if stat.S_ISREG(i.st_mode)
+    from .partial_notes import validate as validate_omissions
+
+    omissions = validate_omissions(value.get("read_omissions", {}))
+    if any(not scope.allows(path) for path in omissions):
+        raise IntegrityError("partial_note_scope_changed")
+    from . import publication_location_selection
+
+    changed_paths = set(updates) | {old for old, new in value["moves"].items() if old != new}
+    needs_baseline = any(
+        path in updates
+        for row in publication_location_selection.affected(db, value["vault_id"], changed_paths)
+        for path in row["plan"]["mapping"].values()
     )
-    candidates.extend(value["moves"])
+    # Candidate names are consumed only by an actual publication-baseline
+    # rewrite. Keep the optional census outside the transaction so its audited
+    # read can release the cooperative writer. Selection is fresh again below.
+    if needs_baseline:
+        candidates.extend(omissions)
+        candidates.extend(
+            relative_path(root, p)
+            for p, i in metadata_entries(
+                root, scope, file_filter=lambda p: relative_path(root, p) not in omissions
+            )
+            if stat.S_ISREG(i.st_mode)
+        )
+        candidates.extend(value["moves"])
     with database.transaction(db):
-        for row in note_placement.locations(db, value["vault_id"]):
+        affected = publication_location_selection.affected(db, value["vault_id"], changed_paths)
+        if not needs_baseline and any(
+            path in updates for row in affected for path in row["plan"]["mapping"].values()
+        ):
+            raise IntegrityError("placement_location_changed")
+        for row in affected:
             if row is None:
                 continue
             plan = row["plan"]
@@ -307,12 +337,74 @@ def complete(
                 after,
                 expected_revision=before["revision"],
             )
-        persist(db, operation, value, "completed")
-    from .note_search_jobs import record
+        value["committed_locations"] = [
+            {
+                "kind": row["kind"],
+                "publication_id": row["publication_id"],
+                "sha256": digest(
+                    canonical(
+                        publication_locations.get(db, row["kind"], row["publication_id"])
+                    ).encode()
+                ),
+            }
+            for row in affected
+        ]
+        # MOC projection evidence is finalized by the caller. A crash between
+        # metadata commit and that journal must remain explicitly recoverable.
+        value["metadata_committed"] = True
+        persist(db, operation, value, "applying")
+    from .note_search_jobs import changed as mark_index_changed
+    from .placement_sync import committed as observe_committed
 
-    record(config, value["vault_id"], "pending", reason="document_publication")
+    observe_committed(config, db, operation, value, root)
+    mark_index_changed(config, value["vault_id"])
 
 
+def apply_writes(
+    config: Config,
+    db: sqlite3.Connection,
+    client: str,
+    vault: str,
+    operation: str,
+    value: dict[str, Any],
+    root: Path,
+    scope: Any,
+    *,
+    reconcile: bool,
+) -> None:
+    """Execute or reconcile the original CAS write phase, before metadata commits."""
+    if value["association"]:
+        association = value["association"]
+        after = moc_store.Record(**association["after"])
+        current = moc_store.load(config, vault, association["moc_id"])
+        if current != after:
+            moc_store.save(
+                config,
+                vault,
+                association["moc_id"],
+                client,
+                after,
+                "placement_manual_link",
+                association["before"]["revision"],
+            )
+        value["association_applied"] = True
+        persist(db, operation, value, "applying")
+    if (
+        reconcile
+        and value["target_root"]
+        and not contained(root, value["source_root"]).exists()
+        and contained(root, value["target_root"]).exists()
+    ):
+        move(db, operation, value, root, scope)
+    for update in value["updates"]:
+        check(config, db, value)
+        exchange(config, db, operation, value, root, scope, update)
+    check(config, db, value)
+    move(db, operation, value, root, scope)
+    complete(config, db, operation, value, root)
+
+
+@reuse()
 def apply(
     config: Config,
     db: sqlite3.Connection,
@@ -321,6 +413,7 @@ def apply(
     operation: str,
     *,
     reconcile: bool = False,
+    namespace_addition: Any = None,
 ) -> dict[str, Any]:
     row = db.execute(
         "SELECT * FROM vault_operations WHERE id=? AND vault_id=? AND kind='note_placement'",
@@ -329,10 +422,15 @@ def apply(
     if row is None:
         raise auth.Denied(404)
     value = json.loads(row["payload"])
+    if namespace_addition is not None and not value.get("metadata_committed"):
+        raise IntegrityError("placement_namespace_addition_conflict")
     if value["client_id"] != client:
         raise auth.Denied(404)
     if row["state"] == "completed":
-        check(config, db, value)
+        root, _ = check(config, db, value)
+        from .placement_sync import committed as observe_committed
+
+        observe_committed(config, db, operation, value, root)
         return note_placement.result(operation, row["state"], value)
     if (
         row["state"] == "cancelled"
@@ -348,47 +446,75 @@ def apply(
     if row["state"] == "prepared":
         if time.time() > value["expires_at"]:
             raise IntegrityError("placement_preview_expired")
-        inv = note_inventory.read(config, db, auth.grant(db, client, vault, "query"))
+        from .partial_notes import read as read_inventory
+
+        inv = read_inventory(
+            config, db, auth.grant(db, client, vault, "query"), value.get("read_omissions")
+        )
         observed_notes = [
             (n.relative_path, n.sha256, n.identity, n.publication_id, list(n.file_key or ()))
             for n in inv.notes
         ]
         if canonical(observed_notes) != canonical(value["note_snapshot"]):
             raise IntegrityError("placement_note_changed")
+    from .archive_link_planning import verify
+
+    if value["action"] != "associate_only" and not value.get("metadata_committed"):
+        verify(root, scope, value)
     persist(db, operation, value, "applying")
+    already_committed = bool(value.get("metadata_committed"))
     try:
-        if value["association"]:
-            association = value["association"]
-            after = moc_store.Record(**association["after"])
-            current = moc_store.load(config, vault, association["moc_id"])
-            if current != after:
-                moc_store.save(
-                    config,
-                    vault,
-                    association["moc_id"],
-                    client,
-                    after,
-                    "placement_manual_link",
-                    association["before"]["revision"],
-                )
-            value["association_applied"] = True
-            persist(db, operation, value, "applying")
-        if (
-            reconcile
-            and value["target_root"]
-            and not contained(root, value["source_root"]).exists()
-            and contained(root, value["target_root"]).exists()
-        ):
-            move(db, operation, value, root, scope)
-        for update in value["updates"]:
-            check(config, db, value)
-            exchange(config, db, operation, value, root, scope, update)
-        check(config, db, value)
-        move(db, operation, value, root, scope)
-        complete(config, db, operation, value, root)
+        if already_committed:
+            from .placement_committed import verify as verify_committed
+            from .placement_sync import committed as observe_committed
+
+            verify_committed(
+                config,
+                db,
+                value,
+                root,
+                scope,
+                **(
+                    {"namespace_addition": namespace_addition}
+                    if namespace_addition is not None
+                    else {}
+                ),
+            )
+        else:
+            apply_writes(
+                config, db, client, vault, operation, value, root, scope, reconcile=reconcile
+            )
         from .moc_placement_projection import finalize
 
-        finalize(config, db, operation, value, root)
+        finalize(
+            config,
+            db,
+            operation,
+            value,
+            root,
+            **(
+                {"namespace_addition": namespace_addition} if namespace_addition is not None else {}
+            ),
+        )
+        if already_committed:
+            check(config, db, value)
+            verify_committed(
+                config,
+                db,
+                value,
+                root,
+                scope,
+                **(
+                    {"namespace_addition": namespace_addition}
+                    if namespace_addition is not None
+                    else {}
+                ),
+            )
+            observe_committed(config, db, operation, value, root)
+            from .note_search_jobs import changed as mark_index_changed
+
+            mark_index_changed(config, vault)
+        persist(db, operation, value, "completed")
     except BaseException:
         persist(db, operation, value, "reconcile")
         raise

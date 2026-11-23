@@ -6,33 +6,62 @@ from dataclasses import replace
 
 from . import note_index, note_inventory, vaults
 from . import note_search_cache as cache
+from . import note_search_inventory_state as state
 from .config import Config, IntegrityError
+from .vault_sync.scanner import signature
 
 
 def read(
     config: Config, db: sqlite3.Connection, vault: sqlite3.Row, *, selected: set[str]
 ) -> note_inventory.Inventory:
+    from .operation_dependencies import check
+
+    check(config, db, vault["id"])
     with cache.connection(config, vault["id"]) as index:
         if index is None:
+            from .vault_sync import store
+
+            if store.library(config, vault["id"]) is not None:
+                if selected:
+                    raise cache.IndexUnavailable("note_index_update_required")
+                return note_inventory.Inventory(
+                    vaults.checked_vault(config, vault),
+                    [],
+                    {},
+                    {},
+                    {},
+                    {
+                        "scope": "indexed_sources",
+                        "complete": False,
+                        "unavailable_count": 1,
+                        "unavailable": [{"reason": "index_unavailable"}],
+                    },
+                    "index_unavailable",
+                )
             return note_inventory.read(config, db, vault)
-        if cache.status(config, db, vault)["state"] != "ready":
-            raise cache.IndexUnavailable("note_index_update_required")
+        before = state.read(config, db, vault, index)
         root = vaults.checked_vault(config, vault)
         from .vault_scope import for_vault
 
         scope = for_vault(root, vault)
         notes = []
+        observed = {}
         for number, row in enumerate(index.execute("SELECT metadata FROM notes ORDER BY path"), 1):
             if number > note_index.Limits().entries:
                 raise IntegrityError("note index metadata limit")
             value = json.loads(row[0])
             value["file_key"] = tuple(value["file_key"]) if value["file_key"] is not None else None
             cached = note_index.Note(**value)
-            if not scope.allows(cached.relative_path):
-                raise cache.IndexUnavailable("note_index_update_required")
             if cached.text != "":
                 raise IntegrityError("note index contains unexpected source body")
+            if cached.relative_path in before.omitted:
+                if cached.identity in selected:
+                    raise cache.IndexUnavailable("note_index_update_required")
+                continue
+            if not scope.allows(cached.relative_path):
+                raise cache.IndexUnavailable("note_index_update_required")
             if cached.identity in selected:
+                observed[cached.relative_path] = signature((root / cached.relative_path).lstat())
                 current = note_index.read_note(
                     root, cached.relative_path, note_index.Limits().note_bytes
                 )
@@ -67,7 +96,11 @@ def read(
                 for note in notes
                 if note.publication_id is not None and note.publication_path is not None
             },
+            before.coverage,
+            before.token,
         )
-        if cache.status(config, db, vault)["state"] != "ready":
+        if state.read(config, db, vault, index).token != before.token:
             raise cache.IndexUnavailable("note_index_update_required")
+        if any(signature((root / path).lstat()) != value for path, value in observed.items()):
+            raise IntegrityError("note index source changed before delivery")
         return inventory

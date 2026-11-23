@@ -1,3 +1,6 @@
+import { readInboxReviewDiagnostic } from "./organization_inbox_review_api.js";
+import { validIndexDependency } from "./index_activity_api.js";
+import { indexDependencyText } from "./note_index_errors.js";
 import { requestErrors, retryableReadFailure } from "./request_errors.js";
 import { createSupplierApi } from "./suppliers_api.js";
 import { waitForReadRetry } from "./read_retry.js";
@@ -16,6 +19,12 @@ import { createVaultMergeApi } from "./vault_merge_api.js";
 import { createAgentApi, agentErrorText } from "./agent_api.js";
 import { channelQr } from "./channel_qr.js";
 import { noteIndexErrorText } from "./note_index_errors.js";
+import {
+  readObservationDiagnostic,
+  organizationDiagnostic,
+} from "./organization_diagnostics.js";
+import { createNoteSearchApi } from "./note_search_api.js";
+import { createIndexActivityApi } from "./index_activity_api.js";
 import { createGraphApi } from "./knowledge_graph_api.js";
 import {
   createVaultPlacementApi,
@@ -27,12 +36,24 @@ import { vaultCatalogErrorText } from "./vault_catalog_errors.js";
 import { createChannelApi, channelErrorText } from "./channel_api.js";
 // The only HTTP dependency of the frontend. Feature views use named operations.
 export class ApiError extends Error {
-  constructor(message, status = 0, code = "", issues = [], field = "") {
+  constructor(
+    message,
+    status = 0,
+    code = "",
+    issues = [],
+    field = "",
+    taskId = "",
+    diagnostic = null,
+    dependency = null,
+  ) {
     super(message);
     this.status = status;
     this.code = code;
     this.issues = issues;
     this.field = field;
+    if (taskId) this.taskId = taskId;
+    if (diagnostic) this.diagnostic = diagnostic;
+    if (dependency) this.dependency = dependency;
   }
 }
 const errors = {
@@ -160,7 +181,7 @@ export function createAdminApi(
     validate = record,
     options = {},
   ) {
-    if (method !== "GET") onMutation();
+    if (method !== "GET" && path !== "/admin/note-search") onMutation();
     if (options.signal?.aborted)
       throw new ApiError("读取已取消。", 0, "cancelled");
     const revision = session.revision,
@@ -173,6 +194,10 @@ export function createAdminApi(
         "/admin/organization/members",
         "/admin/organization/members/batch",
       ].includes(path);
+    const channelEvidenceRead =
+      method === "POST" &&
+      /^\/admin\/channels\/[^/]+\/test$/.test(path) &&
+      body?.execute_model === false;
     let timedOut = false;
     const timeout = setTimeout(
       () => {
@@ -189,10 +214,12 @@ export function createAdminApi(
             ? 35000
             : path === "/admin/models/discover"
               ? 30000
-              : path.startsWith("/admin/organization") ||
+              : channelEvidenceRead ||
+                  path.startsWith("/admin/organization") ||
                   path.startsWith("/admin/note-index/status") ||
                   path.startsWith("/admin/vault-") ||
-                  path.startsWith("/admin/knowledge-graph/")
+                  path.startsWith("/admin/knowledge-graph/") ||
+                  path === "/admin/note-search"
                 ? 60000
                 : 10000,
     );
@@ -212,7 +239,8 @@ export function createAdminApi(
       } catch {
         if (options.signal?.aborted)
           throw new ApiError("读取已取消。", 0, "cancelled");
-        if (!timedOut || !membershipWrite) onConnection(false);
+        if ((!timedOut || !membershipWrite) && !options.quietConnection)
+          onConnection(false);
         throw new ApiError(
           timedOut
             ? "本次读取超时，请稍后刷新。"
@@ -223,7 +251,7 @@ export function createAdminApi(
       }
       if (options.signal?.aborted)
         throw new ApiError("读取已取消。", 0, "cancelled");
-      onConnection(true);
+      if (!options.quietConnection) onConnection(true);
       // A response from an older session must not repopulate cleared data or end a new session.
       if (revision !== session.revision)
         throw new ApiError("会话已变化，请刷新后重试。", 409);
@@ -240,7 +268,10 @@ export function createAdminApi(
         let detail,
           code = "",
           issues = [],
-          field = "";
+          field = "",
+          taskId = "",
+          diagnostic = null,
+          dependency = null;
         {
           try {
             const body = await response.json();
@@ -250,6 +281,15 @@ export function createAdminApi(
               /^[a-z][a-z0-9_]{0,95}$/.test(body.error)
             )
               code = body.error;
+            if (
+              path === "/admin/organization/maintenance" &&
+              code === "maintenance_submission_result_unavailable" &&
+              typeof body.task_id === "string" &&
+              /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(
+                body.task_id,
+              )
+            )
+              taskId = body.task_id;
             if (record(body) && path.startsWith("/admin/agent-connections")) {
               detail = agentErrorText(body.error);
               if (detail) detail += `（${body.error}）`;
@@ -273,8 +313,54 @@ export function createAdminApi(
                 vaultPlacementErrorText(body.error);
             if (record(body) && path.startsWith("/admin/note-index"))
               detail = noteIndexErrorText(body.error);
+            if (record(body) && path.startsWith("/admin/organization"))
+              issues = Array.isArray(body.issues)
+                ? body.issues
+                    .filter(
+                      (item) =>
+                        record(item) &&
+                        typeof item.path === "string" &&
+                        item.path.length <= 2048 &&
+                        typeof item.reason === "string" &&
+                        /^[a-z_]{1,100}$/.test(item.reason),
+                    )
+                    .slice(0, 100)
+                : [];
+            if (
+              record(body) &&
+              path.startsWith("/admin/organization/inbox-review/")
+            )
+              diagnostic = readInboxReviewDiagnostic(body.error_detail);
             if (Object.hasOwn(requestErrors, code))
               detail = requestErrors[code][0];
+            if (
+              record(body) &&
+              (path.startsWith("/admin/organization/maintenance/") ||
+                (code === "moc_retained_member_limit" &&
+                  path.startsWith("/admin/organization/")))
+            ) {
+              diagnostic = readObservationDiagnostic(body.error_detail);
+              if (diagnostic) {
+                const problem = organizationDiagnostic({
+                  ...(path.startsWith("/admin/organization/maintenance/") &&
+                  path.endsWith("/confirm")
+                    ? { state: "preview", confirmed: false }
+                    : {}),
+                  error: code,
+                  error_detail: diagnostic,
+                });
+                if (problem) detail = String(problem.text);
+                detail = [
+                  detail,
+                  diagnostic.path,
+                  diagnostic.phase,
+                  ...diagnostic.changed_fields,
+                  ...(problem?.facts || []),
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+              }
+            }
             if (record(body) && body.error === "event_conflict")
               detail = "事件内容冲突。";
             if (
@@ -310,6 +396,10 @@ export function createAdminApi(
                 "笔记已变化，全文索引需要更新。更新完成前不会交付旧内容。";
             if (record(body) && body.error === "note_index_match_limit")
               detail = "匹配内容过多，请缩小知识库范围或补充更具体的关键词。";
+            if (record(body) && validIndexDependency(body.dependency)) {
+              dependency = body.dependency;
+              detail = indexDependencyText(dependency);
+            }
           } catch {
             // Only a recognized bounded code may override the local fallback message.
           }
@@ -334,6 +424,9 @@ export function createAdminApi(
           code,
           issues,
           field,
+          taskId,
+          diagnostic,
+          dependency,
         );
       }
       let data;
@@ -394,6 +487,8 @@ export function createAdminApi(
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   return {
+    ...createNoteSearchApi(request),
+    ...createIndexActivityApi(request),
     suppliers: createSupplierApi(request, pathId),
     modelsApi: createModelsApi(request),
     video: createVideoApi(request),

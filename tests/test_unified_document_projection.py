@@ -1,5 +1,9 @@
 """Real document publisher, lossless review ledger and version-two projected part identities."""
 
+import json
+import sqlite3
+from unittest.mock import patch
+
 from test_document_parts import chapters, processed
 from test_publication_layout import activate
 from test_session_search import owner as session_owner  # noqa: F401
@@ -10,9 +14,11 @@ from fiber_bundle import (
     document_parts,
     document_publication,
     note_inventory,
+    publication_locations,
     search,
     vault_save_contract,
 )
+from fiber_bundle.inputs import canonical
 
 
 def test_split_documents_keep_identity_and_review_metadata_in_inbox(http, config, store, owner):
@@ -27,8 +33,43 @@ def test_split_documents_keep_identity_and_review_metadata_in_inbox(http, config
             db, owner[2]["personal"], config.vault_path("test vault/temp_vault1")
         )
         assert len(parts) > 2
-        notes = note_inventory.read(
-            config, db, auth.grant(db, owner[0], owner[2]["personal"], "query")
+        location = publication_locations.get(db, "document", rid)
+        location["plan"]["large_test_evidence"] = "synthetic-document" * 100000
+        wire = canonical(location["plan"])
+        db.execute(
+            "UPDATE publication_locations SET value=? WHERE kind='document' AND publication_id=?",
+            (wire, rid),
+        )
+        reads, decodes = [], []
+        original_loads = json.loads
+
+        def decode(value, *args, **kwargs):
+            if value == wire:
+                decodes.append(len(value))
+            return original_loads(value, *args, **kwargs)
+
+        def row(cursor, values):
+            result = sqlite3.Row(cursor, values)
+            if "value" in result.keys() and result["value"] == wire:
+                reads.append(len(result["value"]))
+            return result
+
+        db.row_factory = row
+        with patch.object(json, "loads", decode):
+            notes = note_inventory.read(
+                config, db, auth.grant(db, owner[0], owner[2]["personal"], "query")
+            )
+        db.row_factory = sqlite3.Row
+        assert reads == decodes == [len(wire)]
+        projection = publication_locations.project_inventory(db, owner[2]["personal"])
+        assert (
+            document_parts.bindings(
+                db,
+                owner[2]["personal"],
+                config.vault_path("test vault/temp_vault1"),
+                body_projections=projection.document_projections,
+            )
+            == parts
         )
         assert {p.note_id for p in parts.values()} <= {n.identity for n in notes.notes}
         hit = search.vault_search(config, db, owner[0], "chapter-token-7", [owner[2]["personal"]])[

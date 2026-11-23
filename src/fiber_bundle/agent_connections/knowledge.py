@@ -38,7 +38,13 @@ def notes(
     config: Config, db: sqlite3.Connection, cid: str, vid: str, quality: str
 ) -> tuple[Any, Any, list[Any]]:
     vault = auth.grant(db, cid, vid, "query")
-    inventory = note_inventory.read(config, db, vault)
+    from .. import indexed_sources, note_search_inventory
+
+    inventory = (
+        note_search_inventory.read(config, db, vault, selected=set())
+        if indexed_sources.managed(config, vid)
+        else note_inventory.read(config, db, vault)
+    )
     result = []
     for note in inventory.notes:
         provenance = note_provenance.describe(config, db, cid, vault, inventory, note)
@@ -84,9 +90,19 @@ def catalog(
                     **provenance,
                 }
             )
+        from .. import indexed_sources
         from ..organization import packages
 
-        items.extend(packages.listing(config, db, cid, vid))
+        indexed = (
+            indexed_sources.read(config, db, cid, auth.grant(db, cid, vid, "query"))
+            if indexed_sources.managed(config, vid)
+            else None
+        )
+        items.extend(
+            packages.listing(
+                config, db, cid, vid, identities=set(indexed.experts) if indexed else None
+            )
+        )
         for row in db.execute(
             "SELECT p.task_id FROM source_expert_publications p JOIN source_imports i "
             "ON i.id=p.task_id LEFT JOIN publication_locations l ON l.kind='expert' "
@@ -96,6 +112,8 @@ def catalog(
         ):
             try:
                 module = published_expert.text(config, db, cid, row[0])
+                if not indexed_sources.expert_allowed(config, db, cid, module):
+                    continue
             except auth.Denied:
                 continue
             items.append(
@@ -138,6 +156,7 @@ def read_evidence(
         module = published_expert.text(
             config, db, cid, request.module_id.removeprefix("expert:"), request.expected_version
         )
+        _require_indexed(config, db, cid, module)
         if request.kind not in {"module", "object", "anchor", "attachment"}:
             raise InvalidInput("knowledge_evidence_kind")
         if request.kind == "module":
@@ -342,7 +361,16 @@ def query_expert(
 
     with database.locked(config), database.connect(config.state_root) as db:
         module = published_expert.text(config, db, cid, module_id[7:], expected)
+        _require_indexed(config, db, cid, module)
     result = execute(module, question, limit)
     with database.locked(config), database.connect(config.state_root) as db:
         current = published_expert.text(config, db, cid, module_id[7:], expected)
+        _require_indexed(config, db, cid, current)
         return deliver(module, current, result)
+
+
+def _require_indexed(config: Config, db: sqlite3.Connection, cid: str, module: Any) -> None:
+    from ..indexed_sources import expert_allowed
+
+    if not expert_allowed(config, db, cid, module):
+        raise InvalidInput("knowledge_module_not_indexed")

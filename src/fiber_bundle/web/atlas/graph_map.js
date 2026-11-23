@@ -366,5 +366,15 @@ export function createGraphMap(graph, scope) {
     ),
   );
   clear(detail, empty(t("pick"), { iconName: "graph" }));
-  return { node, load, dispose, dirty: () => hasUnsavedChanges(detail) };
+  return {
+    node,
+    load,
+    dispose,
+    clear() {
+      dispose();
+      query.value = "";
+      results.replaceChildren();
+    },
+    dirty: () => hasUnsavedChanges(detail),
+  };
 }

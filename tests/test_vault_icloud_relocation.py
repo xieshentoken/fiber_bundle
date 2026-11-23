@@ -29,11 +29,14 @@ def cloud_location(config, relocation, tmp_path, monkeypatch):
     moved = source.with_name("L2")
     source.rename(moved)
     with database.connect(config.state_root) as db:
-        db.execute("UPDATE vaults SET absolute_root=? WHERE id=?", (str(moved), vid))
+        db.execute(
+            "UPDATE vaults SET absolute_root=?,scope_json=? WHERE id=?",
+            (str(moved), json.dumps({"include": [""], "exclude": ["01-Projects/private"]}), vid),
+        )
     container = tmp_path / "Mobile Documents/iCloud~md~obsidian/Documents"
     container.mkdir(parents=True)
     monkeypatch.setattr(icloud, "OBSIDIAN", container)
-    return moved, container / "L2_vault", vid, client, mid
+    return moved, container / "ExampleVault", vid, client, mid
 
 
 def test_opt_in_icloud_keeps_file_note_vault_and_manual_moc_identities(config, cloud_location):
@@ -44,14 +47,14 @@ def test_opt_in_icloud_keeps_file_note_vault_and_manual_moc_identities(config, c
     execution.start(config, packet["id"], packet["plan_sha256"])
     result = finish(config, packet)
     assert result["state"] == "complete" and not source.exists()
-    assert files.inventory(target, icloud=True, excluded=("01-Projects/GF_supply_chain",)) == before
+    assert files.inventory(target, icloud=True, excluded=("01-Projects/private",)) == before
     assert moc_store.load(config, vid, mid) == manual
     with database.connect(config.state_root) as db:
         row = db.execute("SELECT * FROM vaults WHERE id=?", (vid,)).fetchone()
         assert row["absolute_root"] == str(target)
-        assert json.loads(row["scope_json"])["exclude"] == ["01-Projects/GF_supply_chain"]
+        assert json.loads(row["scope_json"])["exclude"] == ["01-Projects/private"]
         assert vaults.checked_vault(config, row) == target
-        assert vault_scope.for_vault(target, row).exclude == ("01-Projects/GF_supply_chain",)
+        assert vault_scope.for_vault(target, row).exclude == ("01-Projects/private",)
 
 
 @pytest.mark.parametrize(
@@ -78,7 +81,7 @@ def test_cloud_interruption_can_resume_or_restore_without_new_ingestion(
         row = db.execute("SELECT * FROM vaults WHERE id=?", (vid,)).fetchone()
         assert row["absolute_root"] == str(target if action == "resume" else source)
         if action == "restore":
-            assert json.loads(row["scope_json"])["exclude"] == []
+            assert json.loads(row["scope_json"])["exclude"] == ["01-Projects/private"]
 
 
 def test_cloud_mode_is_explicit_and_container_is_restricted(config, cloud_location):
@@ -94,7 +97,7 @@ def test_cloud_mode_is_explicit_and_container_is_restricted(config, cloud_locati
 
 def test_protected_entries_stop_before_their_metadata_is_read(config, cloud_location, monkeypatch):
     source, target, vid, _, _ = cloud_location
-    protected = source / "01-Projects/GF_supply_chain"
+    protected = source / "01-Projects/private"
     protected.mkdir(parents=True)
     original = Path.lstat
 
@@ -114,10 +117,10 @@ def test_real_helper_excludes_before_reading_denied_symlink_metadata(cloud_locat
     root.mkdir()
     (root / "allowed.md").write_text("synthetic")
     (root / "01-Projects").mkdir()
-    (root / "01-Projects/GF_supply_chain").symlink_to(tmp_path / "missing-private")
+    (root / "01-Projects/private").symlink_to(tmp_path / "missing-private")
     result = json.loads(
         subprocess.check_output(
-            [helper, "--tree-excluding", str(root), json.dumps(["01-Projects/GF_supply_chain"])]
+            [helper, "--tree-excluding", str(root), json.dumps(["01-Projects/private"])]
         )
     )
     assert result["available"] is False and result["excluded_present"] == 1
@@ -215,14 +218,14 @@ def test_batched_scope_preserves_fingerprint_and_never_probes_denied_children(
         with monkeypatch.context() as context:
             context.setattr(vault_scope, "entries", unbatched)
             assert note_search_cache.fingerprint(config, db, vault) == actual
-        protected = target / "01-Projects/GF_supply_chain"
+        protected = target / "01-Projects/private"
         protected.mkdir(parents=True)
         (protected / "private.md").write_text("not authorized")
         available = cloud_files.require_available_many
         sent = []
 
         def batch(parent, names):
-            assert "GF_supply_chain" not in names
+            assert "private" not in names
             sent.extend(str(parent / name) for name in names)
             return available(parent, names)
 
@@ -236,7 +239,7 @@ def test_batched_scope_preserves_fingerprint_and_never_probes_denied_children(
         monkeypatch.setattr(Path, "lstat", guarded)
         # Denied additions never invalidate or enter the authorized fingerprint.
         note_search_cache.fingerprint(config, db, vault)
-        assert not any("GF_supply_chain" in path for path in sent)
+        assert not any("private" in path for path in sent)
 
 
 def test_real_batch_helper_checks_selected_items_without_scanning_other_children(

@@ -11,6 +11,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from fiber_bundle.config import Config, InvalidInput
 from fiber_bundle.http_observation import Observations
+from fiber_bundle.session_policy import MAX_TTL
 
 
 @dataclass(frozen=True)
@@ -28,7 +29,7 @@ class Settings:
             raise InvalidInput("only IPv4 loopback binding is supported")
         for key, low, high in (
             ("port", 1, 65535),
-            ("session_ttl", 1, 86400),
+            ("session_ttl", 0, MAX_TTL),
             ("max_body_bytes", 1024, 64 * 1024 * 1024),
             ("max_original_bytes", 1, 64 * 1024 * 1024),
             ("login_attempts", 1, 100),
@@ -210,6 +211,7 @@ class Guard:
             in {
                 "/admin/organization/progress",
                 "/admin/backend",
+                "/admin/note-index/activity",
                 "/admin/vaults",
                 "/admin/clients",
                 "/admin/session",
@@ -232,6 +234,11 @@ class Guard:
                     self.lifecycle,
                 )
             )
+            return
+        if scope["method"] == "POST" and path == "/admin/organization/maintenance":
+            # The route owns read-only preparation and its short commit/delivery lease.
+            scope["fiber_submission_timing"] = timing
+            await observe(self.app(scope, replay, safe_send))
             return
         from .display_http import PATHS, respond
 

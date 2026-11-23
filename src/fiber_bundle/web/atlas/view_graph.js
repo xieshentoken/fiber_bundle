@@ -1,5 +1,16 @@
+import { createGraphScopeSwitch } from "../graph_scope_switch.js";
+import { confirm as confirmScopeSwitch } from "./dialog.js";
+import { msg } from "../i18n/index.js";
+import { createGraphScopeControls } from "../graph_scope_controls.js";
+import { createGraphScopeReads } from "../graph_scope_read.js";
+import {
+  authorizedGraphScopes,
+  sameGraphScope,
+} from "../graph_scope_preferences.js";
 // Links & MOC: pick notes → bounded analysis task → review suggestions → MOC write-back.
 // Suggestions help find material; accepting one never verifies facts.
+import { loadGraphScope } from "../knowledge_graph_loading.js";
+import { coverageNotice } from "../organization_coverage.js";
 import { createGraphSetup } from "../knowledge_graph_setup.js";
 import { createOrganizationView } from "../organization.js";
 import { featureControls } from "./feature_controls.js";
@@ -244,6 +255,16 @@ export function candidatePage(items, filter, id, page = 0) {
 
 export function createView(ctx) {
   const graph = ctx.api.graph;
+  let entered = false,
+    submitting = 0;
+  async function write(work) {
+    submitting++;
+    try {
+      return await work();
+    } finally {
+      submitting--;
+    }
+  }
   let epoch = 0,
     clients = [],
     vaults = [],
@@ -253,6 +274,7 @@ export function createView(ctx) {
     filter = "moc",
     mode = "list",
     fixedScope = null,
+    notesCoverage = null,
     notesData = [];
   const selected = new Map();
   const pendingStarts = new Set();
@@ -269,9 +291,14 @@ export function createView(ctx) {
   loadReady.hidden = true;
   const suggestionsHost = h("div.a-stack");
   const scope = () => ({ client_id: who.value, vault_id: where.value });
+  const scopeControls = createGraphScopeControls(scope);
+  const reads = createGraphScopeReads(scopeControls.readState);
+  const scopeControlsStyle = featureControls(scopeControls.host);
   let organizationReadError = null,
     recoverySource = null;
   const organization = createOrganizationView(ctx.api.organization, scope, {
+    onOpenIndex: (vault) =>
+      ctx.navigate("vaults", "detail", { vault, index: "1" }),
     onReadError: (error) => {
       organizationReadError = error;
     },
@@ -296,7 +323,7 @@ export function createView(ctx) {
   const analysisSetup = h("div", setupControls.node);
   function showRecovery(error, source = "notes") {
     recoverySource = source;
-    setup.fail(error);
+    setup.fail(error, { source });
     recoveryHost.append(setupControls.node);
     recoveryHost.hidden = false;
   }
@@ -317,15 +344,25 @@ export function createView(ctx) {
     hasUnsavedChanges(root) ||
     moc.hasPending() ||
     pendingReview() ||
-    map.dirty();
+    map.dirty() ||
+    organization.dirty();
   function canReplace() {
-    if (pendingReview()) {
-      toast(t("busy"), { tone: "warning" });
+    if (
+      pendingReview() ||
+      submitting ||
+      moc.busy?.() ||
+      organization.busy?.()
+    ) {
+      toast(String(msg("graph_scope.busy")), { tone: "warning" });
       return false;
     }
     return (
-      !(hasUnsavedChanges(root) || moc.hasPending()) ||
-      window.confirm(t("replace"))
+      !(
+        hasUnsavedChanges(root) ||
+        moc.hasPending() ||
+        map.dirty() ||
+        organization.dirty({ manual: false })
+      ) || window.confirm(t("replace"))
     );
   }
   function snapshot() {
@@ -336,11 +373,11 @@ export function createView(ctx) {
     );
   }
   function scopedVaults() {
-    const grants = clients.find((c) => c.id === who.value)?.grants || [];
-    const allowed = vaults.filter(
-      (v) =>
-        v.status === "active" &&
-        grants.some((g) => g.vault_id === v.id && g.can_query),
+    const allowedPairs = authorizedGraphScopes(clients, vaults).filter(
+      (pair) => pair.client_id === who.value,
+    );
+    const allowed = vaults.filter((vault) =>
+      allowedPairs.some((pair) => pair.vault_id === vault.id),
     );
     setOptions(
       where,
@@ -360,14 +397,16 @@ export function createView(ctx) {
         if (!profile?.value || !canReplace()) return;
         const before = snapshot(),
           mine = epoch;
-        await graph.savePolicy({
-          value: {
-            ...profile.value,
-            revision: profile.value.revision + 1,
-            enabled: !profile.enabled,
-          },
-          expected_sha256: profile.configuration,
-        });
+        await write(() =>
+          graph.savePolicy({
+            value: {
+              ...profile.value,
+              revision: profile.value.revision + 1,
+              enabled: !profile.enabled,
+            },
+            expected_sha256: profile.configuration,
+          }),
+        );
         if (mine !== epoch) return;
         if (before !== snapshot() && dirty()) {
           status.textContent = t("keptDraft");
@@ -480,7 +519,7 @@ export function createView(ctx) {
         const mine = epoch,
           captured = scope(),
           before = snapshot();
-        await graph.submit({ ...captured, selected: payload });
+        await write(() => graph.submit({ ...captured, selected: payload }));
         if (mine !== epoch) return;
         if (before !== snapshot() && dirty()) {
           status.textContent = t("keptDraft");
@@ -491,6 +530,10 @@ export function createView(ctx) {
     );
     clear(
       notesHost,
+      coverageNotice(notesCoverage, "atlas-notes-coverage", false, {
+        scope: scope(),
+        api: ctx.api.organization,
+      }),
       h("p.a-subtle", t("notesHelp")),
       h(
         "div.a-toolbar",
@@ -541,7 +584,9 @@ export function createView(ctx) {
                 run(control, async () => {
                   if (revision !== epoch || !canReplace()) return false;
                   const before = snapshot();
-                  const response = await graph.jobAction(job.id, op, fixed);
+                  const response = await write(() =>
+                    graph.jobAction(job.id, op, fixed),
+                  );
                   if (
                     op === "start" &&
                     ["launch_requested", "running"].includes(response.state)
@@ -876,16 +921,23 @@ export function createView(ctx) {
       ),
     );
   }
-  function clearScope() {
+  function clearScope({ keepRead = false } = {}) {
+    scopeSwitch.cancel({ forget: !keepRead });
+    if (!keepRead) {
+      reads.cancel();
+      scopeControls.reset();
+      entered = false;
+    }
     epoch++;
     observer.stop();
-    map.dispose();
+    map.clear();
     organization.clear();
     listing = { items: [] };
     fixedScope = null;
     selected.clear();
     pendingStarts.clear();
     notesData = [];
+    notesCoverage = null;
     notesHost.replaceChildren();
     jobsHost.replaceChildren();
     suggestionsHost.replaceChildren();
@@ -893,7 +945,12 @@ export function createView(ctx) {
     status.textContent = "";
     loadReady.hidden = true;
   }
-  async function loadScope({
+  function loadScope(options = {}) {
+    return reads.run("scope:" + JSON.stringify(scope()), () =>
+      readScope(options),
+    );
+  }
+  async function readScope({
     automatic = false,
     anchorId = null,
     approved = false,
@@ -901,9 +958,9 @@ export function createView(ctx) {
     if (automatic && dirty()) {
       status.textContent = t("ready");
       loadReady.hidden = false;
-      return;
+      return { skipped: true };
     }
-    if (!automatic && !approved && !canReplace()) return;
+    if (!automatic && !approved && !canReplace()) return { skipped: true };
     observer.stop();
     const before = snapshot(),
       revision = ++epoch,
@@ -912,29 +969,51 @@ export function createView(ctx) {
       fixedScope?.client_id === fixed.client_id &&
       fixedScope?.vault_id === fixed.vault_id;
     if (!same) {
+      map.clear();
+      organization.clear();
+      setup.stop();
+      setup.reset();
+      clearRecovery();
+      organizationReadError = null;
+      notesHost.replaceChildren();
+      jobsHost.replaceChildren();
+      suggestionsHost.replaceChildren();
+      listing = { items: [] };
+      notesData = [];
+      notesCoverage = null;
+      status.textContent = "";
+      loadReady.hidden = true;
+      filter = "moc";
+      mode = "list";
+      drawControls();
+      fixedScope = fixed;
       selected.clear();
       pendingStarts.clear();
       page = 0;
       moc.clear();
     }
     if (!fixed.client_id || !fixed.vault_id) {
-      clearScope();
-      clear(suggestionsHost, notice(t("noVault"), "warning"));
-      return;
+      setup.stop();
+      organization.clear();
+      clear(
+        suggestionsHost,
+        notice(String(msg("graph_scope.no_scope")), "warning"),
+      );
+      return { skipped: true };
     }
+    scopeSwitch.remember(fixed);
     try {
       organizationReadError = null;
-      const organizationRead = organization.refresh();
-      const [notes, suggestions, tasks] = await Promise.all([
-        graph.notes(fixed.client_id, fixed.vault_id),
-        graph.suggestions(fixed.client_id, fixed.vault_id),
-        graph.jobs(fixed.client_id, fixed.vault_id),
-      ]);
-      await organizationRead;
+      const organizationRead = organization
+        .refresh()
+        .then(() => ({ error: organizationReadError }))
+        .catch((error) => ({ error }));
+      const { notes, coverage, suggestions, tasks, warnings } =
+        await loadGraphScope(graph, fixed);
       if (revision !== epoch) return;
       if (
         (pendingReview() || (before !== snapshot() && dirty())) &&
-        (automatic || !canReplace())
+        (scopeSwitch.isPending() || automatic || !canReplace())
       ) {
         status.textContent = t("keptDraft");
         loadReady.hidden = false;
@@ -950,10 +1029,11 @@ export function createView(ctx) {
       fixedScope = fixed;
       listing = suggestions;
       notesData = notes;
+      notesCoverage = coverage;
       if (organizationReadError)
         showRecovery(organizationReadError, "organization");
       else {
-        setup.loaded();
+        setup.loaded(warnings);
         clearRecovery();
       }
       loadReady.hidden = true;
@@ -964,6 +1044,12 @@ export function createView(ctx) {
         await map.load();
       } else drawSuggestions(same ? anchorId : null);
       await moc.refresh(fixed, revision);
+      const organizationResult = await organizationRead;
+      if (revision !== epoch) return;
+      if ([401, 403].includes(organizationResult.error?.status))
+        throw organizationResult.error;
+      if (organizationResult.error)
+        showRecovery(organizationResult.error, "organization");
       if (revision === epoch)
         observer.start(
           tasks.map((j) =>
@@ -972,47 +1058,105 @@ export function createView(ctx) {
               : j,
           ),
         );
+      if (organizationResult.error)
+        return { partial: true, error: organizationResult.error };
     } catch (error) {
+      if (revision !== epoch) return;
+      if ([401, 403].includes(error.status)) clearScope({ keepRead: true });
       showRecovery(error);
-      if (revision === epoch && [401, 403].includes(error.status)) clearScope();
       throw error;
     }
   }
-  async function refresh({ approved = false } = {}) {
+  function refresh(options = {}) {
+    if (!options.approved && !canReplace()) return Promise.resolve();
+    return (
+      reads.pending("scope:" + JSON.stringify(scope())) ||
+      reads.run("catalog:" + JSON.stringify(scope()), () =>
+        refreshCatalog({ ...options, approved: true }),
+      )
+    );
+  }
+  async function refreshCatalog({ approved = false } = {}) {
     if (!approved && !canReplace()) return;
     observer.stop();
-    const revision = ++epoch;
-    const [nextClients, nextVaults, state] = await Promise.all([
-      ctx.store.clients(),
-      ctx.store.vaults(),
-      graph.policy(),
-    ]);
+    const before = snapshot(),
+      revision = ++epoch;
+    let nextClients, nextVaults, state;
+    try {
+      [nextClients, nextVaults, state] = await Promise.all([
+        ctx.store.clients({ force: true }),
+        ctx.store.vaults({ force: true }),
+        graph.policy(),
+      ]);
+    } catch (error) {
+      if (revision !== epoch) return;
+      if ([401, 403].includes(error.status)) clearScope({ keepRead: true });
+      throw error;
+    }
     if (revision !== epoch) return;
+    const confirmingScope = scopeSwitch.isPending();
+    scopeSwitch.cancel();
+    if (
+      !confirmingScope &&
+      (pendingReview() || (before !== snapshot() && dirty())) &&
+      !canReplace()
+    )
+      return { skipped: true };
     clients = nextClients.filter((c) => c.active);
     vaults = nextVaults;
     profile = state;
+    const choice = scopeControls.catalog(clients, vaults, scope(), !entered);
+    entered = true;
     setOptions(
       who,
       clients.map((c) => [c.id, c.name]),
-      clients.some((c) => c.id === who.value) ? who.value : undefined,
+      choice?.client_id || "",
     );
     scopedVaults();
+    where.value = choice?.vault_id || "";
+    scopeControls.changed();
     drawPolicy();
     drawControls();
+    if (confirmingScope) {
+      if (!sameGraphScope(choice, fixedScope)) {
+        clearScope({ keepRead: true });
+        where.value = "";
+        scopeControls.changed();
+      }
+      return { skipped: true };
+    }
     await loadScope({ approved: true });
   }
+  const scopeSwitch = createGraphScopeSwitch({
+    current: () => fixedScope,
+    restore: (fixed) => {
+      who.value = fixed.client_id;
+      scopedVaults();
+      where.value = fixed.vault_id;
+      scopeControls.changed();
+    },
+    apply: (fixed) => {
+      who.value = fixed.client_id;
+      scopedVaults();
+      where.value = fixed.vault_id;
+      scopeControls.changed();
+      return loadScope({ approved: true });
+    },
+    dirty,
+    busy: () =>
+      pendingReview() || submitting || moc.busy?.() || organization.busy?.(),
+    authorized: (fixed) =>
+      authorizedGraphScopes(clients, vaults).some((value) =>
+        sameGraphScope(value, fixed),
+      ),
+    confirm: confirmScopeSwitch,
+    name: (fixed) =>
+      `${clients.find((value) => value.id === fixed.client_id)?.name || ""} / ${vaults.find((value) => value.id === fixed.vault_id)?.name || ""}`,
+    blocked: () => toast(String(msg("graph_scope.busy")), { tone: "warning" }),
+    onError: (error) => toast(error.message, { tone: "error" }),
+  });
   function scopeChanged() {
-    if (!canReplace()) {
-      if (fixedScope) {
-        who.value = fixedScope.client_id;
-        scopedVaults();
-        where.value = fixedScope.vault_id;
-      }
-      return;
-    }
-    loadScope({ approved: true }).catch((error) =>
-      toast(error.message, { tone: "error" }),
-    );
+    void scopeSwitch.request(scope()).catch(() => {});
   }
   who.addEventListener("change", () => {
     scopedVaults();
@@ -1043,6 +1187,7 @@ export function createView(ctx) {
     card(
       {},
       h("div.a-form-grid", field(t("identity"), who), field(t("vault"), where)),
+      scopeControlsStyle.node,
     ),
     recoveryHost,
     organizationControls.node,
@@ -1050,17 +1195,22 @@ export function createView(ctx) {
   // The analysis enable control belongs to its Atlas analysis workspace.
   analysisCards[1].prepend(policyLine);
   clear(suggestionsHost, skeleton(4));
-  window.addEventListener("pagehide", () => observer.stop());
+  window.addEventListener("pagehide", clearScope);
   return {
     node: root,
-    refresh: () => refresh({ approved: true }),
-    dirty: () =>
-      organization.dirty() ||
+    refresh: () => refresh(),
+    dirty: ({ refresh = false } = {}) =>
+      organization.dirty({ manual: !refresh }) ||
       moc.hasPending() ||
       pendingReview() ||
       map.dirty(),
     dispose() {
+      scopeSwitch.cancel({ forget: true });
+      reads.cancel();
+      scopeControlsStyle.dispose();
+      window.removeEventListener("pagehide", clearScope);
       epoch++;
+      setup.dispose();
       observer.stop();
       organization.clear();
       organizationControls.dispose();

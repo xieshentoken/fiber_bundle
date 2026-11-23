@@ -11,6 +11,9 @@ from . import projection
 
 def router(config: Config) -> APIRouter:
     routes = APIRouter(prefix="/admin/knowledge-graph")
+    from .cloud_routes import router as cloud_router
+
+    routes.include_router(cloud_router(config))
 
     @routes.get("/projection")
     def read(

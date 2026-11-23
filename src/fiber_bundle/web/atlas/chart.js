@@ -137,9 +137,18 @@ export function barChart({ title, rows, format, scale = 1, extra }) {
   return h("div.a-chart-wrap", node, tip);
 }
 // Chart with a chart/table switch. columns: extra table columns [{ label, value(row) }].
-export function chartWithTable({ title, rows, format, scale, extra, columns }) {
+export function chartWithTable({
+  title,
+  rows,
+  format,
+  scale,
+  extra,
+  columns,
+  viewState,
+  onModeChange,
+}) {
   const body = h("div");
-  let mode = "chart";
+  let mode = viewState?.mode === "table" ? "table" : "chart";
   const draw = () =>
     body.replaceChildren(
       mode === "chart"
@@ -171,6 +180,8 @@ export function chartWithTable({ title, rows, format, scale, extra, columns }) {
         mode,
         (value) => {
           mode = value;
+          if (viewState) viewState.mode = value;
+          onModeChange?.(value);
           draw();
         },
         t("view"),

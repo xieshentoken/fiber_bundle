@@ -134,6 +134,17 @@ def main() -> None:
         str(helper),
     )
     run("/usr/bin/codesign", "--force", "--sign", "-", str(helper))
+    events_helper = tools / "vault-events"
+    run(
+        "/usr/bin/swiftc",
+        "-module-cache-path",
+        str(out / "swift-cache"),
+        str(root / "desktop/vault-events.swift"),
+        "-o",
+        str(events_helper),
+    )
+    run("/usr/bin/codesign", "--force", "--sign", "-", str(events_helper))
+    events_pin = digest(events_helper)
     trash_helper = tools / "vault-trash"
     run(
         "/usr/bin/swiftc",
@@ -176,6 +187,8 @@ def main() -> None:
             f"export FIBER_CLOUD_HELPER_SHA256={pin}\n"
             'export FIBER_TRASH_HELPER="$FIBER_RESOURCE_ROOT/backend/tools/vault-trash"\n'
             f"export FIBER_TRASH_HELPER_SHA256={trash_pin}\n"
+            'export FIBER_EVENTS_HELPER="$FIBER_RESOURCE_ROOT/backend/tools/vault-events"\n'
+            f"export FIBER_EVENTS_HELPER_SHA256={events_pin}\n"
             f'exec "$PYTHONHOME/bin/python3.12" -s -m fiber_bundle.{module} "$@"\n'
         )
         path.chmod(0o755)
@@ -191,6 +204,7 @@ def main() -> None:
         "dependencies": versions,
         "cloud_helper_sha256": pin,
         "trash_helper_sha256": trash_pin,
+        "events_helper_sha256": events_pin,
         "developer_id_signed": False,
         "notarized": False,
         "signing": "ad-hoc",
@@ -213,10 +227,14 @@ def main() -> None:
         str(app),
     )
     current_pin = digest(helper)
-    if current_pin != pin:
+    current_events_pin = digest(events_helper)
+    if current_pin != pin or current_events_pin != events_pin:
         for path in launchers.iterdir():
-            path.write_text(path.read_text().replace(pin, current_pin))
+            path.write_text(
+                path.read_text().replace(pin, current_pin).replace(events_pin, current_events_pin)
+            )
         lock["cloud_helper_sha256"] = current_pin
+        lock["events_helper_sha256"] = current_events_pin
         (resources / "release-lock.json").write_text(json.dumps(lock, indent=2) + "\n")
         run(
             "/usr/bin/codesign",

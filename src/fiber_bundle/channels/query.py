@@ -15,6 +15,7 @@ from .. import (
 from ..answer_tasks import ScopedNoteAnswerInput
 from ..config import Config, InvalidInput
 from ..inputs import canonical
+from ..search_snapshot import SearchSnapshot
 from . import query_scope, store
 
 PREFIXES = ("查询：", "查询:")
@@ -31,9 +32,26 @@ def evidence(
     channel: dict[str, Any],
     value: str,
     retrieval: str | None = None,
+    *,
+    snapshot: SearchSnapshot | None = None,
+    combine_sources: bool = True,
+    frozen_scope: Any = None,
 ) -> dict[str, Any]:
     store.authorize(config, db, channel)
     selected = query_scope.checked(config, db, channel)
+    if snapshot is None and query_scope.content_scope(channel) == "moc_members":
+        from .query_snapshot import create
+
+        with create(config, db, channel, frozen_scope) as mounted:
+            return evidence(
+                config,
+                db,
+                channel,
+                value,
+                retrieval,
+                snapshot=mounted,
+                combine_sources=combine_sources,
+            )
     settings = channel["value"]
     result = evidence_answers.answer(
         config,
@@ -43,8 +61,12 @@ def evidence(
         retrieval or value[:200],
         [v["id"] for v in selected],
         5,
+        snapshot=snapshot,
+        combine_sources=combine_sources,
     )
     query_scope.annotate(config, db, channel, result)
+    if snapshot is not None and snapshot.moc_only:
+        result["moc_query_scope"] = snapshot.scope_descriptor()
     return result
 
 
@@ -54,6 +76,11 @@ def submit(
     store.authorize(config, db, channel)
     selected = query_scope.checked(config, db, channel)
     settings = channel["value"]
+    if query_scope.content_scope(channel) == "moc_members" and settings["answer_mode"] not in {
+        "evidence",
+        "model",
+    }:
+        raise InvalidInput("channel_moc_query_mode_unavailable")
     if settings["answer_mode"] == "evidence":
         return {"result": evidence(config, db, channel, value)}
     route = query_policy_store.checked(config, settings["configuration_sha256"])
@@ -86,19 +113,19 @@ def recheck(
         return
     if response.get(query_scope.KEY) is not None:
         channel = query_scope.bind(channel, response[query_scope.KEY])
-    elif "query_vaults" in channel["value"]:
+    elif "query_vaults" in channel["value"] or query_scope.content_scope(channel) == "moc_members":
         raise InvalidInput("channel_query_scope_changed")
     store.authorize(config, main, channel)
     selected = query_scope.checked(config, main, channel)
     if response.get("status") == "query_failed":
         return
+    if query_scope.content_scope(channel) == "moc_members" and not response.get("moc_query_scope"):
+        raise InvalidInput("channel_query_scope_changed")
     sources = response.get("sources", [])
     if response.get("retrieval_queries"):
-        from .natural_query import evidence as retrieve
+        from .natural_query import recheck_evidence
 
-        current = retrieve(
-            config, main, channel, response["question"], response["retrieval_queries"]
-        )
+        current = recheck_evidence(config, main, channel, response)
     else:
         current = evidence(
             config,
@@ -106,10 +133,15 @@ def recheck(
             channel,
             response.get("question", "来源核对"),
             response.get("retrieval_query"),
+            frozen_scope=response.get("moc_query_scope"),
         )
-    before = [(s["vault_id"], s.get("note_id"), s["sha256"], s["snippet"]) for s in sources]
+    before = [
+        (s["vault_id"], s.get("note_id"), s["sha256"], s["snippet"], s.get("section_path"))
+        for s in sources
+    ]
     after = [
-        (s["vault_id"], s.get("note_id"), s["sha256"], s["snippet"]) for s in current["sources"]
+        (s["vault_id"], s.get("note_id"), s["sha256"], s["snippet"], s.get("section_path"))
+        for s in current["sources"]
     ]
     if before != after or response.get("searched_vault_ids") != [v["id"] for v in selected]:
         raise InvalidInput("channel_source_changed")

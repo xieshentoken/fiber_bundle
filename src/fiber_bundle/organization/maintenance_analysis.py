@@ -1,5 +1,6 @@
 """Analyze outside the writer lock; preview never writes MOC files or moves notes."""
 
+import copy
 from typing import Any
 
 from .. import database
@@ -53,7 +54,8 @@ def prepare(config: Any, identity: str) -> None:
     try:
         check()
         if item is None:
-            preview = maintenance.make_preview(dict(job), es, mocs)
+            with database.connect(config.state_root, readonly=True) as db:
+                preview = maintenance.make_preview(config, db, copy.deepcopy(job), es, mocs)
             check()
             with database.locked(config), database.connect(config.state_root) as db:
                 latest = check.authorized(db)

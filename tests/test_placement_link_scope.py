@@ -42,21 +42,21 @@ def test_ambiguous_inbound_moved_name_is_not_ignored(tmp_path):
 def test_unrelated_unsupported_markdown_does_not_block_but_affected_unknown_does(tmp_path):
     from types import SimpleNamespace
 
-    from fiber_bundle import note_placement
+    from fiber_bundle import note_index, note_placement
     from fiber_bundle.vault_scope import Scope
 
     path = tmp_path / "Index.md"
     text = "[old](bad (syntax))\n"
     path.write_text(text)
-    note = SimpleNamespace(relative_path="Index.md", text=text)
+    note = note_index.read_note(tmp_path, "Index.md", 10000)
     inventory = SimpleNamespace(notes=[note])
     moves = {"Inbox/actual.md": "Resource/actual.md"}
     assert note_placement.plan_links(tmp_path, Scope(), inventory, moves, affected_only=True) == (
         [],
         [],
     )
-    note.text = text + "[[actual]]\n"
-    path.write_text(note.text)
+    path.write_text(text + "[[actual]]\n")
+    inventory.notes = [note_index.read_note(tmp_path, "Index.md", 10000)]
     assert note_placement.plan_links(tmp_path, Scope(), inventory, moves, affected_only=True)[1]
 
 

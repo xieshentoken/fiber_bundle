@@ -85,6 +85,7 @@ def environment(image: dict[str, Any]) -> dict[str, str]:
         env["PYTHONHOME"] = str(base / image["home"])
         for name, relative in [
             ("FIBER_CLOUD_HELPER", "cloud-status"),
+            ("FIBER_EVENTS_HELPER", "vault-events"),
             ("FIBER_TRASH_HELPER", "vault-trash"),
         ]:
             env[name] = str(base / "resources/backend/tools" / relative)

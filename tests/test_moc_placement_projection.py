@@ -148,3 +148,86 @@ def test_edited_managed_block_is_not_overwritten_by_archive(config, policy, arti
             config, db, *article_scope[:2], identity, hashlib.sha256(note.read_bytes()).hexdigest()
         )
     assert moc.read_bytes() == before and note.exists()
+
+
+def test_finalize_interruption_keeps_archive_recoverable_without_second_move(
+    config, policy, article_scope
+):
+    from fiber_bundle import moc_placement_projection
+
+    mid, result, note, moc, identity = setup(config, policy, article_scope, True, True)
+    with database.connect(config.state_root) as db:
+        packet = note_placement.preview(
+            config,
+            db,
+            *article_scope[:2],
+            identity,
+            hashlib.sha256(note.read_bytes()).hexdigest(),
+            action="archive",
+        )
+
+        def unavailable(*args):
+            assert (
+                db.execute(
+                    "SELECT state FROM vault_operations WHERE id=?", (packet["operation_id"],)
+                ).fetchone()[0]
+                == "applying"
+            )
+            raise IntegrityError("cloud_item_pending_stale_or_conflicted")
+
+        with patch.object(moc_placement_projection, "finalize", side_effect=unavailable):
+            with pytest.raises(IntegrityError, match="cloud_item_pending"):
+                note_placement_execution.apply(
+                    config, db, *article_scope[:2], packet["operation_id"]
+                )
+        target = moc.parent / packet["target_path"]
+        before = target.read_bytes(), moc.read_bytes(), target.stat().st_ino
+        assert not note.exists()
+        assert (
+            db.execute(
+                "SELECT state FROM vault_operations WHERE id=?", (packet["operation_id"],)
+            ).fetchone()[0]
+            == "reconcile"
+        )
+        result = note_placement_execution.apply(
+            config, db, *article_scope[:2], packet["operation_id"], reconcile=True
+        )
+        assert result["state"] == "completed"
+        assert before == (target.read_bytes(), moc.read_bytes(), target.stat().st_ino)
+        assert (
+            moc_file_journal.latest(moc_file_journal.plans(config, article_scope[1], mid)).value[
+                "operation"
+            ]
+            == packet["operation_id"]
+        )
+
+
+def test_finalizing_inventory_does_not_bypass_another_operation(config, policy, article_scope):
+    import json
+    import time
+
+    _, result, note, moc, identity = setup(config, policy, article_scope, True, True)
+    with database.connect(config.state_root) as db:
+        ids = [str(uuid4()), str(uuid4())]
+        for oid in ids:
+            db.execute(
+                "INSERT INTO vault_operations VALUES(?,?,?,?,?,?,?)",
+                (
+                    oid,
+                    article_scope[1],
+                    "note_placement",
+                    "applying",
+                    json.dumps({"metadata_committed": True}),
+                    time.time(),
+                    time.time(),
+                ),
+            )
+        with pytest.raises(IntegrityError, match="placement_reconciliation_required"):
+            note_placement.guard(db, article_scope[1], finalizing_operation=ids[0])
+        db.execute("DELETE FROM vault_operations WHERE id=?", (ids[1],))
+        note_placement.guard(db, article_scope[1], finalizing_operation=ids[0])
+        with pytest.raises(IntegrityError, match="placement_reconciliation_required"):
+            note_placement.guard(db, article_scope[1])
+        db.execute("UPDATE vault_operations SET payload='{}' WHERE id=?", (ids[0],))
+        with pytest.raises(IntegrityError, match="placement_reconciliation_required"):
+            note_placement.guard(db, article_scope[1], finalizing_operation=ids[0])

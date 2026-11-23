@@ -82,3 +82,10 @@ test("external repair scan and batch actions preserve scope and require confirma
   );
   assert.deepEqual(calls[3][2], { ...scope, confirm: true, max_items: 24 });
 });
+
+test("metadata capacity rejection gives an explicit limit without suggesting reingestion", () => {
+  const message = vaultPlacementErrorText("layout_metadata_inventory_limit");
+  assert.match(message, /20,?000/);
+  assert.match(message, /超过|上限/);
+  assert.doesNotMatch(message, /重新入库|重新导入/);
+});

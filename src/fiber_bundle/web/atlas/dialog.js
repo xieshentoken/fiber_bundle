@@ -34,10 +34,12 @@ export function confirm({
   confirmLabel = t("confirm"),
   cancelLabel = t("cancel"),
   tone = "default",
+  signal,
 }) {
+  if (signal?.aborted) return Promise.resolve(false);
   if (typeof window.HTMLDialogElement !== "function")
     return Promise.resolve(window.confirm(title));
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const previous = document.activeElement;
     const cancel = h("button.a-button", { type: "button" }, cancelLabel);
     const accept = h(
@@ -69,14 +71,27 @@ export function confirm({
     dialog.addEventListener(
       "close",
       () => {
+        signal?.removeEventListener("abort", abort);
         dialog.remove();
         if (previous?.isConnected) previous.focus({ preventScroll: true });
         resolve(accepted);
       },
       { once: true },
     );
+    const abort = () => {
+      accepted = false;
+      dialog.close();
+    };
+    signal?.addEventListener("abort", abort, { once: true });
     document.body.append(dialog);
-    dialog.showModal();
+    try {
+      dialog.showModal();
+    } catch (error) {
+      signal?.removeEventListener("abort", abort);
+      dialog.remove();
+      reject(error);
+      return;
+    }
     (tone === "danger" ? cancel : accept).focus();
   });
 }

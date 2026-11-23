@@ -20,21 +20,29 @@ from . import (
     publication_locations,
     vault_directories,
     vault_save_policy,
-    vault_scope,
 )
 from .config import Config, IntegrityError, InvalidInput, contained
 from .inputs import canonical
 from .objects import digest
+from .storage_read_scope import audited
 
 
-def guard(db: sqlite3.Connection, vault: str) -> None:
-    if db.execute(
-        "SELECT 1 FROM vault_operations WHERE vault_id=? AND kind IN "
-        "('note_placement','layout_migration','publication_rebind') AND state IN "
-        "('applying','reconcile')",
-        (vault,),
-    ).fetchone():
-        raise IntegrityError("placement_reconciliation_required")
+def guard(db: sqlite3.Connection, vault: str, *, finalizing_operation: str | None = None) -> None:
+    from .operation_dependencies import Required, pending
+
+    blockers = pending(db, vault)
+    if finalizing_operation is not None:
+        owned = db.execute(
+            "SELECT 1 FROM vault_operations WHERE id=? AND vault_id=? "
+            "AND kind IN ('note_placement','maintenance_archive') AND state='applying' "
+            "AND json_extract(payload,'$.metadata_committed')=1",
+            (finalizing_operation, vault),
+        ).fetchone()
+        if owned is None:
+            raise Required(blockers)
+        blockers = [b for b in blockers if b["id"] != finalizing_operation]
+    if blockers:
+        raise Required(blockers)
 
 
 def context(
@@ -88,13 +96,17 @@ def listing(config: Config, db: sqlite3.Connection, client: str, vault: str) -> 
         auth.grant(db, client, vault, permission)
     root, _, _ = vault_directories.vault_root(config, db, vault)
     policy = vault_save_policy.get(config, db, vault)
-    pending = db.execute(
-        "SELECT 1 FROM vault_operations WHERE vault_id=? AND kind IN "
-        "('note_placement','layout_migration','publication_rebind','moc_registration') "
-        "AND state IN "
-        "('applying','reconcile')",
-        (vault,),
-    ).fetchone()
+    from .operation_dependencies import pending as dependencies
+
+    pending = (
+        bool(dependencies(db, vault))
+        or db.execute(
+            "SELECT 1 FROM vault_operations WHERE vault_id=? AND kind='moc_registration' "
+            "AND state IN ('applying','reconcile') LIMIT 1",
+            (vault,),
+        ).fetchone()
+        is not None
+    )
     rebind_required = False
     inventory = None
     if not pending and policy["publication_ready"]:
@@ -186,6 +198,7 @@ def listing(config: Config, db: sqlite3.Connection, client: str, vault: str) -> 
     }
 
 
+@audited
 def plan_links(
     root: Path,
     scope: Any,
@@ -193,26 +206,49 @@ def plan_links(
     moves: dict[str, str],
     *,
     affected_only: bool = False,
-) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    candidates = []
-    for path, info in vault_scope.entries(root, scope):
-        import stat
+    session: Any = None,
+    proof_out: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    omissions = (getattr(inventory, "coverage", None) or {}).get("omissions", {})
+    # Cache only candidate names in this explicit bounded session. Directory
+    # signatures, policy, source revisions and relevant cloud targets stay fresh.
+    from .archive_link_planning import Candidates, LinkPlanningSession, observation
+    from .note_read_session import current
 
-        relative = path.relative_to(root).as_posix()
-        if stat.S_ISREG(info.st_mode) and scope.allows(relative):
-            candidates.append(relative)
-    candidates = sorted(set(candidates) | set(moves))
+    active_session = current.get()
+    session = session or (
+        active_session.links if active_session is not None else LinkPlanningSession()
+    )
+    paths, directories = session.candidates(root, scope, omissions)
+    rechecked = session.namespace[3] if session.namespace is not None else None
+    candidates = Candidates(sorted(set(paths) | set(moves)))
+    proof = observation(root, inventory, paths, rechecked=rechecked)
+    proof["directories"].update(directories)
+    if proof_out is not None:
+        proof_out.update(proof)
     updates: list[dict[str, Any]] = []
-    unresolved: list[dict[str, str]] = []
-    for note in inventory.notes:
+    unresolved: list[dict[str, Any]] = []
+    sources = (
+        session.sources(inventory, moves)
+        if affected_only
+        else [(note, None) for note in inventory.notes]
+    )
+    from .cloud_files import require_available
+
+    def check_target(path: str) -> None:
+        if path not in omissions:
+            current = contained(root, path)
+            # Deferred-link repair resolves old names after an already committed move.
+            if not current.exists() and path in moves:
+                current = contained(root, moves[path])
+            require_available(current)
+
+    for note, parsed in sources:
         target = moves.get(note.relative_path, note.relative_path)
-        if (
-            affected_only
-            and target == note.relative_path
-            and not publication_links.may_reference_moved(note.text, note.relative_path, moves)
-        ):
-            continue
+        issues: list[dict[str, Any]] = []
         try:
+            if parsed is not None and parsed.error_offset is not None:
+                raise publication_links.LinkReviewError(parsed.error_offset)
             rewritten, missing = publication_links.relocate(
                 note.text,
                 root,
@@ -221,13 +257,24 @@ def plan_links(
                 candidates,
                 moves,
                 affected_only=affected_only,
+                parsed_references=parsed.references if parsed is not None else None,
+                issues_out=issues,
+                check_target=check_target,
             )
-        except IntegrityError:
+        except IntegrityError as error:
             rewritten = note.text
             missing = ["unsupported_link_syntax"]
-        for missing_path in missing:
+            offset = getattr(error, "offset", 0)
+            issues = [
+                {
+                    "target": missing[0],
+                    "line": note.text.count("\n", 0, offset) + 1,
+                    "column": offset - note.text.rfind("\n", 0, offset),
+                }
+            ]
+        for issue in issues:
             # A conservative stop: excluded/ambiguous local references are never guessed.
-            unresolved.append({"note_path": note.relative_path, "target": missing_path})
+            unresolved.append({"note_path": note.relative_path, **issue})
         if rewritten != note.text:
             # Complete expert packages keep their internal bytes; an inbound external link
             # needing repair blocks the move instead of mutating a canonical Draft.
@@ -238,13 +285,20 @@ def plan_links(
                 ]
             ):
                 unresolved.append(
-                    {"note_path": note.relative_path, "target": "book_package_rewrite_not_allowed"}
+                    {
+                        "note_path": note.relative_path,
+                        "target": "book_package_rewrite_not_allowed",
+                        "line": 1,
+                        "column": 1,
+                    }
                 )
                 continue
             # UTF-8 BOM is part of source evidence. Preserve it when present.
             from .publication_file_io import read
 
             original, key = read(root, note.relative_path)
+            if digest(original) != note.sha256 or key != list(note.file_key or ()):
+                raise IntegrityError("placement_note_changed")
             if original.startswith(b"\xef\xbb\xbf"):
                 rewritten = "\ufeff" + rewritten
             updates.append(
@@ -261,6 +315,13 @@ def plan_links(
     return updates, unresolved
 
 
+def archive_preflight(
+    root: Path, scope: Any, inventory: Any, moves: dict[str, str], *, session: Any = None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Read-only archive proof; no operation, MOC association, or filesystem mutation."""
+    return plan_links(root, scope, inventory, moves, affected_only=True, session=session)
+
+
 def preview(
     config: Config,
     db: sqlite3.Connection,
@@ -274,6 +335,7 @@ def preview(
     moc_revision: int | None = None,
     destination: str | None = None,
     inventory: note_inventory.Inventory | None = None,
+    read_omissions: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     guard(db, vault)
     from .moc_registration import guard as registration_guard
@@ -366,6 +428,7 @@ def preview(
     moves = {}
     updates: list[dict[str, Any]] = []
     unresolved: list[dict[str, str]] = []
+    link_observation: dict[str, Any] = {}
     target_root = None
     if action != "associate_only" and chosen:
         source_root = selected["package_root"] or selected["entry_note_path"]
@@ -389,12 +452,18 @@ def preview(
         for path in selected["plan"]["outputs"]:
             if path == source_root or path.startswith(source_root + "/"):
                 moves[path] = target_root + path[len(source_root) :]
-        updates, unresolved = plan_links(root, scope, inventory, moves, affected_only=True)
+        updates, unresolved = plan_links(
+            root, scope, inventory, moves, affected_only=True, proof_out=link_observation
+        )
         if expert_action and any(u["path"].startswith(source_root + "/") for u in updates):
             raise IntegrityError("placement_expert_internal_link_change")
     from .moc_placement_projection import prepare as prepare_moc_files
 
     projections = prepare_moc_files(config, vault, inventory, mocs, association, moves, updates)
+    if link_observation:
+        from .archive_link_planning import compact
+
+        compact(link_observation, updates, moves)
     source_files = {}
     if selected["package_root"]:
         from .publication_file_io import tree
@@ -409,9 +478,14 @@ def preview(
     for source in moves:
         raw, key = read(root, source)
         source_files[source] = {"sha256": digest(raw), "file_key": key}
+    from .partial_notes import validate as validate_omissions
+
+    if read_omissions:
+        validate_omissions(read_omissions)
     token = str(uuid4())
     now = time.time()
     value = {
+        **({"read_omissions": read_omissions} if read_omissions else {}),
         "client_id": client,
         "vault_id": vault,
         "root_key": vault_directories.key(root),
@@ -429,6 +503,7 @@ def preview(
         "target_root": target_root,
         "moves": moves,
         "updates": updates,
+        **({"link_observation": link_observation} if link_observation else {}),
         "moc_file_projections": projections,
         "source_files": source_files,
         "unresolved_links": unresolved,

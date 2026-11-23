@@ -9,6 +9,7 @@ from . import search
 from .answer_contract import validate_selection
 from .config import Config
 from .inputs import text
+from .search_snapshot import SearchSnapshot
 
 # Same written unit only: no physical equivalence or subject/condition inference.
 MEASURE = re.compile(r"(?<![\w.-])([+-]?\d+(?:\.\d+)?)\s*(psi|kPa|MPa|kW|°C|%)(?![A-Za-z])")
@@ -59,11 +60,21 @@ def answer(
     limit: int = 10,
     *,
     session_id: str | None = None,
+    snapshot: SearchSnapshot | None = None,
+    combine_sources: bool = True,
 ) -> dict[str, Any]:
     """Caller holds storage lock; evidence scope is resolved exclusively by the search layer."""
     text(question, limit=2000)
     retrieved = search.search(
-        config, db, client_id, retrieval_query, requested, limit, session_id=session_id
+        config,
+        db,
+        client_id,
+        retrieval_query,
+        requested,
+        limit,
+        session_id=session_id,
+        snapshot=snapshot,
+        combine_sources=combine_sources,
     )
     evidence = retrieved["results"]
     proposal = {
@@ -78,6 +89,12 @@ def answer(
         "仅呈现检索到的原文，未验证这些片段是否足以回答整个问题。",
         "未判断资料时效；没有日期不表示资料仍然有效。",
     ]
+    if retrieved.get("coverage_complete") is False:
+        cautions.append(
+            "部分来源或人工挂载候选关系仍待核对；以下仅为已确认可读取的 MOC 成员命中。"
+            if retrieved["scope"] == "moc_members"
+            else "部分笔记仍在更新或等待核对；以下仅为已核验的命中，不代表全库完整结果。"
+        )
     if any(item["source_kind"] != "published_article" for item in evidence):
         cautions.append("存在未核实历史笔记、会话资料或用户修订，不视为独立核验结论。")
     if differences:
@@ -87,6 +104,25 @@ def answer(
         if not evidence
         else "找到以下原文证据；尚不能据此给出确定结论。"
     )
+    if retrieved["scope"] == "moc_members" and not evidence:
+        unknown = any(
+            value.get("candidate_unavailable_count")
+            for value in retrieved.get("coverage", {}).values()
+        )
+        unavailable = any(
+            value["unavailable_count"] for value in retrieved.get("coverage", {}).values()
+        )
+        response_text = (
+            "本次在已确认的 MOC 成员中未找到匹配资料；部分人工挂载候选关系尚待核对。"
+            if unknown and not unavailable
+            else "本次在可读取的已挂载 MOC 成员中未找到匹配资料；部分成员暂不可用，检索范围不完整。"
+            if retrieved.get("coverage_complete") is False
+            else "本次在已挂载 MOC 的笔记范围内未找到匹配资料，请尝试更短的主题词或拆分条件。"
+        )
+        if retrieved.get("coverage_complete") is True and not any(
+            value["member_count"] for value in retrieved.get("coverage", {}).values()
+        ):
+            response_text = "所选知识库当前没有可查询的已挂载 MOC 成员，尚未调用模型。"
     response = {
         "status": "insufficient_evidence" if not evidence else "evidence_only",
         "mode": "extractive",
@@ -103,6 +139,11 @@ def answer(
         "searched_session_id": retrieved.get("searched_session_id"),
         "semantic_sufficiency": "not_assessed",
         "conflict_assessment": "not_assessed",
+        **(
+            {"coverage": retrieved["coverage"], "coverage_complete": retrieved["coverage_complete"]}
+            if "coverage" in retrieved
+            else {}
+        ),
     }
 
     from .expert_answers import enrich

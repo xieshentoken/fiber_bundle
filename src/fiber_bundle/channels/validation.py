@@ -72,7 +72,9 @@ def start_issues(value: dict[str, Any], *, intake_enabled: bool) -> list[str]:
     return issues
 
 
-def require_permissions(config: Config, main: Any, channel: dict[str, Any]) -> None:
+def require_permissions(
+    config: Config, main: Any, channel: dict[str, Any], *, transport: bool = False
+) -> None:
     value = channel["value"]
     if "query_vaults" in value:
         from . import query_scope
@@ -84,7 +86,7 @@ def require_permissions(config: Config, main: Any, channel: dict[str, Any]) -> N
         if client is None or not client["active"]:
             raise ChannelValidationError(["client_unavailable"], status=403)
         # Scope permissions are checked for the selected message, not an unrelated library.
-        if "_query_scope" in channel:
+        if "_query_scope" in channel and not transport:
             query_scope.checked(config, main, channel)
         return
     issues = []
@@ -95,9 +97,7 @@ def require_permissions(config: Config, main: Any, channel: dict[str, Any]) -> N
             vault = auth.grant(main, value["client_id"], value["vault_id"], action)
             from ..vault_relocation import guard
 
-            if not (
-                guard.metadata_only(value["vault_id"]) and guard.operation(main, value["vault_id"])
-            ):
+            if not transport and not guard.metadata_only(value["vault_id"]):
                 vaults.checked_vault(config, vault)
         except auth.Denied:
             issues.append(action + "_permission_required")

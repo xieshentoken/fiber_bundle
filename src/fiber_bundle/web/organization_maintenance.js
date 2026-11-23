@@ -1,6 +1,35 @@
+import {
+  appendInboxReview,
+  appendInboxReviewHistory,
+} from "./organization_inbox_review.js";
+import {
+  appendArchivePreview,
+  appendArchiveIssue,
+  appendArchiveRecovery,
+  appendArchiveDependencyFailure,
+} from "./organization_archive_readiness.js";
+import { mountMaintenanceWorkspace } from "./organization_workspace.js";
+import { createMaintenancePreviewForm } from "./organization_preview_form.js";
+import { appendContinuity } from "./organization_continuity.js";
+import { appendItemStages, appendStageSummary } from "./organization_stages.js";
+import { appendExecutionStatus } from "./organization_execution_status.js";
+import { appendExecutionProgress } from "./organization_progress_view.js";
+import { historicalItemFailure } from "./organization_diagnostics.js";
+import { partialTaskStatus } from "./organization_partial_scope.js";
 // One-off maintenance presentation. Every write still uses the bound backend confirmation.
 import { el } from "./ui.js";
 import { control, showJSON, recordHeading } from "./record_ui.js";
+import { coverageNotice } from "./organization_coverage.js";
+import {
+  appendCandidateCoverage,
+  emptyCandidatePreview,
+} from "./organization_candidate_coverage.js";
+import {
+  appendRecordedPaths,
+  appendTaskRecord,
+  taskEnded,
+} from "./organization_task_record.js";
+import { requestErrors } from "./request_errors.js";
 import { disclosure } from "./view_sections.js";
 import { joinText, phrase, setText, uiText } from "./i18n/index.js";
 import {
@@ -13,9 +42,13 @@ import {
   previewInvalidated,
   evidenceFailure,
   manuallyResolved,
+  verifiedArchive,
 } from "./organization_progress.js";
 import {
   appendTaskControls,
+  maintenanceSubmission,
+  bindMaintenanceSubmission,
+  setMaintenanceSubmission,
   unknownOutcome,
 } from "./organization_task_controls.js";
 const descriptions = {
@@ -28,12 +61,13 @@ const labels = {
   changed: "有变更",
   review: "待复核",
   error: "异常",
-  waiting: "等待分析",
+  waiting: "等待处理",
   unchanged: "无需变更",
   processed: "已人工处理",
   all: "全部",
 };
 function explain(code, detail) {
+  if (requestErrors[code]) return requestErrors[code][0];
   if (code === "organization_model_result_unknown")
     return unknownOutcome(detail);
   const reason = evidenceFailure(detail);
@@ -41,6 +75,10 @@ function explain(code, detail) {
     return `${reason}。分析已暂停，原关系与模型回复保留，不会自动重发请求。`;
   return (
     {
+      cloud_item_pending_stale_or_conflicted:
+        "文件同步或版本校验未通过，整理已停止。请核对中断位置后恢复未完成项。",
+      cloud_metadata_unavailable:
+        "暂时无法核对 iCloud 元数据，当前步骤已停止。",
       maintenance_undo_blob_unavailable:
         "撤销所需的私有快照缺失或损坏。原资料保持，请核对备份。",
       maintenance_undo_file_conflict:
@@ -99,8 +137,10 @@ export function maintenanceSection(
   api,
   refresh,
   draft = { mode: "quick", title: "", topic: "" },
+  readiness = {},
 ) {
   draft.views ||= {};
+  draft.closePanels ||= new Map();
   const host = el("section", null, "record-card");
   host.id = "organization-maintenance";
   setText(host, uiText("整理笔记"), "aria-label");
@@ -118,18 +158,31 @@ export function maintenanceSection(
       )
       .join("、") || "无";
   function renderJob(job) {
+    const submission = maintenanceSubmission(draft, job.id);
     const stats = maintenanceSummary(job),
+      planning = job.stage === "planning",
+      emptyReport = emptyCandidatePreview(job),
       card = el("article", null, "maintenance-job");
     card.dataset.maintenanceJob = job.id;
     card.append(
       recordHeading(
         joinText(
-          [uiText(modeNames[job.mode]), uiText(maintenancePhase(job))],
+          [
+            uiText(modeNames[job.mode]),
+            uiText(
+              emptyReport ? "候选检查 · 无可执行条目" : maintenancePhase(job),
+            ),
+          ],
           " · ",
         ),
-        previewInvalidated(job)
-          ? "预览已失效"
-          : jobNames[job.state] || "状态待核对",
+        emptyReport
+          ? "无需确认"
+          : previewInvalidated(job)
+            ? "预览已失效"
+            : job.state === "waiting_file" &&
+                job.items.some((i) => i.archive_wait)
+              ? "归档待核对"
+              : jobNames[job.state] || "状态待核对",
         ["blocked", "failed", "partial"].includes(job.state)
           ? "waiting"
           : job.state === "completed"
@@ -137,57 +190,35 @@ export function maintenanceSection(
             : "info",
       ),
     );
+    appendTaskRecord(card, job);
+    const inspectItem = (parent, path) =>
+      appendInboxReview(parent, { job, path, fixed, api, refresh, draft });
+    appendCandidateCoverage(card, job, inspectItem);
     card.append(
       el(
         "p",
-        descriptions[job.mode],
+        uiText(descriptions[job.mode]),
         job.mode === "deep" ? "task-impact" : "muted",
       ),
     );
-    const planning = job.stage === "planning",
-      rollback = job.stage === "rollback",
-      completed = rollback
-        ? job.rollback_progress || 0
-        : planning
-          ? stats.evaluated
-          : stats.done;
-    card.append(
-      el(
-        "p",
-        rollback
-          ? phrase(
-              "撤销本次变更 · 已核对 {p0} / {p1} 个文件 · 保留用户后续修改",
-              { p0: completed, p1: job.rollback_total || 0 },
-            )
-          : job.state === "preview"
-            ? phrase("分析完成 · 共检查 {p0} 项 · {p1} 项有变更 · 尚未应用", {
-                p0: stats.total,
-                p1: stats.changed,
-              })
-            : phrase("{p0} {p1} / {p2} 项{p3}", {
-                p0: planning ? uiText("已分析") : uiText("已处理"),
-                p1: completed,
-                p2: stats.total,
-                p3: planning ? uiText(" · 尚未应用本次变更") : uiText(""),
-              }),
-      ),
-    );
-    const progress = el("progress", null, "task-progress");
-    progress.max = Math.max(
-      rollback ? job.rollback_total || 0 : stats.total,
-      1,
-    );
-    progress.value = completed;
-    setText(
-      progress,
-      rollback
-        ? uiText("撤销进度")
-        : planning
-          ? uiText("分析进度")
-          : uiText("应用进度"),
-      "aria-label",
-    );
-    card.append(progress);
+    const coverage = coverageNotice(job.coverage, `coverage:${job.id}`, false, {
+      scope: fixed,
+      api,
+    });
+    if (coverage) card.append(coverage);
+    card.append(partialTaskStatus(job, fixed, api, refresh));
+    if (job.application_blocked)
+      card.append(
+        el(
+          "p",
+          uiText(
+            requestErrors[job.application_blocked]?.[0] ||
+              job.application_blocked,
+          ),
+          "task-impact",
+        ),
+      );
+    appendExecutionProgress(card, job);
     if (job.mode === "quick") {
       const counts = { local: 0, cache: 0, model: 0, pending: 0 };
       for (const i of job.items) {
@@ -215,24 +246,12 @@ export function maintenanceSection(
         ),
       );
     }
-    if (job.error)
-      card.append(
-        el("p", uiText(explain(job.error, job.error_detail)), "task-failure"),
-      );
-    if (job.index_state)
-      card.append(
-        el(
-          "p",
-          phrase("索引：{p0}", {
-            p0:
-              {
-                pending: "等待更新",
-                ready: "已更新",
-                failed: "更新失败，可单独重试",
-              }[job.index_state] || "状态待核对",
-          }),
-        ),
-      );
+    appendExecutionStatus(card, job, explain);
+    appendStageSummary(card, job);
+    appendArchivePreview(card, job);
+    appendArchiveDependencyFailure(card, job.preview_validity);
+    appendArchiveRecovery(card, job, fixed, api, refresh);
+    appendContinuity(card, job, fixed, api, refresh, draft.closePanels);
     if (job.mode === "deep")
       card.append(
         el(
@@ -244,7 +263,7 @@ export function maintenanceSection(
           "task-impact",
         ),
       );
-    if (job.state === "preview")
+    if (job.state === "preview" && !emptyCandidatePreview(job))
       card.append(
         el(
           "p",
@@ -269,31 +288,45 @@ export function maintenanceSection(
         await refresh();
         throw new Error(uiText("预览已失效，请先重新核对预览。"));
       }
+      if (submission.pending) return;
+      setMaintenanceSubmission(submission, operation);
       try {
-        await api.maintenanceAction(job.id, operation, {
-          ...fixed,
-          plan_sha256: job.plan_sha256 || null,
-        });
-      } catch (error) {
-        if (
-          ["recheck", "confirm"].includes(operation) &&
-          [
-            "maintenance_preview_changed",
-            "maintenance_authorization_or_policy_changed",
-          ].includes(error.code)
-        ) {
-          await refresh();
-          preparation.open = true;
-          throw new Error(uiText(explain(error.code)), { cause: error });
+        try {
+          await api.maintenanceAction(job.id, operation, {
+            ...fixed,
+            plan_sha256:
+              operation === "verify_committed_archives"
+                ? job.archive_verification?.plan_sha256
+                : job.plan_sha256 || null,
+          });
+        } catch (error) {
+          appendArchiveDependencyFailure(card, error);
+          if (error.diagnostic)
+            card.append(el("p", error.message, "task-failure"));
+          if (
+            ["recheck", "confirm"].includes(operation) &&
+            [
+              "maintenance_preview_changed",
+              "maintenance_authorization_or_policy_changed",
+            ].includes(error.code)
+          ) {
+            await refresh();
+            preparation.open = true;
+            throw new Error(uiText(explain(error.code)), { cause: error });
+          }
+          throw error;
         }
-        throw error;
+        await refresh({
+          automatic: ["pause", "resume", "confirm", "cancel"].includes(
+            operation,
+          ),
+        });
+      } finally {
+        setMaintenanceSubmission(submission, null);
       }
-      await refresh({
-        automatic: ["pause", "resume", "confirm", "cancel"].includes(operation),
-      });
     };
     const actions = el("div", null, "task-actions");
-    if (job.state === "preview") {
+    if (job.state === "preview" && !emptyCandidatePreview(job)) {
       if (
         !previewInvalidated(job) &&
         job.items.some(
@@ -303,6 +336,8 @@ export function maintenanceSection(
         )
       )
         actions.append(control("重新核对异常项", action("recheck")));
+      draft.confirmations ||= new Map();
+      const confirmationKey = `${job.id}:${job.plan_sha256 || ""}`;
       const accept = el("input"),
         consent = el(
           "label",
@@ -311,10 +346,16 @@ export function maintenanceSection(
             : uiText("我已核对本次归属、新建 MOC 和目录变化。"),
         );
       accept.type = "checkbox";
+      accept.dataset.maintenanceConsent = job.id;
       consent.prepend(accept);
       const button = control("确认并执行本次整理", action("confirm"));
       button.className = "primary";
-      button.disabled = true;
+      accept.checked = draft.confirmations.get(confirmationKey) === true;
+      button.disabled =
+        !accept.checked ||
+        previewInvalidated(job) ||
+        !!job.application_blocked ||
+        !!job.blocking_task;
       card.append(
         el(
           "p",
@@ -325,6 +366,8 @@ export function maintenanceSection(
         ),
       );
       const expired = previewInvalidated(job);
+      if (expired || job.application_blocked || job.blocking_task)
+        accept.disabled = true;
       if (expired) {
         accept.disabled = true;
         card.append(
@@ -343,14 +386,20 @@ export function maintenanceSection(
           control("按当前资料生成新预览…", () => {
             preparation.open = true;
             const input =
-              mode.parentElement.querySelector('[role="combobox"]') || mode;
-            input.scrollIntoView({ block: "center", behavior: "smooth" });
-            input.focus({ preventScroll: true });
+              form.querySelector('[role="combobox"]') ||
+              form.querySelector("select");
+            input?.scrollIntoView({ block: "center", behavior: "smooth" });
+            input?.focus({ preventScroll: true });
           }),
         );
       }
       accept.addEventListener("change", () => {
-        button.disabled = previewInvalidated(job) || !accept.checked;
+        draft.confirmations.set(confirmationKey, accept.checked);
+        button.disabled =
+          previewInvalidated(job) ||
+          !!job.application_blocked ||
+          !!job.blocking_task ||
+          !accept.checked;
       });
       actions.append(consent, button);
     }
@@ -386,21 +435,29 @@ export function maintenanceSection(
         ),
       );
     const ui = (draft.views[job.id] ||= {
-      filter: stats.error
-        ? "error"
-        : stats.changed
-          ? "changed"
-          : planning
-            ? "waiting"
-            : stats.review
-              ? "review"
-              : stats.processed
-                ? "processed"
-                : "unchanged",
+      filter: taskEnded(job)
+        ? "all"
+        : stats.error
+          ? "error"
+          : stats.changed
+            ? "changed"
+            : planning
+              ? "waiting"
+              : stats.review
+                ? "review"
+                : stats.processed
+                  ? "processed"
+                  : "unchanged",
       page: 0,
       query: "",
       opened: [],
     });
+    if (taskEnded(job) && !ui.historyView) {
+      ui.filter = "all";
+      ui.page = 0;
+      ui.query = "";
+      ui.historyView = true;
+    }
     if (ui.filter !== "all" && !stats[ui.filter])
       ui.filter = stats.changed
         ? "changed"
@@ -438,6 +495,7 @@ export function maintenanceSection(
       for (const item of filtered.slice(ui.page * 25, ui.page * 25 + 25)) {
         const category = itemCategory(item, job),
           resolved = manuallyResolved(item),
+          verified = verifiedArchive(item, job),
           row = el("details", null, "task-row");
         row.dataset.viewKey = `maintenance:${job.id}:${item.entity}`;
         row.open = ui.opened.includes(item.entity);
@@ -451,15 +509,17 @@ export function maintenanceSection(
           !resolved && item.remove?.length
             ? "；移除 " + names(item.remove)
             : "";
-        const state = resolved
-          ? labels.processed
-          : item.review_reason === "body_text_required"
-            ? "待补充正文"
-            : category === "error" || category === "review"
-              ? labels[category]
-              : item.state === "done"
-                ? "已处理"
-                : labels[category];
+        const state = verified
+          ? "已核验归档（历史异常保留）"
+          : resolved
+            ? labels.processed
+            : item.review_reason === "body_text_required"
+              ? "待补充正文"
+              : category === "error" || category === "review"
+                ? labels[category]
+                : item.state === "done"
+                  ? "已处理"
+                  : labels[category];
         const summary = el("summary", null, "task-row-summary");
         summary.append(
           el("strong", item.title),
@@ -470,6 +530,10 @@ export function maintenanceSection(
             el("small", uiText(additions + removals), "task-row-change"),
           );
         row.append(summary);
+        appendRecordedPaths(row, summary, item, job);
+        if (job.mode === "quick") inspectItem(row, item.path);
+        appendItemStages(row, item, job);
+        appendArchiveIssue(row, item);
         if (resolved) {
           row.append(
             el(
@@ -506,20 +570,26 @@ export function maintenanceSection(
           continue;
         }
         row.append(
-          el("p", phrase("当前：{p0}", { p0: names(item.before) })),
-          el("p", phrase("整理后：{p0}", { p0: names(item.after) })),
+          el(
+            "p",
+            phrase("任务记录整理前归属：{p0}", { p0: names(item.before) }),
+          ),
+          el(
+            "p",
+            phrase(
+              job.confirmed ? "任务记录目标归属：{p0}" : "计划整理后归属：{p0}",
+              { p0: names(item.after) },
+            ),
+          ),
         );
-        if (item.target) {
-          row.append(el("p", item.path + " → " + item.target));
-          row.firstChild.append(
+        if (item.deferred_target)
+          row.append(
             el(
-              "small",
-              phrase("归档至 {p0}", { p0: item.target }),
-              "task-row-destination",
+              "p",
+              phrase("归档延后：{p0}", { p0: item.deferred_target }),
+              "muted",
             ),
           );
-        } else
-          row.append(el("p", phrase("位置：{p0}", { p0: item.path }), "muted"));
         if (item.review_reason === "body_text_required")
           row.append(
             el(
@@ -544,22 +614,29 @@ export function maintenanceSection(
           row.append(
             el(
               "p",
-              item.analysis_error === "organization_model_evidence_invalid"
-                ? phrase(
-                    "{p0}。本项原关系保留，其余项目继续分析；可在预览时重新核对异常项。",
-                    {
-                      p0:
-                        evidenceFailure(item.analysis_detail) ||
-                        "本项分类证据需核对",
-                    },
-                  )
-                : uiText(
-                    explain(
-                      item.error || item.analysis_error,
-                      item.analysis_detail || item.error_detail,
-                    ),
-                  ),
-              "task-failure",
+              verified
+                ? phrase("已核验归档；历史错误：{p0}。", {
+                    p0: item.error || item.analysis_error,
+                  })
+                : job.state === "closed"
+                  ? historicalItemFailure(item)
+                  : item.analysis_error ===
+                      "organization_model_evidence_invalid"
+                    ? phrase(
+                        "{p0}。本项原关系保留，其余项目继续分析；可在预览时重新核对异常项。",
+                        {
+                          p0:
+                            evidenceFailure(item.analysis_detail) ||
+                            "本项分类证据需核对",
+                        },
+                      )
+                    : uiText(
+                        explain(
+                          item.error || item.analysis_error,
+                          item.analysis_detail || item.error_detail,
+                        ),
+                      ),
+              verified ? "muted" : "task-failure",
             ),
           );
         showJSON(row, item, "判断依据与技术详情");
@@ -607,11 +684,22 @@ export function maintenanceSection(
       "all",
     ]) {
       const count = key === "all" ? stats.total : stats[key],
-        button = control(`${labels[key]} ${count}`, async () => {
-          ui.filter = key;
-          ui.page = 0;
-          rows();
-        });
+        button = control(
+          joinText(
+            [
+              uiText(
+                taskEnded(job) && key === "changed" ? "记录变更" : labels[key],
+              ),
+              count,
+            ],
+            " ",
+          ),
+          async () => {
+            ui.filter = key;
+            ui.page = 0;
+            rows();
+          },
+        );
       button.dataset.filter = key;
       filters.append(button);
     }
@@ -648,96 +736,46 @@ export function maintenanceSection(
         stage: job.stage,
         error: job.error,
         error_detail: job.error_detail,
+        recovery_error: job.recovery_error,
+        index_last_result: job.index_state,
+        index_observation: job.index_observation,
+        last_progress_at: job.last_progress_at,
+        read_work: job.read_work,
         plan_sha256: job.plan_sha256,
         created_at: job.created_at,
       },
       "任务诊断详情",
     );
-    if (actions.children.length) card.append(actions);
+    if (actions.children.length) {
+      bindMaintenanceSubmission(actions, submission);
+      card.append(actions);
+    }
     return card;
   }
-  if (current) host.append(renderJob(current));
-  const form = el("div"),
-    mode = el("select"),
-    label = el("label", uiText("本次整理模式")),
-    detail = el("p", null, "section-intro");
-  setText(mode, uiText("整理模式"), "aria-label");
-  for (const [key, title] of Object.entries(modeNames)) {
-    const option = el("option", uiText(title));
-    option.value = key;
-    mode.append(option);
+  if (!current) {
+    const coverage = coverageNotice(
+      result.coverage,
+      "organization-coverage",
+      false,
+      { scope: fixed, api },
+    );
+    if (coverage) host.append(coverage);
   }
-  mode.value = draft.mode;
-  setText(detail, uiText(descriptions[mode.value]));
-  mode.addEventListener("change", () => {
-    draft.mode = mode.value;
-    setText(detail, uiText(descriptions[mode.value]));
-    detail.className = mode.value === "deep" ? "task-impact" : "section-intro";
+  const form = createMaintenancePreviewForm({
+    fixed,
+    api,
+    refresh,
+    draft,
+    descriptions,
+    catalogReady: readiness.catalogReady !== false,
+    catalogError: readiness.catalogError,
   });
-  label.append(mode);
-  const title = el("input"),
-    topic = el("textarea"),
-    nameLabel = el("label", uiText("新 MOC 名称")),
-    topicLabel = el("label", uiText("主题范围与不包含的内容"));
-  title.value = draft.title;
-  topic.value = draft.topic;
-  setText(title, uiText("新 MOC 名称"), "aria-label");
-  setText(topic, uiText("新 MOC 主题范围"), "aria-label");
-  title.addEventListener("input", () => {
-    draft.title = title.value;
+  preparation = mountMaintenanceWorkspace(host, {
+    jobs,
+    draft,
+    form,
+    renderJob,
   });
-  topic.addEventListener("input", () => {
-    draft.topic = topic.value;
-  });
-  nameLabel.append(title);
-  topicLabel.append(topic);
-  form.append(
-    label,
-    detail,
-    disclosure(
-      "新建 MOC 与处理说明",
-      nameLabel,
-      topicLabel,
-      el(
-        "p",
-        uiText(
-          "快速模式默认本地分析；全量/深度及显式模型补充沿用统一模型配置。预览不写资料。暂停保留进度；取消撤销本次变更，保留用户修改与调用历史。保护目录与模板不参与。",
-        ),
-        "muted",
-      ),
-    ),
-    control("生成整理预览", async () => {
-      await api.maintain({
-        ...fixed,
-        mode: mode.value,
-        new_mocs: title.value.trim()
-          ? [{ title: title.value.trim(), topic: topic.value.trim() }]
-          : [],
-      });
-      await refresh();
-    }),
-  );
-  preparation = current
-    ? disclosure("准备另一项整理／重新生成预览", form)
-    : form;
-  if (current && previewInvalidated(current)) preparation.open = true;
-  host.append(preparation);
-  if (jobs.length > 1) {
-    const history = disclosure(`其他与历史任务（${jobs.length - 1}）`);
-    history.dataset.viewKey = "maintenance-history";
-    // Render a historical task only when requested, not thousands of hidden rows.
-    for (const job of jobs.slice(1)) {
-      const details = disclosure(
-        `${modeNames[job.mode]} · ${previewInvalidated(job) ? "预览已失效" : jobNames[job.state] || job.state}`,
-      );
-      details.dataset.viewKey = `job:${job.id}`;
-      details.addEventListener("toggle", () => {
-        if (details.open && details.children.length === 1)
-          details.append(renderJob(job));
-      });
-      history.append(details);
-    }
-    host.append(history);
-  }
+  appendInboxReviewHistory(host, { fixed, api, refresh, draft });
   return host;
 }

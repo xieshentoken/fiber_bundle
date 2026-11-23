@@ -1,3 +1,4 @@
+import { noteIndexOutcome } from "./note_index_errors.js";
 import { phrase, setText, uiText } from "./i18n/index.js";
 // Import form presentation only. Uploads and immutable engine requests belong to the view/backend.
 import { $, el, action } from "./ui.js";
@@ -234,13 +235,7 @@ export function mountImportForm({
     setText(indexStatus, uiText("正在更新索引；不会调用模型或再次发布。"));
     const result = await updateIndexRequest(owner);
     if (!current(selected)) return;
-    setText(
-      indexStatus,
-      phrase("持久索引已就绪 · 更新 {p0} 篇，复用 {p1} 篇", {
-        p0: result.updated_notes,
-        p1: result.reused_notes,
-      }),
-    );
+    setText(indexStatus, noteIndexOutcome(result));
   });
   const tools = el("div", null, "panel-actions");
   tools.append(shortcut, reload);

@@ -1,4 +1,5 @@
 // Graph transport uses the existing authenticated HTTP client and fixed operation paths.
+import { createIndexActivityApi } from "./index_activity_api.js";
 export function createGraphApi(request) {
   const base = "/admin/knowledge-graph";
   const scope = (cid, vid) =>
@@ -8,6 +9,18 @@ export function createGraphApi(request) {
     encodeURIComponent(vid);
   const path = (id) => encodeURIComponent(id);
   return {
+    noteCloud: (cid, vid, focus = null) =>
+      request(
+        base +
+          "/note-cloud" +
+          scope(cid, vid) +
+          (focus ? "&focus=" + path(focus) : ""),
+      ),
+    noteCloudSearch: (cid, vid, query) =>
+      request(
+        base + "/note-cloud-search" + scope(cid, vid) + "&query=" + path(query),
+      ),
+    indexActivity: createIndexActivityApi(request).indexActivity,
     saveSettings: (vid) =>
       request("/admin/vault-catalog/" + path(vid) + "/save-policy"),
     projection: (cid, vid, focus = null) =>
@@ -38,10 +51,11 @@ export function createGraphApi(request) {
           "&q=" +
           path(query) +
           "&offset=" +
-          offset,
+          offset +
+          "&include_coverage=true",
         "GET",
         undefined,
-        Array.isArray,
+        (value) => value && Array.isArray(value.items),
       ),
     suggestions: (cid, vid) => request(base + "/suggestions" + scope(cid, vid)),
     jobs: (cid, vid) =>

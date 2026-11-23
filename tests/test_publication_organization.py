@@ -35,7 +35,13 @@ def queue(config, scope, **selection):
 
 def test_explicit_new_moc_queue_is_default_off_and_keeps_human_note(config, organization):
     scope = organization
-    body = scope["note"].read_bytes()
+    original = scope["note"].read_bytes()
+    frontmatter, delimiter, original_body = original.partition(b"\n---\n")
+    assert original.startswith(b"---\n") and delimiter
+    frontmatter += b'\nhuman_field: "Keep original spelling" # unchanged'
+    human_body = original_body + "\n\n人工补充段落，保留所有内容和尾随空格。  \n".encode()
+    body = frontmatter + delimiter + human_body
+    scope["note"].write_bytes(body)
     selection = dict(
         moc_id=str(uuid4()),
         revision=0,
@@ -47,13 +53,16 @@ def test_explicit_new_moc_queue_is_default_off_and_keeps_human_note(config, orga
     assert job["state"] == "queued" and not (scope["note"].parent.parent / "New MOC.md").exists()
     assert queue(config, scope, **selection) == job
     assert moc_dispatch.dispatch(config, scope["authorization"], scope["vault"])["processed"] == 0
+    assert scope["note"].read_bytes() == body
     outcome = moc_dispatch.dispatch(
         config, scope["authorization"], scope["vault"], enabled=True, maximum=1
     )
     assert outcome["processed"] == 1 and outcome["results"][0]["state"] == "applied"
     moc = scope["note"].parent.parent / "New MOC.md"
     assert scope["note"].parent.name in moc.read_text()
-    assert scope["note"].read_bytes() == body
+    updated_frontmatter, delimiter, updated_body = scope["note"].read_bytes().partition(b"\n---\n")
+    assert delimiter == b"\n---\n" and updated_body == human_body
+    assert updated_frontmatter == frontmatter + b'\nmoc:\n  - "[[New MOC]]"'
     value = intents.load(config, scope["run"], selection["moc_id"])
     assert intents.proved(config, value)
     assert moc_store.load(config, scope["vault"], selection["moc_id"]).members == {

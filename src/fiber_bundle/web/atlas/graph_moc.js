@@ -256,6 +256,7 @@ export function createMocWriteback(graph, scope, epoch) {
       pending = null;
     },
     hasPending: () => pending?.state === "prepared",
+    busy: () => !!list.querySelector('[aria-busy="true"]'),
     title: () => t("records"),
   };
 }

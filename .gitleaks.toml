@@ -1,0 +1,19 @@
+title = "Fiber publication review"
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Exact reviewed public model and upstream file SHA256 values"
+condition = "AND"
+regexTarget = "secret"
+paths = ['(?:configs/knowledge-graph-runtime\.example\.json|src/fiber_bundle/vendor/bili-note-source\.json)$']
+regexes = ['^(?:b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3|48cea5d44424912a6fd1ea647bf4fe50b55ab8b1e5879c3275f80e339e8fae26|e6f3b96db926a37d4039995fbf5ad17de158dfb8f6343d607e4dbaad18d75f5a|eeb15f5aa1fef7371f1b9eb95801c2faa0270318f09ac2477ef09fcf3a3a8848|83da7a43323c442a30f65cf8cc890b06a6808ffab42ee4f366e32cfeee402912|9b998c07b9f15ebdf148588754a5a61b9c5eccf3750796aef27ede174e0f12ac)$']
+
+[[rules.allowlists]]
+description = "Literal browser preference namespace"
+condition = "AND"
+regexTarget = "secret"
+paths = ['src/fiber_bundle/web/atlas/prefs\.js$']
+regexes = ['^fiber\.atlas\.v1$']

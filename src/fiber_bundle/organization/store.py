@@ -14,6 +14,7 @@ from ..inputs import canonical
 
 TABLES = {
     "packages",
+    "draft_imports",
     "package_scans",
     "versions",
     "policies",
@@ -29,6 +30,8 @@ TABLES = {
     "analysis_cache",
     "maintenance_undo",
     "manual_resolutions",
+    "cloud_downloads",
+    "inbox_review_operations",
 }
 
 
@@ -157,3 +160,23 @@ def put_many(config: Config, table: Any, vault: str, values: dict[str, Any]) -> 
         from ..backup_automation.events import organization
 
         organization(config, values)
+
+
+def archive_owners(config: Config, vault: str, operations: list[str]) -> dict[str, list[str]]:
+    """Read only matching job IDs; status polling never loads whole task histories."""
+    result: dict[str, list[str]] = {}
+    with connection(config) as db:
+        if db is None or not db.execute("SELECT 1 FROM sqlite_master WHERE name='jobs'").fetchone():
+            return result
+        for start in range(0, len(operations), 128):
+            batch = operations[start : start + 128]
+            for row in db.execute(
+                "SELECT j.id,json_extract(i.value,'$.archive_operation') FROM jobs j,"
+                "json_each(j.value,'$.items') i WHERE j.vault=? AND "
+                "json_extract(i.value,'$.archive_operation') IN ("
+                + ",".join("?" for _ in batch)
+                + ") ORDER BY j.id",
+                (vault, *batch),
+            ):
+                result.setdefault(row[1], []).append(row[0])
+    return result

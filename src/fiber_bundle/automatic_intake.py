@@ -155,6 +155,14 @@ def resume_capture(
             if job["state"] == "cancelled":
                 raise InvalidInput("automatic_reconciliation_unavailable")
             continue
+        if (
+            job["state"] == "needs_review"
+            and attempt_id
+            and (job["value"]["intake"].get("attempt_id") == attempt_id)
+        ):
+            jobs.authorize(config, db, job)
+            jobs.settle(db, job, "waiting", reason=None)
+            continue
         if job["state"] == "cancelled" or job["value"]["intake"].get("attempt_id"):
             if not attempt_id or job["value"].get("publication"):
                 raise InvalidInput("automatic_reconciliation_unavailable")

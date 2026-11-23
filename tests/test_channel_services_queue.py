@@ -26,7 +26,7 @@ def test_interrupted_head_does_not_block_next_capture(config, entry, monkeypatch
     assert intake_processing.advance(config, entry[0]["id"]) == 1
     called = []
 
-    def acquire(url, *args):
+    def acquire(url, *args, **kwargs):
         called.append(url)
         raise InvalidInput("intake_extractor_unavailable")
 

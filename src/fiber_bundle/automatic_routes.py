@@ -18,6 +18,7 @@ class Update(Payload):
 
 class Retry(Payload):
     approve_new_model_attempt: StrictBool = False
+    publication_only: StrictBool = False
 
 
 def router(config: Config) -> APIRouter:
@@ -74,6 +75,7 @@ def router(config: Config) -> APIRouter:
                 vault_id,
                 identity,
                 approve_new_model_attempt=bool(data and data.approve_new_model_attempt),
+                publication_only=bool(data and data.publication_only),
             )
 
     @routes.get("/{vault_id}/attachment-projections")

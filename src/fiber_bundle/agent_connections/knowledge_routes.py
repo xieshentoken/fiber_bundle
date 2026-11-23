@@ -74,7 +74,7 @@ def router(config: Config) -> APIRouter:
 
     @routes.post("/mocs")
     def mocs(data: Mocs, request: Request) -> dict[str, Any]:
-        from ..organization.routes import browse
+        from ..organization.overview import browse
 
         with access(config, request) as (db, cid):
             assert cid is not None

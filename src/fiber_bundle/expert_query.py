@@ -31,8 +31,14 @@ def query(
         raise InvalidInput("expert_query_scope")
     identity = module_id[7:]
     module = published_expert.text(config, db, cid, identity, expected)
+    from .indexed_sources import expert_allowed
+
+    if not expert_allowed(config, db, cid, module):
+        raise InvalidInput("knowledge_module_not_indexed")
     result = execute(module, question, limit, allow_legacy=False)
     current = published_expert.text(config, db, cid, identity, expected)
+    if not expert_allowed(config, db, cid, current):
+        raise InvalidInput("knowledge_module_not_indexed")
     return deliver(module, current, result)
 
 

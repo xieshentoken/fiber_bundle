@@ -11,6 +11,8 @@ def rebase(config: Any, db: Any, job: Any) -> tuple[Any, Any]:
     entities, mocs, fixed = plans.snapshot(
         config, db, job["client_id"], job["vault_id"], job["mode"]
     )
+    if "unavailable_action" in job["fixed"]:
+        fixed["unavailable_action"] = job["fixed"]["unavailable_action"]
     if fixed != job["fixed"]:
         raise IntegrityError("maintenance_authorization_or_policy_changed")
     from .maintenance_moc_recovery import planning_mocs
@@ -83,22 +85,35 @@ def action(config: Any, db: Any, job: Any, operation: str) -> bool:
             raise InvalidInput("maintenance_not_resumable")
         job.update(state="paused", paused_from=state)
     elif operation == "resume":
-        if state not in {"failed", "partial", "blocked", "paused"}:
+        if state not in {"failed", "partial", "blocked", "paused", "waiting_task", "waiting_file"}:
             raise InvalidInput("maintenance_not_resumable")
         if job.get("stage") == "rollback":
             job.update(state="cancelling", error=None)
             return True
         if job["confirmed"]:
+            from .maintenance_archive_recovery import resume_check
+
+            resume_check(db, job)
             maintenance.validate(config, db, job, sources=False)
+            from .maintenance_archive_finalization import resume as finalize_archives
+            from .maintenance_membership_validation import validate_resume
+            from .maintenance_waiting import resume as resume_waiting
+
+            finalize_archives(config, db, job)
+            validate_resume(config, db, job)
+            job.pop("archive_recheck", None)
+
+            resume_waiting(config, db, job)
             for item in job["items"]:
                 if item["entity"] not in handled and item["state"] in {"failed", "blocked"}:
                     item.update(state="pending", error=None)
+                    item.pop("error_detail", None)
             job.update(state="queued", error=None)
         else:
             entities, mocs = rebase(config, db, job)
             job.update(state="queued", error=None)
             if job.get("paused_from") == "preview":
-                maintenance.make_preview(job, entities, mocs + job["new_mocs"])
+                maintenance.make_preview(config, db, job, entities, mocs + job["new_mocs"])
         job.pop("error_detail", None)
     else:
         if job.get("cache_recovery") and operation != "retry_unknown":

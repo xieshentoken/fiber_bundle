@@ -27,6 +27,13 @@ export function relationLines(entry) {
     rows.push(
       `${word("默认查询", "Default query")} → ${scope.vaults.map((v) => (v.alias ? `${v.alias} · ${v.name}` : v.name)).join(" / ")}`,
     );
+    if (scope.content_scope === "moc_members")
+      rows.push(
+        word(
+          "内容范围：仅已挂载 MOC 的笔记；全库索引异常不阻断查询。",
+          "Content scope: MOC-mounted notes only; library-wide index issues do not block queries.",
+        ),
+      );
     if (!scope.vaults.some((v) => v.alias))
       rows.push(
         word(
@@ -35,6 +42,10 @@ export function relationLines(entry) {
         ),
       );
     for (const item of scope.vaults) {
+      if (!item.available && item.reason?.startsWith("channel_cloud_"))
+        rows.push(
+          `${item.name}：${word("iCloud 同步状态未就绪，暂不可查询；入口连接单独检测。", "iCloud sync is not ready; queries are unavailable. Channel connection is checked separately.")}`,
+        );
       if (item.alias)
         rows.push(
           `查询[${item.alias}]：${word("问题", "question")} → ${item.name}${item.available ? "" : word("（不可用）", " (unavailable)")}`,

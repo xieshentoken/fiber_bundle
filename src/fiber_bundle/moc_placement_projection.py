@@ -8,6 +8,7 @@ from typing import Any
 
 from . import (
     auth,
+    cloud_observation,
     moc_file_identity,
     moc_file_journal,
     moc_files,
@@ -16,6 +17,7 @@ from . import (
     note_inventory,
 )
 from .config import Config, IntegrityError, contained
+from .note_read_session import reuse
 from .objects import digest
 from .publication_file_io import read
 
@@ -95,15 +97,43 @@ def prepare(
     return specs
 
 
+@reuse()
 def finalize(
-    config: Config, db: sqlite3.Connection, operation: str, value: dict[str, Any], root: Path
+    config: Config,
+    db: sqlite3.Connection,
+    operation: str,
+    value: dict[str, Any],
+    root: Path,
+    *,
+    namespace_addition: Any = None,
 ) -> None:
     specs = value.get("moc_file_projections", [])
     if not specs:
         return
-    inventory = note_inventory.read(
-        config, db, auth.grant(db, value["client_id"], value["vault_id"], "query")
-    )
+    from .partial_notes import read as read_inventory
+    from .placement_committed import verify
+    from .vault_scope import for_vault
+
+    with cloud_observation.scope(root), cloud_observation.phase("archive_finalize_inventory"):
+        inventory = read_inventory(
+            config,
+            db,
+            auth.grant(db, value["client_id"], value["vault_id"], "query"),
+            value.get("read_omissions"),
+            finalizing_operation=operation,
+        )
+        # A successful recensus is not permission to adopt a new note, edit or
+        # replacement. Compare it to the original operation's link/write proof.
+        verify(
+            config,
+            db,
+            value,
+            root,
+            for_vault(root, auth.grant(db, value["client_id"], value["vault_id"], "add")),
+            **(
+                {"namespace_addition": namespace_addition} if namespace_addition is not None else {}
+            ),
+        )
     for spec in specs:
         mid, path = spec["moc_id"], spec["path"]
         raw, key = read(root, path)
@@ -147,6 +177,8 @@ def finalize(
             parent_key=[parent.st_dev, parent.st_ino],
             inventory_sha256=moc_files.observed(inventory, path),
         )
+        if value.get("read_omissions"):
+            packet["read_omissions"] = value["read_omissions"]
         if spec["identity"] is not None:
             note = next(n for n in inventory.notes if n.relative_path == path)
             packet.update(

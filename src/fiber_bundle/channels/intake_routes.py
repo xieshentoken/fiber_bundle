@@ -116,6 +116,9 @@ def router(config: Config) -> APIRouter:
                 leased=True,
                 approve_new_model_attempt=data.approve_new_model_attempt,
                 video_note_mode=data.video_note_mode,
+                use_current_video_settings=data.use_current_video_settings,
+                max_new_model_calls=data.max_new_model_calls,
+                max_video_tokens=data.max_video_tokens,
             )
 
     return routes

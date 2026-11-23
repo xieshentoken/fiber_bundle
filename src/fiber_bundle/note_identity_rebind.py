@@ -63,15 +63,22 @@ def context(config: Config, db: sqlite3.Connection, client: str, vault: str) -> 
     from .organization.packages import roots
 
     packages |= roots(config, vault) | hidden_roots(db, vault)
-    notes = note_index.snapshot(
-        root,
-        set(),
-        set(),
-        scope=scope,
-        hidden_files=managed_paths,
-        hidden_roots=packages,
-        limits=note_index.Limits(total_bytes=256 * 1024 * 1024),
-    )
+    try:
+        notes = note_index.snapshot(
+            root,
+            set(),
+            set(),
+            scope=scope,
+            hidden_files=managed_paths,
+            hidden_roots=packages,
+            limits=note_index.Limits(
+                total_bytes=256 * 1024 * 1024, entries=vault_scope.METADATA_ENTRY_LIMIT
+            ),
+        )
+    except IntegrityError as exc:
+        if str(exc) == "vault index entry limit exceeded":
+            raise IntegrityError("layout_metadata_inventory_limit") from exc
+        raise
     records = {
         r.identity: r
         for r in note_identity_store.records(config, vault)
@@ -84,7 +91,7 @@ def context(config: Config, db: sqlite3.Connection, client: str, vault: str) -> 
         if record.vault_key != tuple(directory_key(root)[:2]):
             raise IntegrityError("layout_note_identity_vault_changed")
     directories = {"": directory_key(root)}
-    for path, info in vault_scope.entries(root, scope):
+    for path, info in vault_scope.metadata_entries(root, scope):
         if stat.S_ISDIR(info.st_mode):
             directories[path.relative_to(root).as_posix()] = directory_key(path)
     epoch = db.execute(

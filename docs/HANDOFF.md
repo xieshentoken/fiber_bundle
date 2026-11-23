@@ -1,5 +1,5 @@
-# Maintainer handoff
+# Development handoff
 
-Use README.md for installation, TECHNICAL_REFERENCE.md for API and configuration contracts, ARCHITECTURE.md for module boundaries, SPEC.md for product constraints and DECISIONS.md for design decisions.
+Use README.md for setup and docs/TECHNICAL_REFERENCE.md for API contracts. Backend modules are in src/fiber_bundle, desktop code is in desktop, and isolated verification is in tests.
 
-This is a sanitized source distribution. Local deployment history, knowledge-base contents, recovery artifacts, device identities and credentials are intentionally kept outside Git. Create synthetic fixtures for verification and configure external integrations explicitly. Do not replay existing tasks when updating an installed instance.
+Configure a new data root and credentials before starting an instance. Preserve stored receipts, model-call ledgers, note identity and publication history during recovery. Validate edits in an isolated fixture before applying them to a live knowledge base.

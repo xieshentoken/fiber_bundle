@@ -46,7 +46,14 @@
       rel="stylesheet"
       href="/static/vault_relocation.css"
     />
-    <link data-ui-style="classic" rel="stylesheet" href="/static/suppliers.css" />
+    <link
+      data-ui-style="classic"
+      rel="stylesheet"
+      href="/static/suppliers.css"
+    />
+    <link rel="stylesheet" href="/static/draft_import.css" />
+    <link rel="stylesheet" href="/static/index_activity.css" />
+    <link rel="stylesheet" href="/static/note_cloud.css" />
   </head>
   <body>
     <header>
@@ -167,7 +174,9 @@
         <button type="button" data-tab="vaults" data-i18n="shell.975b35f9c2">
           知识库
         </button>
-        <button type="button" data-tab="suppliers" data-i18n="suppliers.nav">供应商信息</button>
+        <button type="button" data-tab="suppliers" data-i18n="suppliers.nav">
+          供应商信息
+        </button>
         <button type="button" data-tab="imports" data-i18n="shell.3619939e3d">
           资料导入
         </button>
@@ -176,6 +185,9 @@
         </button>
         <button type="button" data-tab="graph" data-i18n="shell.dcec41016e">
           知识关联
+        </button>
+        <button type="button" data-tab="note-cloud" data-i18n="note_cloud.nav">
+          笔记云图
         </button>
         <p class="nav-heading">
           <span data-i18n="shell.685ad54102">创作</span>
@@ -376,6 +388,7 @@
           </p>
           <div id="source-imports"></div>
         </section>
+        <section id="note-cloud-panel" hidden></section>
         <section id="graph-panel" hidden>
           <div class="scope-bar">
             <label
@@ -815,10 +828,18 @@
                 <option value="86400" data-i18n="shell.9248356749">
                   24 小时
                 </option>
+                <option value="604800" data-i18n="session.week1">1 周</option>
+                <option value="1209600" data-i18n="session.week2">2 周</option>
+                <option value="2592000" data-i18n="session.month">
+                  1 个月（30 天）
+                </option>
+                <option value="0" data-i18n="session.permanent">永久</option>
               </select>
               <p class="muted">
                 <span data-i18n="shell.27b4fb6ebe"
-                  >从登录成功开始计时，页面操作不会延长。保存后从下次登录起生效。</span
+                  >从登录成功开始计时，页面操作不会延长。保存后从下次登录起生效。1
+                  个月按 30
+                  天计算；永久会话在退出登录或修改管理密码后失效。</span
                 >
               </p>
               <p id="session-current-expiry" class="muted"></p>
@@ -1239,7 +1260,7 @@
                     >或导入本机凭证文件绝对路径</span
                   ><input
                     id="channel-credential"
-                    placeholder="/Users/…/feishu_bot.txt"
+                    placeholder="/Users/…/example_bot.txt"
                 /></label>
               </div>
               <label

@@ -196,9 +196,13 @@ export default {
   "shell.5f90852bb3": ["4 小时", "4 hours"],
   "shell.364dc21f72": ["8 小时", "8 hours"],
   "shell.9248356749": ["24 小时", "24 hours"],
+  "session.week1": ["1 周", "1 week"],
+  "session.week2": ["2 周", "2 weeks"],
+  "session.month": ["1 个月（30 天）", "1 month (30 days)"],
+  "session.permanent": ["永久", "Permanent"],
   "shell.27b4fb6ebe": [
-    "从登录成功开始计时，页面操作不会延长。保存后从下次登录起生效。",
-    "Duration starts at sign-in and is not extended by activity. Changes apply at the next sign-in.",
+    "从登录成功开始计时，页面操作不会延长。保存后从下次登录起生效。1 个月按 30 天计算；永久会话在退出登录或修改管理密码后失效。",
+    "Duration starts at sign-in and is not extended by activity. Changes apply at the next sign-in. One month means 30 days; permanent sessions end on sign-out or password change.",
   ],
   "shell.c0d4e903ec": [
     "到期前 5 分钟提醒。退出登录后，后台任务继续按原规则运行。",

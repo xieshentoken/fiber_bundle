@@ -4,8 +4,27 @@ import sqlite3
 from typing import Any
 
 from ..config import Config
-from . import catalog, jobs, maintenance, manual_resolution, package_discovery, packages, store
+from . import (
+    catalog,
+    jobs,
+    maintenance,
+    maintenance_admission,
+    manual_resolution,
+    package_discovery,
+    packages,
+    progress_observation,
+    store,
+)
 from .manual_relations import ManualRelations
+
+
+def _project_job(config: Config, job: Any) -> Any:
+    from .cached_writeback import available
+
+    value = manual_resolution.project(config, job)
+    if available(config, job):
+        value = {**value, "resume_mode": "cached_writeback"}
+    return value
 
 
 def progress(
@@ -18,16 +37,35 @@ def progress(
 ) -> Any:
     packages.context(config, db, client, vault)
     work = [j for j in store.rows(config, "jobs", vault) if j["client_id"] == client]
+    index = progress_observation.observe(config, vault)
+    admission = maintenance_admission.snapshot(config, vault)
+    visible = sorted(work, key=lambda j: -j["created_at"])[:50]
+    from ..moc_retained_members import issues as retained_member_issues
+    from .maintenance_membership_validation import Observation
+
+    maintenance_jobs = [j for j in visible if j.get("maintenance")]
+    membership = Observation(config, db, maintenance_jobs) if maintenance_jobs else None
     return {
         "jobs": [
             (
-                maintenance.public(j, config=config, db=db if validate_previews else None)
+                progress_observation.project(
+                    maintenance.public(
+                        j,
+                        config=config,
+                        db=db,
+                        admission=admission,
+                        membership_observation=membership,
+                        validate_preview=validate_previews,
+                    ),
+                    index,
+                )
                 if j.get("maintenance")
-                else manual_resolution.project(config, j)
+                else _project_job(config, j)
             )
-            for j in sorted(work, key=lambda j: -j["created_at"])[:50]
+            for j in visible
         ],
         "package_scan": package_discovery.visible(config, db, client, vault),
+        "retained_member_issues": retained_member_issues(config, vault),
         "model_called": False,
     }
 
@@ -42,7 +80,7 @@ def browse(
     exceptions: bool = True,
     moc_id: str | None = None,
 ) -> Any:
-    entities, mocs, _ = jobs.snapshot(config, db, client, vault)
+    entities, mocs, context = jobs.snapshot(config, db, client, vault, partial=True)
     decisions = store.rows(config, "decisions", vault)
     manual_index = ManualRelations(mocs)
     prior_rows = store.get_many(config, "entities", [vault + ":" + e["id"] for e in entities])
@@ -86,6 +124,7 @@ def browse(
         "policy": jobs.policy(config, vault),
         "items": results[offset : offset + 100],
         "total": len(results),
+        "coverage": context["coverage"],
         "next_offset": offset + 100 if offset + 100 < len(results) else None,
         "mocs": [{k: v for k, v in m.items() if k != "text"} for m in mocs],
         "packages": packages.listing(config, db, client, vault),

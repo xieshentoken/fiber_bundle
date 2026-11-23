@@ -56,6 +56,70 @@ for (const code of [
   });
 }
 
+test("a blocked preview submission tells the user no task was created without repeating the POST", async () => {
+  for (const [code, status] of [
+    ["maintenance_submission_not_started", 503],
+    ["maintenance_submission_changed", 409],
+  ]) {
+    const requests = [];
+    const api = createAdminApi(
+      createSession(),
+      { onConnection() {}, onUnauthorized() {} },
+      async (path, options) => {
+        requests.push([path, options.method]);
+        return {
+          ok: false,
+          status,
+          json: async () => ({ error: code, task_created: false }),
+        };
+      },
+    );
+    await assert.rejects(
+      api.organization.maintain({ mode: "quick" }),
+      (error) => {
+        assert.equal(error.code, code);
+        for (const [locale, pattern] of [
+          ["zh-CN", /未创建/],
+          ["en", /No .*task was created/],
+        ]) {
+          setLocale(locale);
+          assert.match(errorText(error).title, pattern);
+        }
+        setLocale("zh-CN");
+        return true;
+      },
+    );
+    assert.deepEqual(requests, [["/admin/organization/maintenance", "POST"]]);
+  }
+});
+
+test("a recorded submission with an unavailable result keeps the task ID for a read-only refresh", async () => {
+  const code = "maintenance_submission_result_unavailable";
+  const taskId = "5e62e433-f3da-48a3-a1ac-4be952829261";
+  let calls = 0;
+  const api = createAdminApi(
+    createSession(),
+    { onConnection() {}, onUnauthorized() {} },
+    async () => {
+      calls++;
+      return {
+        ok: false,
+        status: 503,
+        json: async () => ({ error: code, task_id: taskId }),
+      };
+    },
+  );
+  await assert.rejects(
+    api.organization.maintain({ mode: "quick" }),
+    (error) => {
+      assert.equal(error.taskId, taskId);
+      assert.match(error.message, /已登记/);
+      return true;
+    },
+  );
+  assert.equal(calls, 1);
+});
+
 test("storage faults remain errors and never retry automatically", async () => {
   for (const code of ["storage_unavailable", "display_limit_exceeded"]) {
     let calls = 0;
@@ -78,3 +142,36 @@ test("storage faults remain errors and never retry automatically", async () => {
   assert(criticalAlert({ backend: record }));
   assert(atlasAlert({ backend: record }));
 });
+
+for (const code of [
+  "maintenance_membership_plan_changed",
+  "maintenance_membership_baseline_changed",
+]) {
+  test(`${code}: resume errors keep their code and show actionable bilingual toast text`, async () => {
+    let calls = 0;
+    const api = createAdminApi(
+      createSession(),
+      { onConnection() {}, onUnauthorized() {} },
+      async () => {
+        calls++;
+        return { ok: false, status: 409, json: async () => ({ error: code }) };
+      },
+    );
+    await assert.rejects(
+      api.organization.maintenanceAction("task", "resume", {}),
+      (error) => {
+        assert.equal(error.code, code);
+        for (const locale of ["zh-CN", "en"]) {
+          setLocale(locale);
+          assert.deepEqual(errorText(error), {
+            title: requestErrors[code][locale === "en" ? 1 : 0],
+            detail: code,
+          });
+        }
+        setLocale("zh-CN");
+        return true;
+      },
+    );
+    assert.equal(calls, 1);
+  });
+}

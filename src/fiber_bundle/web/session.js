@@ -18,7 +18,7 @@ export function createSession() {
         typeof value?.csrf !== "string" ||
         !value.csrf ||
         !Number.isFinite(value.expires_at) ||
-        value.expires_at <= 0
+        value.expires_at < 0
       ) {
         throw new Error("后台会话响应无效。");
       }

@@ -1,4 +1,13 @@
-import { phrase, setText, translate, uiText } from "./i18n/index.js";
+import { createGraphScopeSwitch } from "./graph_scope_switch.js";
+import { confirmAction } from "./confirm_dialog.js";
+import { createGraphScopeControls } from "./graph_scope_controls.js";
+import { createGraphScopeReads } from "./graph_scope_read.js";
+import {
+  authorizedGraphScopes,
+  sameGraphScope,
+} from "./graph_scope_preferences.js";
+import { coverageNotice } from "./organization_coverage.js";
+import { phrase, setText, translate, uiText, msg } from "./i18n/index.js";
 import { createOrganizationView } from "./organization.js";
 // Scope-bound admissions and composition of selection, reviews, and task observation.
 import { $, action, el, captureMessage } from "./ui.js";
@@ -23,7 +32,7 @@ const jobStates = {
   failed: "失败",
   stale: "过期",
 };
-export function createKnowledgeGraphView(api) {
+export function createKnowledgeGraphView(api, { onOpenIndex } = {}) {
   const graph = api.graph,
     root = $("graph-content"),
     notesRoot = $("graph-notes"),
@@ -31,6 +40,9 @@ export function createKnowledgeGraphView(api) {
     client = $("graph-client"),
     vault = $("graph-vault"),
     filter = $("graph-filter");
+  let entered = false,
+    submitting = 0;
+  const defaultFilter = filter.value;
   let epoch = 0,
     clients = [],
     vaults = [],
@@ -41,6 +53,14 @@ export function createKnowledgeGraphView(api) {
     previousFilter = filter.value,
     noteOffset = 0,
     noteQuery = "";
+  async function write(work) {
+    submitting++;
+    try {
+      return await work();
+    } finally {
+      submitting--;
+    }
+  }
   const pendingStarts = new Set();
   const observationTasks = (tasks) =>
     tasks.map((t) =>
@@ -51,8 +71,20 @@ export function createKnowledgeGraphView(api) {
   const selection = createNoteSelection(),
     notify = () => captureMessage("graph"),
     scope = () => ({ client_id: client.value, vault_id: vault.value });
+  const scopeControls = createGraphScopeControls(scope);
+  const reads = createGraphScopeReads(scopeControls.readState);
+  client.closest(".scope-bar").after(scopeControls.host);
+  let organizationReadError = null;
   const organization = api.organization
-    ? createOrganizationView(api.organization, scope)
+    ? createOrganizationView(api.organization, scope, {
+        onOpenIndex,
+        onReadError: (error) => {
+          organizationReadError = error;
+        },
+        onReadSuccess: () => {
+          organizationReadError = null;
+        },
+      })
     : null;
   if (organization) $("graph-policy").before(organization.host);
   const moc = createGraphMocView(graph, scope, () => epoch);
@@ -98,18 +130,27 @@ export function createKnowledgeGraphView(api) {
     !!root.querySelector('[data-review-pending="true"]');
   function dirty() {
     return (
-      hasUnsavedChanges($("graph-panel")) || moc.hasPending() || pendingReview()
+      hasUnsavedChanges($("graph-panel")) ||
+      moc.hasPending() ||
+      pendingReview() ||
+      organization?.dirty()
     );
   }
   function canReplace(target = $("graph-panel")) {
-    if (pendingReview()) {
-      notify()("审核正在保存，请等待完成后刷新或切换。", true);
+    if (
+      pendingReview() ||
+      submitting ||
+      moc.busy?.() ||
+      organization?.busy?.()
+    ) {
+      notify()(msg("graph_scope.busy"), true);
       return false;
     }
     return (
       !(
         hasUnsavedChanges(target) ||
-        (target === $("graph-panel") && moc.hasPending())
+        (target === $("graph-panel") &&
+          (moc.hasPending() || organization?.dirty({ manual: false })))
       ) ||
       window.confirm(
         translate(
@@ -208,13 +249,13 @@ export function createKnowledgeGraphView(api) {
     } else if (position) window.scrollTo(0, position.scroll);
   }
   function selectVaults() {
-    const prior = vault.value,
-      grants = clients.find((c) => c.id === client.value)?.grants || [];
+    const prior = vault.value;
+    const allowed = authorizedGraphScopes(clients, vaults).filter(
+      (pair) => pair.client_id === client.value,
+    );
     vault.replaceChildren();
-    for (const v of vaults.filter(
-      (v) =>
-        v.status === "active" &&
-        grants.some((g) => g.vault_id === v.id && g.can_query),
+    for (const v of vaults.filter((value) =>
+      allowed.some((pair) => pair.vault_id === value.id),
     )) {
       const option = el("option", v.name);
       option.value = v.id;
@@ -262,7 +303,9 @@ export function createKnowledgeGraphView(api) {
           control(label, async () => {
             if (revision !== epoch || !canReplace()) return;
             const before = snapshot();
-            const response = await graph.jobAction(job.id, op, fixed);
+            const response = await write(() =>
+              graph.jobAction(job.id, op, fixed),
+            );
             if (
               op === "start" &&
               ["launch_requested", "running"].includes(response.state)
@@ -344,7 +387,22 @@ export function createKnowledgeGraphView(api) {
       }
     },
   });
-  async function loadScope({
+  function scopeReadKey() {
+    const fixed = scope(),
+      changed = !sameGraphScope(selectedScope, fixed);
+    return (
+      "scope:" +
+      JSON.stringify([
+        fixed,
+        changed ? "" : noteQuery,
+        changed ? 0 : noteOffset,
+      ])
+    );
+  }
+  function loadScope(options = {}) {
+    return reads.run(scopeReadKey(), () => readScope(options));
+  }
+  async function readScope({
     automatic = false,
     anchorId = null,
     approved = false,
@@ -352,9 +410,9 @@ export function createKnowledgeGraphView(api) {
     if (automatic && dirty()) {
       setText(status, uiText("新结果已就绪；草稿已保留。"));
       loadReady.hidden = false;
-      return;
+      return { skipped: true };
     }
-    if (!automatic && !approved && !canReplace()) return;
+    if (!automatic && !approved && !canReplace()) return { skipped: true };
     observer.stop();
     const before = snapshot(),
       position = anchor(anchorId),
@@ -366,6 +424,22 @@ export function createKnowledgeGraphView(api) {
     if (!same) {
       selection.clear();
       noteOffset = 0;
+      noteQuery = "";
+      noteSearch.value = "";
+      filter.value = defaultFilter;
+      previousFilter = defaultFilter;
+      listing = { items: [] };
+      canvas.clear();
+      setup.stop();
+      setup.reset();
+      organization?.clear();
+      setText(status, "");
+      setText(notePage, "");
+      $("graph-submit").disabled = true;
+      $("graph-submit").dataset.policyDisabled = "true";
+      previousNotes.disabled = nextNotes.disabled = true;
+      loadReady.hidden = true;
+      selectedScope = fixed;
       pendingStarts.clear();
       root.replaceChildren();
       notesRoot.replaceChildren();
@@ -374,21 +448,26 @@ export function createKnowledgeGraphView(api) {
       page = 0;
     }
     if (!fixed.client_id || !fixed.vault_id) {
-      clear();
-      root.append(el("p", uiText("此身份没有可查询知识库。")));
-      return;
+      setup.stop();
+      canvas.clear();
+      organization?.clear();
+      root.replaceChildren(el("p", msg("graph_scope.no_scope")));
+      return { skipped: true };
     }
-    if (organization) await organization.refresh();
+    scopeSwitch.remember(fixed);
     try {
-      const { notes, suggestions, tasks, warnings } = await loadGraphScope(
-        graph,
-        fixed,
-        noteQuery,
-        noteOffset,
-      );
+      organizationReadError = null;
+      const organizationRead = organization
+        ? organization
+            .refresh()
+            .then(() => ({ error: organizationReadError }))
+            .catch((error) => ({ error }))
+        : Promise.resolve({});
+      const { notes, coverage, suggestions, tasks, warnings } =
+        await loadGraphScope(graph, fixed, noteQuery, noteOffset);
       if (revision !== epoch) return;
       if (pendingReview() || (before !== snapshot() && dirty())) {
-        if (automatic || !canReplace()) {
+        if (scopeSwitch.isPending() || automatic || !canReplace()) {
           setText(status, uiText("更新已返回；当前草稿已保留，请手动刷新。"));
           loadReady.hidden = false;
           observer.start(observationTasks(tasks));
@@ -409,6 +488,11 @@ export function createKnowledgeGraphView(api) {
         profile?.enabled,
         $("graph-submit"),
       );
+      const notice = coverageNotice(coverage, "graph-notes-coverage", false, {
+        scope: fixed,
+        api: api.organization,
+      });
+      if (notice) notesRoot.prepend(notice);
       setup.loaded(warnings);
       previousNotes.disabled = noteOffset === 0;
       nextNotes.disabled = notes.length < 100;
@@ -431,11 +515,20 @@ export function createKnowledgeGraphView(api) {
       renderJobs(tasks, fixed, revision);
       await moc.refresh(fixed, revision);
       if (revision === epoch) await canvas.refreshIfVisible();
-      if (revision === epoch) observer.start(observationTasks(tasks));
+      const organizationResult = await organizationRead;
+      if (revision !== epoch) return;
+      if ([401, 403].includes(organizationResult.error?.status))
+        throw organizationResult.error;
+      observer.start(observationTasks(tasks));
+      if (organizationResult.error)
+        return { partial: true, error: organizationResult.error };
     } catch (error) {
-      if (revision === epoch) {
-        if ([401, 403].includes(error.status)) clear();
-        else {
+      if (revision !== epoch) return;
+      {
+        if ([401, 403].includes(error.status)) {
+          clear({ keepRead: true });
+          root.append(el("p", graphLoadFailure(error), "error"));
+        } else {
           selection.clear();
           notesRoot.replaceChildren(el("p", graphLoadFailure(error), "error"));
           $("graph-submit").disabled = true;
@@ -446,7 +539,16 @@ export function createKnowledgeGraphView(api) {
       throw error;
     }
   }
-  async function refresh({ approved = false } = {}) {
+  function refresh(options = {}) {
+    if (!options.approved && !canReplace()) return Promise.resolve();
+    return (
+      reads.pending(scopeReadKey()) ||
+      reads.run("catalog:" + JSON.stringify(scope()), () =>
+        refreshCatalog({ ...options, approved: true }),
+      )
+    );
+  }
+  async function refreshCatalog({ approved = false } = {}) {
     if (!approved && !canReplace()) return;
     observer.stop();
     const before = snapshot(),
@@ -459,28 +561,34 @@ export function createKnowledgeGraphView(api) {
         graph.policy(),
       ]);
     } catch (error) {
-      if (revision === epoch && [401, 403].includes(error.status)) clear();
+      if (revision !== epoch) return;
+      if ([401, 403].includes(error.status)) clear({ keepRead: true });
       throw error;
     }
     if (revision !== epoch) return;
+    const confirmingScope = scopeSwitch.isPending();
+    scopeSwitch.cancel();
     if (
+      !confirmingScope &&
       (pendingReview() || (before !== snapshot() && dirty())) &&
       !canReplace()
     )
-      return;
+      return { skipped: true };
     clients = newClients.filter((c) => c.active);
     vaults = newVaults;
     profile = state;
-    const previous = client.value;
+    const choice = scopeControls.catalog(clients, vaults, scope(), !entered);
+    entered = true;
     client.replaceChildren();
     for (const c of clients) {
       const option = el("option", c.name);
       option.value = c.id;
       client.append(option);
     }
-    if ([...client.options].some((o) => o.value === previous))
-      client.value = previous;
+    client.value = choice?.client_id || "";
     selectVaults();
+    vault.value = choice?.vault_id || "";
+    scopeControls.changed();
     setText(
       $("graph-policy"),
       state.configured
@@ -499,6 +607,14 @@ export function createKnowledgeGraphView(api) {
       $("graph-toggle"),
       state.enabled ? uiText("关闭分析") : uiText("启用分析"),
     );
+    if (confirmingScope) {
+      if (!sameGraphScope(choice, selectedScope)) {
+        clear({ keepRead: true });
+        vault.value = "";
+        scopeControls.changed();
+      }
+      return { skipped: true };
+    }
     await loadScope({ approved: true });
   }
   action($("graph-refresh"), refresh);
@@ -506,14 +622,16 @@ export function createKnowledgeGraphView(api) {
     if (!profile?.value || !canReplace()) return;
     const before = snapshot(),
       fixed = epoch;
-    await graph.savePolicy({
-      value: {
-        ...profile.value,
-        revision: profile.value.revision + 1,
-        enabled: !profile.enabled,
-      },
-      expected_sha256: profile.configuration,
-    });
+    await write(() =>
+      graph.savePolicy({
+        value: {
+          ...profile.value,
+          revision: profile.value.revision + 1,
+          enabled: !profile.enabled,
+        },
+        expected_sha256: profile.configuration,
+      }),
+    );
     if (fixed !== epoch) return;
     if (before !== snapshot() && dirty()) {
       setText(status, uiText("配置已更新，草稿已保留；请手动刷新。"));
@@ -532,7 +650,7 @@ export function createKnowledgeGraphView(api) {
     const fixed = epoch,
       captured = scope(),
       before = snapshot();
-    await graph.submit({ ...captured, selected });
+    await write(() => graph.submit({ ...captured, selected }));
     if (fixed !== epoch) return;
     if (before !== snapshot() && dirty()) {
       setText(status, uiText("待执行任务已创建，草稿已保留；请手动刷新。"));
@@ -540,18 +658,36 @@ export function createKnowledgeGraphView(api) {
     }
     await loadScope({ approved: true });
   });
+  const scopeSwitch = createGraphScopeSwitch({
+    current: () => selectedScope,
+    restore: (fixed) => {
+      client.value = fixed.client_id;
+      selectVaults();
+      vault.value = fixed.vault_id;
+      scopeControls.changed();
+    },
+    apply: (fixed) => {
+      client.value = fixed.client_id;
+      selectVaults();
+      vault.value = fixed.vault_id;
+      scopeControls.changed();
+      return loadScope({ approved: true });
+    },
+    dirty,
+    busy: () =>
+      pendingReview() || submitting || moc.busy?.() || organization?.busy?.(),
+    authorized: (fixed) =>
+      authorizedGraphScopes(clients, vaults).some((value) =>
+        sameGraphScope(value, fixed),
+      ),
+    confirm: confirmAction,
+    name: (fixed) =>
+      `${clients.find((value) => value.id === fixed.client_id)?.name || ""} / ${vaults.find((value) => value.id === fixed.vault_id)?.name || ""}`,
+    blocked: () => notify()(msg("graph_scope.busy"), true),
+    onError: (error) => notify()(error.message, true),
+  });
   function actionLoad() {
-    if (!canReplace()) {
-      if (selectedScope) {
-        client.value = selectedScope.client_id;
-        selectVaults();
-        vault.value = selectedScope.vault_id;
-      }
-      return;
-    }
-    loadScope({ approved: true }).catch((error) =>
-      notify()(error.message, true),
-    );
+    void scopeSwitch.request(scope()).catch(() => {});
   }
   client.addEventListener("change", () => {
     selectVaults();
@@ -567,7 +703,14 @@ export function createKnowledgeGraphView(api) {
     page = 0;
     renderSuggestions();
   });
-  function clear() {
+  function clear({ keepRead = false } = {}) {
+    scopeSwitch.cancel({ forget: !keepRead });
+    if (!keepRead) {
+      reads.cancel();
+      scopeControls.reset();
+      entered = false;
+    }
+    setup.stop();
     canvas.clear();
     epoch++;
     observer.stop();
@@ -593,6 +736,6 @@ export function createKnowledgeGraphView(api) {
     ]);
     organization.attachMoc(steps.slice(2));
   }
-  window.addEventListener("pagehide", () => observer.stop());
+  window.addEventListener("pagehide", clear);
   return { refresh, clear };
 }

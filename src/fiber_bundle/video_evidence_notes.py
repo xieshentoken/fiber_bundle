@@ -4,6 +4,7 @@ import html
 import json
 import re
 import sqlite3
+import wave
 from pathlib import Path
 from typing import Any
 
@@ -11,9 +12,17 @@ from .config import InvalidInput, contained
 from .objects import digest
 
 MODE = "visual_evidence"
+CAPTURED_MODE = "captured_evidence"
+MODES = {MODE, CAPTURED_MODE}
 
 
-def require_cached(db: sqlite3.Connection, frozen: dict[str, Any], job: Path | None = None) -> None:
+def require_cached(
+    db: sqlite3.Connection,
+    frozen: dict[str, Any],
+    job: Path | None = None,
+    *,
+    mode: str | None = None,
+) -> None:
     """Missing or changed evidence must never trigger another inference as a fallback."""
     required = {
         "initialize",
@@ -27,8 +36,13 @@ def require_cached(db: sqlite3.Connection, frozen: dict[str, Any], job: Path | N
         "timeline",
     }
     runs = frozen.get("vision_runs", {})
+    selected = mode or frozen.get("note_authoring", MODE)
+    routes = {"visual_primary"}
+    if selected == CAPTURED_MODE:
+        routes.update({"platform_subtitle", "local_qwen3_asr", "transcription_api"})
     if (
-        frozen.get("transcript_route") != "visual_primary"
+        selected not in MODES
+        or frozen.get("transcript_route") not in routes
         or not required.issubset(frozen.get("completed", []))
         or not runs
     ):
@@ -40,6 +54,8 @@ def require_cached(db: sqlite3.Connection, frozen: dict[str, Any], job: Path | N
     if job is None:
         return
     try:
+        if frozen["transcript_route"] != "visual_primary":
+            require_transcript(frozen, job)
         frames = json.loads((job / "frames/frame_manifest.json").read_bytes())["frames"]
         rows = [
             json.loads(line)
@@ -63,6 +79,56 @@ def require_cached(db: sqlite3.Connection, frozen: dict[str, Any], job: Path | N
         raise InvalidInput("video_skill_visual_audit_failed") from error
 
 
+def require_transcript(frozen: dict[str, Any], job: Path) -> None:
+    from .media_subtitles import parse
+    from .query_routing_files import read
+
+    route = frozen["transcript_route"]
+    relative = "transcript/" + (
+        "subtitle_normalized.srt" if route == "platform_subtitle" else "asr_normalized.srt"
+    )
+    raw = read(contained(job, relative), 1024 * 1024)
+    coverage = json.loads(read(contained(job, "evidence/coverage.json"), 1024 * 1024))
+    duration = max(
+        float(coverage["source_declared_duration_seconds"]),
+        float(coverage["source_acquired_duration_seconds"]),
+    )
+    if route == "transcription_api":
+        from .video_skill import media_digest
+
+        # Decoded AAC can retain a partial codec frame (e.g. 32 ms). Use its
+        # measured duration only when the saved source and audio hashes match.
+        audio = contained(job, "transcript/asr_audio.wav")
+        diagnostic = json.loads(read(contained(job, "transcript/asr_diagnostic.json"), 2**20))
+        if diagnostic["source_media_sha256"] != frozen["source_media_sha256"] or diagnostic[
+            "audio_sha256"
+        ] != media_digest(audio):
+            raise InvalidInput("video_skill_visual_audit_failed")
+        with wave.open(str(audio)) as stream:
+            audio_duration = stream.getnframes() / stream.getframerate()
+        if audio_duration > duration + 0.25:
+            raise InvalidInput("video_skill_visual_audit_failed")
+        duration = max(duration, audio_duration)
+    cues = parse(raw, "srt", round(duration * 1000), long_video=True)
+    segments = [
+        json.loads(line)
+        for line in read(contained(job, "evidence/segments.jsonl"), 4 * 1024 * 1024).splitlines()
+        if line
+    ]
+    text = "".join("".join(s.get("transcript", "").split()) for s in segments)
+    if (
+        not cues
+        or coverage["transcript_file"] != relative
+        or coverage["transcript_coverage_ratio"] != 1
+        or coverage["covered_transcript_cues"] != len(cues)
+        or coverage["transcript_cues"] != len(cues)
+        or any("".join(cue["text"].split()) not in text for cue in cues)
+        or frozen.get("evidence_transcript_sha256", digest(raw)) != digest(raw)
+    ):
+        raise InvalidInput("video_skill_visual_audit_failed")
+    frozen["evidence_transcript_sha256"] = digest(raw)
+
+
 def literal(value: str) -> str:
     # Source text is displayed literally; it cannot inject HTML or image references.
     return re.sub(r"([\\`*_{}\[\]()!#|])", r"\\\1", html.escape(value, quote=False))
@@ -70,7 +136,12 @@ def literal(value: str) -> str:
 
 def segment_note(evidence: dict[str, Any]) -> str:
     parts: list[str] = []
-    useful = False
+    transcript = evidence.get("transcript", "")
+    if not isinstance(transcript, str):
+        raise InvalidInput("video_skill_visual_content_missing")
+    useful = bool(transcript.strip())
+    if useful:
+        parts += ["转写原文（未人工校对）：", "", literal(transcript), ""]
     for frame in evidence["visual_evidence"]:
         analysis = frame["analysis"]
         for key in ("ocr_text", "claims"):

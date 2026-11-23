@@ -158,3 +158,72 @@ def test_light_confirmation_still_rejects_changed_inputs(config, ready, change):
             )
         with pytest.raises(IntegrityError, match="preview_changed"):
             maintenance.action(config, db, job, "confirm", job["plan_sha256"])
+
+
+def test_seal_batches_full_evidence_without_per_file_lock_handoffs(config, ready, monkeypatch):
+    from test_execution_leases import confirmed
+
+    from fiber_bundle.organization import execution, maintenance_undo_files, store
+
+    job = confirmed(config, ready, two=True)
+    original_stamp = execution.stamp
+    original_observe = maintenance_undo_files.observe
+    stamps, observed = [], []
+
+    def version(*args):
+        from fiber_bundle import storage_read_scope
+
+        callback = storage_read_scope.current.get()
+        if callback and callback.__self__.job.get("activity", {}).get("phase") == "undo_seal":
+            stamps.append(1)
+        return original_stamp(*args)
+
+    def observe(root, path):
+        observed.append((root, path))
+        return original_observe(root, path)
+
+    monkeypatch.setattr(execution, "stamp", version)
+    monkeypatch.setattr(maintenance_undo_files, "observe", observe)
+    execution.run(config, job["id"])
+    result = store.get(config, "jobs", job["id"])
+    assert result["completed"] == 1, result.get("error")
+    journal = store.get(config, "maintenance_undo", job["id"])
+    assert journal["state"] == "ready"
+    assert len(stamps) <= 4  # A bounded handoff, independent of retained evidence count.
+    assert len(observed) > len(stamps)
+    assert {(ready[2], path) for path in journal["files"]} <= set(observed)
+
+
+def test_seal_rejects_concurrent_metadata_before_persisting_evidence(config, ready, monkeypatch):
+    from test_execution_leases import confirmed
+
+    from fiber_bundle import storage_read_scope
+    from fiber_bundle.organization import execution, maintenance_undo_files, store
+
+    job = confirmed(config, ready)
+    original = maintenance_undo_files.observe
+    changed = False
+
+    def observe(root, path):
+        nonlocal changed
+        result = original(root, path)
+        callback = storage_read_scope.current.get()
+        if (
+            not changed
+            and callback
+            and callback.__self__.reading
+            and callback.__self__.job.get("activity", {}).get("phase") == "undo_seal"
+        ):
+            changed = True
+            # This writer runs under the same real lease used by other processes.
+            with database.locked(config):
+                store.put(config, "policies", "external", job["vault_id"], {"changed": True})
+        return result
+
+    monkeypatch.setattr(maintenance_undo_files, "observe", observe)
+    execution.run(config, job["id"])
+    result = store.get(config, "jobs", job["id"])
+    assert changed and result["state"] == "partial"
+    assert "organization_execution_inputs_changed" in result["error"]
+    assert store.get(config, "maintenance_undo", job["id"])["state"] == "applying"
+    assert store.get(config, "policies", "external") == {"changed": True}

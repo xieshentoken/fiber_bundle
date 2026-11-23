@@ -61,7 +61,7 @@ def test_resolved_original_error_is_preserved_across_recheck_resume_and_apply(
         maintenance_plan.difference(
             job["items"][0], "quick", job["fixed"]["save_policy"]["settings"]
         )
-        maintenance.make_preview(job, [], job["mocs"])
+        maintenance.make_preview(config, db, job, [], job["mocs"])
         store.put(config, "jobs", job["id"], vid, job)
         original = copy.deepcopy(job["items"])
         original_seal = maintenance_plan.seal(job)
@@ -154,7 +154,7 @@ def test_explicit_retry_controls_never_reset_resolved_items(
         job = maintenance.submit(config, db, cid, vid, "additive")
         exception(job["items"][0], error)
         job["cache_recovery"] = {"parent": "old", "entities": [job["items"][0]["entity"]]}
-        maintenance.make_preview(job, [], job["mocs"])
+        maintenance.make_preview(config, db, job, [], job["mocs"])
         repaired(config, db, job, job["items"][0]["entity"], resolutions)
         before = copy.deepcopy(job["items"])
         with pytest.raises(InvalidInput, match=message):
@@ -169,7 +169,7 @@ def test_confirmed_partial_resume_skips_resolved_failed_item_and_preserves_manua
     cid, vid, _, moc, note = ready
     with database.connect(config.state_root) as db:
         job = maintenance.submit(config, db, cid, vid, "quick")
-        maintenance.make_preview(job, [], job["mocs"])
+        maintenance.make_preview(config, db, job, [], job["mocs"])
         maintenance.action(config, db, job, "confirm", job["plan_sha256"])
         job.update(state="partial", error="organization_model_evidence_invalid")
         job["items"][0].update(state="failed", error="original failure")
@@ -217,7 +217,7 @@ def test_confirmed_mixed_task_adopts_only_audited_manual_projection(config, read
     other.write_text("# 传热的另一篇\n#热管理\n温度梯度与热传导。\n")
     with database.connect(config.state_root) as db:
         job = maintenance.submit(config, db, cid, vid, "additive")
-        maintenance.make_preview(job, [], job["mocs"])
+        maintenance.make_preview(config, db, job, [], job["mocs"])
         maintenance.action(config, db, job, "confirm", job["plan_sha256"])
         item = next(i for i in job["items"] if i["path"] == "Inbox/传热.md")
         item.update(state="failed", error="original item failure")
@@ -256,7 +256,7 @@ def test_last_manual_resolution_finishes_existing_journal_without_reopening_it(
     with database.connect(config.state_root) as db:
         job = maintenance.submit(config, db, cid, vid, "quick")
         job["items"].sort(key=lambda i: i["path"] == "Inbox/后续传热.md")
-        maintenance.make_preview(job, [], job["mocs"])
+        maintenance.make_preview(config, db, job, [], job["mocs"])
         maintenance.action(config, db, job, "confirm", job["plan_sha256"])
         maintenance.run(config, db, job)
         assert job["items"][0]["state"] == "done" and job["state"] == "running"

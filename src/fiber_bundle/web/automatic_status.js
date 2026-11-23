@@ -8,6 +8,7 @@ const states = {
   needs_supplement: ["待补全", "waiting", true],
   waiting_budget: ["等待预算", "waiting", true],
   waiting_dependency: ["等待处理环境", "waiting", true],
+  waiting_publication: ["等待归档收尾", "waiting", true],
   superseded: ["已由后续任务接替", "info", false],
   complete: ["已完成", "success", false],
   cancelled: ["已取消", "info", false],

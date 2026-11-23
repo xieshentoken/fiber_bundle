@@ -182,12 +182,14 @@ export function createSettingsView(api, appearance, session, themePicker) {
       select.value = policy.session_ttl;
       setText(
         $("session-current-expiry"),
-        phrase("当前会话到期：{p0}", {
-          p0: localizedDate(session.expiresAt * 1000, {
-            dateStyle: "medium",
-            timeStyle: "medium",
-          }),
-        }),
+        session.expiresAt === 0
+          ? uiText("当前会话：永久（退出登录或修改管理密码后失效）")
+          : phrase("当前会话到期：{p0}", {
+              p0: localizedDate(session.expiresAt * 1000, {
+                dateStyle: "medium",
+                timeStyle: "medium",
+              }),
+            }),
       );
       $("session-settings-save").disabled = false;
       rememberDraft($("settings-panel"));

@@ -38,13 +38,18 @@ const t = strings({
     previewNote: "外观选择立即生效并保存在本浏览器中，不发送到后台。",
     session: "登录时长",
     sessionHelp:
-      "从登录成功开始计时，页面操作不会延长。保存后从下次登录起生效。",
+      "从登录成功开始计时，页面操作不会延长。保存后从下次登录起生效。1 个月按 30 天计算；永久会话在退出登录或修改管理密码后失效。",
     m15: "15 分钟",
     m30: "30 分钟",
     h1: "1 小时（默认）",
     h4: "4 小时",
     h8: "8 小时",
     h24: "24 小时",
+    w1: "1 周",
+    w2: "2 周",
+    month: "1 个月（30 天）",
+    forever: "永久",
+    permanentSession: "当前会话：永久（退出登录或修改管理密码后失效）",
     custom: "{n} 秒（启动配置）",
     expires: "当前会话到期：{time}",
     save: "保存登录时长",
@@ -83,13 +88,19 @@ const t = strings({
       "Appearance choices apply immediately and are stored in this browser only — never sent to the backend.",
     session: "Session length",
     sessionHelp:
-      "Counted from a successful sign-in; activity doesn't extend it. Applies from the next sign-in.",
+      "Counted from sign-in; activity doesn't extend it. Applies at next sign-in. One month means 30 days; permanent sessions end on sign-out or password change.",
     m15: "15 minutes",
     m30: "30 minutes",
     h1: "1 hour (default)",
     h4: "4 hours",
     h8: "8 hours",
     h24: "24 hours",
+    w1: "1 week",
+    w2: "2 weeks",
+    month: "1 month (30 days)",
+    forever: "Permanent",
+    permanentSession:
+      "Current session: permanent (ends on sign-out or password change)",
     custom: "{n} s (startup configuration)",
     expires: "Current session expires: {time}",
     save: "Save session length",
@@ -182,6 +193,10 @@ export function createView(ctx) {
         ["14400", t("h4")],
         ["28800", t("h8")],
         ["86400", t("h24")],
+        ["604800", t("w1")],
+        ["1209600", t("w2")],
+        ["2592000", t("month")],
+        ["0", t("forever")],
       ],
       undefined,
     );
@@ -203,7 +218,12 @@ export function createView(ctx) {
       "form.a-form",
       { dataset: { draft: "tracked" } },
       field(t("session"), ttl, { help: t("sessionHelp") }),
-      h("p.a-subtle", t("expires", { time: dateTime(ctx.session.expiresAt) })),
+      h(
+        "p.a-subtle",
+        ctx.session.expiresAt === 0
+          ? t("permanentSession")
+          : t("expires", { time: dateTime(ctx.session.expiresAt) }),
+      ),
       h("div.a-form-actions", submit),
     );
     form.addEventListener("submit", (event) => {

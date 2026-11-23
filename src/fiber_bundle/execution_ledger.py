@@ -222,6 +222,14 @@ def reserve(
                 raise InvalidInput("budget timezone mismatch")
             check_budget(db, run_id, ceiling, reserve_nusd=policy.reserve_nusd, billing_day=day)
         check_budget(db, run_id, policy, billing_day=day)
+        from .video_call_allowance import check_reservation
+
+        check_reservation(db, run_id)
+        from . import video_token_budget
+
+        video_token_budget.check_reservation(
+            db, run_id, policy.max_input_tokens + policy.max_output_tokens
+        )
         call_id = str(uuid4())
         from . import model_budgets
 

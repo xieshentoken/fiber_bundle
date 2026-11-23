@@ -6,7 +6,7 @@ from typing import Any
 from .. import database, note_index, published_expert
 from ..config import IntegrityError, InvalidInput
 from ..knowledge_graph import policy as graph_policy
-from . import classifier, manual_resolution, model_evidence, model_review, packages, semantic, store
+from . import manual_resolution, model_evidence, model_review, packages, semantic, store
 from .contracts import ORGANIZER_VERSION
 
 
@@ -24,17 +24,16 @@ def unchanged(config: Any, db: Any, job: Any) -> bool:
         include=job.get("read_include"),
         exclude=job["policy"]["settings"]["exclude"],
         scope_packages=True,
+        partial=True,
     )
-    if context != job["context"]:
+    if jobs.comparison_context(job, context) != job["context"]:
         return False
     decisions = store.rows(config, "decisions", job["vault_id"])
     by_id = {e["id"]: e for e in entities}
     handled = manual_resolution.resolved(config, job)
     return all(
         item["entity"] in by_id
-        and classifier.plan(
-            by_id[item["entity"]], mocs, job["policy"]["settings"], decisions, context
-        )["fingerprint"]
+        and jobs.current_plan(job, by_id[item["entity"]], mocs, decisions, context)["fingerprint"]
         == item["fingerprint"]
         for item in job["items"]
         if item["state"] in {"failed", "blocked"} and item["entity"] not in handled
@@ -67,6 +66,11 @@ def prepare(config: Any, identity: str) -> None:
         )
         if pending is None:
             return
+        if job.get("resume_mode") == "cached_writeback":
+            pending.update(state="blocked", error="organization_model_cache_incomplete")
+            job.update(state="partial", error="organization_model_cache_incomplete")
+            store.put(config, "jobs", identity, job["vault_id"], job)
+            return
         entities, mocs, context = jobs.snapshot(
             config,
             db,
@@ -75,14 +79,15 @@ def prepare(config: Any, identity: str) -> None:
             include=job.get("read_include"),
             exclude=job["policy"]["settings"]["exclude"],
             scope_packages=True,
+            partial=True,
         )
         entity = next((e for e in entities if e["id"] == pending["entity"]), None)
         if entity is None:
             raise IntegrityError("organization_entity_changed")
-        initial = classifier.plan(
+        initial = jobs.current_plan(
+            job,
             entity,
             mocs,
-            job["policy"]["settings"],
             store.rows(config, "decisions", job["vault_id"]),
             context,
         )
@@ -172,13 +177,14 @@ def prepare(config: Any, identity: str) -> None:
                 include=job.get("read_include"),
                 exclude=job["policy"]["settings"]["exclude"],
                 scope_packages=True,
+                partial=True,
             )
             e = next((e for e in entities_now if e["id"] == entity["id"]), None)
             plan = (
-                classifier.plan(
+                jobs.current_plan(
+                    job,
                     e,
                     mocs_now,
-                    job["policy"]["settings"],
                     store.rows(config, "decisions", job["vault_id"]),
                     context_now,
                 )

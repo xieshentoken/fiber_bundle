@@ -102,7 +102,9 @@ async def run(config: Config, launch: dict[str, Any]) -> None:
 
         async def withdrawn() -> None:
             while True:
-                with store.opened(config) as db:
+                with store.readonly(config) as db:
+                    if db is None:
+                        raise InvalidInput("channel_operation_withdrawn")
                     current = store.get(db, identity)
                 if current["revision"] != revision or current["state"] != (
                     "running" if action == "run" else action
@@ -272,33 +274,38 @@ async def run(config: Config, launch: dict[str, Any]) -> None:
                         continue
                     await asyncio.sleep(1)
         finally:
-            for task in (pulse_task, withdraw_task, work, intake_task):
-                if task:
-                    task.cancel()
-            await asyncio.gather(
-                *(t for t in (pulse_task, withdraw_task, work, intake_task) if t),
-                return_exceptions=True,
-            )
-            if adapter is not None:
-                await asyncio.wait_for(adapter.disconnect(), 20)
-            with database.locked(config), store.opened(config) as db:
-                current = store.get(db, identity)
-                if (
-                    owns_launch(home, launch)
-                    and current["revision"] == revision
-                    and current["state"]
-                    in {
-                        "running",
-                        "check",
-                        "pair",
-                        "login",
-                    }
-                ):
-                    store.set_state(
-                        db,
-                        identity,
-                        ("paused" if current["owner"] else "unpaired") if succeeded else "error",
-                    )
+            from .receiver_shutdown import deadline
+
+            with deadline(home):
+                for task in (pulse_task, withdraw_task, work, intake_task):
+                    if task:
+                        task.cancel()
+                await asyncio.gather(
+                    *(t for t in (pulse_task, withdraw_task, work, intake_task) if t),
+                    return_exceptions=True,
+                )
+                if adapter is not None:
+                    await asyncio.wait_for(adapter.disconnect(), 20)
+                with database.locked(config), store.opened(config) as db:
+                    current = store.get(db, identity)
+                    if (
+                        owns_launch(home, launch)
+                        and current["revision"] == revision
+                        and current["state"]
+                        in {
+                            "running",
+                            "check",
+                            "pair",
+                            "login",
+                        }
+                    ):
+                        store.set_state(
+                            db,
+                            identity,
+                            ("paused" if current["owner"] else "unpaired")
+                            if succeeded
+                            else "error",
+                        )
 
 
 def main() -> int:

@@ -13,6 +13,7 @@ def declared(db: sqlite3.Connection, paths: Mapping[str, Any]) -> dict[str, Any]
     tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     return {
         "contract": "gui-features/v1",
+        "note_search": "post" in paths.get("/admin/note-search", {}),
         "index_summary": version >= 30 and "/admin/note-index/summary" in gets,
         "execution_attribution": version >= 30
         and "/admin/inventory/executions" in gets

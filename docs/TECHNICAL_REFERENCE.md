@@ -1,3 +1,45 @@
+## 消息入口的 MOC 成员查询（2026-11-02）
+
+`settings.query_note_scope` 接受 `vault_notes` / `moc_members`。旧入口缺省仍保持原检索及范围摘要，GUI 保存缺省字段保留旧值；新微信查询入口默认 `moc_members`。该范围支持原文证据和默认模型回答，拒绝尚未适配的 local/local_cloud，避免扩大检索范围。本次通过正常配置 CAS 为现有微信查询入口显式启用，不改变其他入口和历史消息。
+
+`moc_query_members` 解析已完成的 MOC 账本、已确认的人工关系候选及 MOC 显式反链，以稳定身份定位成员；`moc_query_snapshot` 只读取当前成员文件，在一次证据阶段复用解析结果，不调用全库 inventory、索引 token 或索引维护。未曾确认且没有 MOC 反链的单方面新属性关系，需要先通过整理/GUI 确认才纳入。禁止路径在 stat/read 前排除。MOC 导航页按保存策略的 moc_dir 和已绑定 MOC 路径排除，互链不成为正文检索成员。成员正文最多 64 MiB、MOC 正文最多 32 MiB；缺失、待核对、迁移中的相关成员和超限项通过 coverage 明示，其他有效成员继续查询。未确认当前关系的人工候选单列 candidate_unavailable/count，不误计为已挂载成员不可读；覆盖完整性仍保守标记。
+
+`channels/query_snapshot` 根据入口选择实现；正文、标题、专家包、表达式拆分、补充和发送复核共用冻结 `moc_query_scope`（每库稳定成员 ID；必要的路径定位提示不含正文）。模型检索规划前先检查空集合，零成员直接返回零模型结果。已有范围缺失或配置变更时拒绝重解释旧任务。新增成员留待新查询；引用撤出 MOC、文件替换、范围/权限撤销或来源变化阻止交付。专家版本/包内证据仍使用现有校验。
+
+GUI 原文查询测试为一次本地证据请求，等待上限 60 秒；超时不重发。模型测试的入队请求仍保持原时限，不因该等待策略重试或再次调用模型。
+
+这条路径不受全库缓存缺失、损坏、过期或未挂载笔记身份问题影响；首条表达式没有命中会继续后续表达式。连接和权限错误、无成员、无匹配、局部成员不可读分别表达，不要求用户更新全库索引。不自动重放失败消息或重复请求模型。
+
+## 全局索引活动（2026-11-03）
+
+Atlas 顶栏与经典界面页头共用 `web/index_activity.js`，登录后在页面可见时每 15 秒串行读取；切换页面不丢失观察，隐藏窗口、退出登录或离开文档时中止请求，旧响应不得回填。展开状态可查看各库阶段、待处理路径及需核对数量；读取失败保留并标明上次观察，不显示成已就绪，也不改变后台连接指示。没有可用的总工作量时不显示百分比。
+
+`GET /admin/note-index/activity` 只向管理员返回全部 active 且 attached 库的本地观察账本与索引任务投影，沿用独立控制通道的短鉴权/交付租约，不等待整理的长写锁。状态区分文件观察、排队、构建、等待、失败、需核对、就绪和未确认。接口不读取 Vault 正文/全文索引，不创建刷新标记，不触发扫描、重建、模型或消息重放；缺失、过期、损坏记录不得报告就绪。这是界面观察证据，不能用作来源新鲜度或写入授权。
+
+## Obsidian 共库与增量索引（2026-10-27）
+
+原生 macOS 后台通过 `vault_sync/runtime.py` 组装单个协调器；`desktop/vault-events.swift` 仅提供 FSEvents 通知，不枚举目录、读取正文或请求下载。固定摘要的 `FIBER_EVENTS_HELPER` 与 `FIBER_EVENTS_HELPER_SHA256` 随应用和服务镜像传递。没有原生辅助程序的 CLI 保持原有显式维护行为，不悄悄改用频繁轮询。
+
+`vault-sync.sqlite3`（schema 1）保存每库游标、变更代次、目录元数据、待处理任务、工作版本和问题记录；事件与游标同事务落盘。连续保存默认合并 5 秒，目录每片最多 100 项、索引每片 50 篇，单协调器串行扫描及单索引 worker。首次接入建立元数据基线；首次接管旧索引分片重新验证可见范围。事件丢失才补查受影响范围，正常空闲仅每 24 小时作一次元数据校对；失败按 1/5/15/30 分钟持久退避。禁止目录在入队、stat、枚举和正文读取前排除，包括 L2/ExampleVault 的 `01-Projects/protected_project/**`。
+
+GUI 索引状态与备份触发检测只读本机账本，不递归扫描 iCloud。原索引状态接口新增 `sync`，含 observer_available、pending、needs_attention、checked_at、扫描/元数据/正文访问计数；缺基线、监听过期、索引缺失或问题未处理不显示全部就绪。计数是处理工作量，非系统调用追踪。实际备份仍校验需要保存的原件；旁库纳入一致性备份，但心跳不触发数据库变化备份。
+
+`reconcile.py` 维护当前工作版本，保留原提取正文摘要、原件引用和不可变发布历史。原路径原文件编辑自动更新工作版本；原路径原子替换仅在连续事件、原身份未另处出现等证据齐全时继承笔记身份，歧义单篇待核对。权限、物理绑定、Draft 包完整性和人工内容保护不放宽。新的索引维护不写笔记、不挂 MOC、不归档、不调用模型。
+
+`index.py` 在既有每库租约下复制本机缓存，只替换变更分块，核对实际读过的文件和授权版本后原子发布。已管理知识库查询不再以整库扫描兜底；旧的受影响命中拒绝交付，其他已验证命中可继续返回，并通过 `coverage`/`coverage_complete` 和 GUI 提示说明覆盖不完整。无有效命中且仍在更新时返回待更新状态，不宣称资料不存在。真正引用的正文和附件仍按原规则检查。
+
+云目录仅接受无冲突且已在本机的目录版本；文件正文仍要求现有新鲜度校验，不访问占位文件或自动下载。接收入口连接鉴权不再要求整库云状态就绪；真正写入在目标路径检查。只读预检失败可有限退避等待，发布后的不确定结果仍需核对；已经保存但索引未完成单独等待索引，不重新提取或重复发布。用户可在知识库的索引面板查看监听、排队和待核对数量；不需要每次 Obsidian 保存后手动刷新。
+
+## 外部 fake-expert Draft 导入（2026-10-23）
+
+GUI入口为“资料导入→导入专家Draft包”，知识关联设置复用同一弹窗。仅单个已解压的完整 `tkc.expert-skill/v0.1` Draft，支持catalog v0.2/v0.3；不接受仅全文/workpack，不执行包脚本、不重提取或调用模型。用户选择来源目录和目标库，预检固定目录身份/清单摘要、有效范围/权限代次、保存规则及MOC；默认复制到已启用v2保存规则的book_dir，保留源目录。`.DS_Store`明示排除，其他未声明文件拒绝。同身份同版本复用；不同版本及同名目录不覆盖。
+
+接口 `/admin/draft-imports`：POST以submission_id幂等排队只读校验；GET按client_id/vault_id列出最近50项；GET `/{id}`读取轻量进度；POST `/{id}/confirm`绑定preview_sha256、moc_ids及严格布尔candidate_acknowledged；POST `/{id}/cancel`停止后续步骤，`/{id}/resume`显式恢复。所有接口需本机管理员会话，写入需CSRF；目标身份query/add权限及目录范围持续复核。来源仅用于此任务；不提供任意文件下载接口。
+
+organization/draft_import_files负责来源协议/文件验证与分块复制；preview负责只读预检；tasks负责持久意图和公开状态；copy负责独占暂存/提交；runtime负责串行调度、登记/MOC和派生索引；routes只负责合同/授权。新增organization.sqlite3(schema1)内draft_imports表，主schema35不变，沿用整库备份。后台重启将未完成任务标为interrupted，恢复须用户明确操作；不自动重放写入。暂存位于Book隐藏独占目录，完整payload校验后同卷无覆盖rename。发布与账本间中断只接管已记录的payload物理身份，未知目录不采用。部分文件保留以便恢复，不将半包暴露为笔记。
+
+选择MOC的包在导入完成前不进入自动分类队列；人工多选沿用现有增挂锁定及人工内容保护。各MOC分别记录结果，失败恢复只补未完成项；索引失败不重复制/重挂载。公开阶段validation/copy/verification/registration/membership/index与状态preview/queued/working/partial/failed/interrupted/cancelled/completed分别表达，不把原件保留或目录复制成功当作全部完成。实库导入/挂载由用户执行；验收使用隔离源包/知识库。
+
 ## Supplier intelligence（2026-10-21）
 
 供应商业务位于 `suppliers/`，主库 schema35不变，独立 `supplier-intelligence.sqlite3` schema1，首次明确写入才创建。profiles为按库显式策略；records保存供应商/别名/联系人/产品/报价/来源/问题、任务/模型调用/修正及不可变历史快照；operations保留请求摘要和幂等结果。旧SUP/SRC身份保留，历史原件缺失和事实未核验分开标记；不重建或伪造旧PDF/微信原文。原独占管理标记及原人工区不改写，重复历史导入保留人工覆盖/修正引用，移出当前范围的历史记录只退出当前投影，快照保留。
@@ -90,7 +132,7 @@ Atlas品牌按钮 `#theme-toggle` 使用 `/static/logo-original.png` 的既有�
 
 ### Obsidian iCloud 显式迁移（2026-10-20）
 
-管理员预检额外接受严格布尔 `icloud: true`；默认 GUI/API 仍执行原本机规则。显式模式只接纳当前用户的 Obsidian iCloud Documents 容器和同一文件系统，不支持跨盘、覆盖目标或复制后删除。仅允许完整范围及既有 GF_supply_chain 保护，保护子树出现则在读取其元数据前停止；旧 L2 的有效保护随目录更名显式保留在 catalog scope。目录身份、业务与策略记录不重建。旧保存规则的根父目录观察允许同一保护由 catalog 显式承接，须同时通过原 inode、策略摘要、范围与各目录校验，不修改设置或扩大权限。
+管理员预检额外接受严格布尔 `icloud: true`；默认 GUI/API 仍执行原本机规则。显式模式只接纳当前用户的 Obsidian iCloud Documents 容器和同一文件系统，不支持跨盘、覆盖目标或复制后删除。仅允许完整范围及既有 protected_project 保护，保护子树出现则在读取其元数据前停止；旧 L2 的有效保护随目录更名显式保留在 catalog scope。目录身份、业务与策略记录不重建。旧保存规则的根父目录观察允许同一保护由 catalog 显式承接，须同时通过原 inode、策略摘要、范围与各目录校验，不修改设置或扩大权限。
 
 cloud-status 的 `--tree-excluding` 在 lstat 前排除保护名称；整库元数据超时为 180 秒，普通单项为 20 秒，超时单独诊断。`--items` 从标准输入接受最多 256 个已授权直接子名称，不递归、不下载；索引指纹按目录批量核对相关 Markdown 和发布标记，实际证据/图片读取继续独立复核。内容与索引文本不因批量检查改变。此次迁移后按原清单与缓存摘要逐篇验证 643 篇笔记，只更新派生 observation 的 ctime 与 generation 指纹，所有 notes/FTS 分块不变；保留原未定位登记。
 
@@ -251,11 +293,11 @@ API（均需本机管理员会话；POST需CSRF；业务要求query+add权限）
 
 视频设置（管理员会话）：`GET /admin/video-processing/skill`返回`settings`、CAS用`sha256`、`skill_state`、工具可发现性和可选模型列表；`PUT`接收`{settings,expected_sha256}`。设置包括`skill_path`、`python_path`、`asr_python`、`tool_directories`（绝对现有目录，桌面最小PATH时使用）、`vision_model_configuration_id`、`default_terms`、`max_media_bytes`和`timeout_seconds`。保存不安装依赖、不调用模型；GUI在“收件箱 → 媒体审核 → 视频提取 → 消息入口的视频 V3 设置”。
 
-新通道Bilibili/YouTube链接使用项目`skills/bili-note-V3`：公开来源元数据/完整媒体 → 可用字幕优先 → 无可用字幕自动本地ASR → 关键帧/图片模型 → 裁图与时间线 → 受限Pi生成笔记 → V3完整性与图文审计 → 原审核/自动发布路径。采用默认通用术语，无逐任务询问；采用者记录为`fiber-application-policy`，不伪造人工确认。任务固定Skill、术语、模型及媒体摘要；重试不重下载成功素材，不重跑已完成调用。图片模型可独立选择，沿用该Key的统一预算；画面语义依赖真实图片能力，失败明确保留。Pi在原离线容器只读访问固定Skill和证据，不能执行宿主命令、发布或清理。视频生成笔记的检索来源标记包含模型整理、非独立证据；原始媒体和审计保留。
+新通道Bilibili/YouTube链接使用项目`skills/bili-note-V3`：公开来源元数据/完整媒体 → 可用字幕优先 → 无可用字幕自动本地ASR → 关键帧/图片模型 → 裁图与时间线 → 完整证据直接排版笔记 → V3完整性与图文审计 → 原审核/自动发布路径。采用默认通用术语，无逐任务询问；采用者记录为`fiber-application-policy`，不伪造人工确认。任务固定Skill、术语、模型及媒体摘要；重试不重下载成功素材，不重跑已完成调用。图片模型可独立选择，沿用该Key的统一预算；画面语义依赖真实图片能力，失败明确保留。Pi在原离线容器只读访问固定Skill和证据，不能执行宿主命令、发布或清理。视频生成笔记的检索来源标记包含模型整理、非独立证据；原始媒体和审计保留。
 
 无字幕路线由`channels/intake_video_skill.py`选择、`video_skill.py`以受管子进程执行原V3的`run_asr.py`及`qwen3_asr_backend.py`：ffmpeg生成16kHz单声道音轨，默认30秒分片/1.5秒重叠，Qwen本地转写并保留原始/规范化SRT及覆盖报告。无字幕不要求用户另行提供字幕。
 
-ASR全empty时按用户批准策略进入`visual_primary`路线。`video_skill_asr_entry.py`在不修改冻结V3的前提下记录有限分片诊断，绑定媒体、完整音轨、上下文和后端摘要；`video_visual.py`仅在完整覆盖且全empty、0有效文字、无分片错误时准入，缺模型/超时/部分失败不切换。用V3深度/场景取帧，间隔网格固定精确源时间点（最多120固定点，整体最多240选择帧），防止FPS输出相位导致画面时间错位；复用原图片Key、裁图和Pi流程。
+ASR全empty时按用户批准策略进入`visual_primary`路线。`video_skill_asr_entry.py`在不修改冻结V3的前提下记录有限分片诊断，绑定媒体、完整音轨、上下文和后端摘要；`video_visual.py`仅在完整覆盖且全empty、0有效文字、无分片错误时准入，缺模型/超时/部分失败不切换。用V3深度/场景取帧，间隔网格固定精确源时间点（最多120固定点，整体最多240选择帧），防止FPS输出相位导致画面时间错位；复用原图片Key和裁图流程，完整证据直接排版。
 
 视觉时间线的`transcript`为空且转写覆盖率为null，语音未核验；`video_visual_audit.py`复用原V3访问/隐私/术语/完整源门禁与视觉来源/裁图/绑定审计，新增实际帧字节、无虚构转写、画面内容非空、选择帧覆盖及笔记局限声明检查。报告schema为`fiber-video-visual-primary-audit/v1`，不冒充原版语音路线通过。来源包附有限ASR诊断与策略摘要，`video-provenance.json.transcript=null`；原字幕/有效ASR路线不变。GUI与分阶段回执说明“语音内容未核验”，最终仍依本库人工/自动入库规则处理。
 
@@ -287,7 +329,7 @@ ASR全empty时按用户批准策略进入`visual_primary`路线。`video_skill_a
 | 完整 fake-expert | 固定 Skill/runtime、Draft 包、显式 workpack 恢复、只读包查询和候选导入 | [expert_tasks.py](../src/fiber_bundle/expert_tasks.py)、[expert_reference.py](../src/fiber_bundle/expert_reference.py) | 缺语义材料暂停；完整扫描/视觉后端真实验收仍有缺口 |
 | 视频 / 音频 | 直接文件/平台链接、字幕或本地 ASR、术语快照、关键帧、音画审核、发布与清理意图 | [media_links.py](../src/fiber_bundle/media_links.py)、[media_processing.py](../src/fiber_bundle/media_processing.py)、[media_review.py](../src/fiber_bundle/media_review.py) | 当前处理策略上限 **60 秒**，不能因元数据预检接受较长时长而执行长视频；登录与人工审核验收暂缓 |
 | 笔记检索与原文回答 | 按当前授权检索、来源/行号/SHA、会话资料、原文引述、证据不足返回 | [search.py](../src/fiber_bundle/search.py)、[evidence_answers.py](../src/fiber_bundle/evidence_answers.py) | 普通检索不隐式调用模型；语义充分性与冲突不由字面命中自动判定 |
-| 持久全文索引 | 逐篇分块落盘、中文短词/FTS 检索、命中后重读来源、显式重建 | [note_search_build.py](../src/fiber_bundle/note_search_build.py)、[note_search_cache.py](../src/fiber_bundle/note_search_cache.py) | 外部编辑/移动/删除或权限变化使索引失效；不自动修复或返回部分结果 |
+| 持久全文索引 | 逐篇分块落盘、中文短词/FTS 检索、命中后重读来源、显式重建 | [note_search_build.py](../src/fiber_bundle/note_search_build.py)、[note_search_cache.py](../src/fiber_bundle/note_search_cache.py) | 原生后台按文件事件增量更新，权限与实际引用复核；部分覆盖显式标记；CLI 无辅助程序保持显式重建 |
 | 模型问答与云整理 | 固定证据任务、本地 oMLX、受限 Pi、OpenCodeGo 整理、调用预算/费用、显式备用选择 | [query_routes.py](../src/fiber_bundle/query_routes.py)、[local_query_gateway.py](../src/fiber_bundle/local_query_gateway.py)、[cloud_answer_tasks.py](../src/fiber_bundle/cloud_answer_tasks.py) | 正式路由入口未启用，备用关闭；云整理只接收绑定答案，仍可能含引述，不是无内容出站 |
 | 文档制作与续改 | 从已绑定查询结果准备任务、要求版本、有限执行、不可变草稿、追加要求、文件交付及显式保存 | [document_creation_tasks.py](../src/fiber_bundle/document_creation_tasks.py)、[document_creation_continuation.py](../src/fiber_bundle/document_creation_continuation.py) | 创建准备合同不等于生成；跨范围保存需独立批准；生成内容标 agent_analysis |
 | 笔记生命周期与 MOC | 稳定身份、外部变更对账、跨库迁移计划、附件复制、MOC 关联/预览/计划写入/撤销 | [note_migration_execution.py](../src/fiber_bundle/note_migration_execution.py)、[moc_files.py](../src/fiber_bundle/moc_files.py) | 迁库只按指定目标 MOC，否则待分类；附件原库保留，跨库正文链接保留并列待修复项 |
@@ -325,7 +367,8 @@ flowchart LR
 | `metadata.sqlite3`（schema28） | 客户端/会话/授权、收件/版本、执行/费用、发布、导入及查询/文档任务等主账本 |
 | `message-channels.sqlite3`（独立schema3） | GUI通道、消息执行审计；schema2增加既有gateway登记/清理操作，schema3增加自动策略、批次记录及累计消费三表。正式已升级3；只读兼容1/2/3且不创建/迁移，明确写入事务升级 |
 | `objects/` 等原件目录 | 内容摘要绑定的原件对象；具体布局由 objects/store 管理，客户端不能直接指定宿主路径 |
-| `note-search/{vault_id}.sqlite3` | 可失效、显式重建的持久检索缓存 |
+| `note-search/{vault_id}.sqlite3` | 持久检索缓存；原生增量维护，仍支持显式重建 |
+| `vault-sync.sqlite3` | 原生事件游标、元数据基线、工作版本与有限重试；schema 1 |
 | `knowledge-graph.sqlite3`（独立 schema1） | 分析任务、向量、建议审核和写回记录；未使用时可以不存在 |
 | `document-creation.sqlite3`（独立 schema1） | 文档准备合同及要求版本 |
 | `weixin-inbox.sqlite3` | 共享收件/批次日志；飞书复用内部结构，但保留 Feishu 原始来源标记 |
@@ -1072,7 +1115,7 @@ X仅接受可验证的长文序列化，公众号保留原图相对引用，正�
 | 方法与路径 | 输入 | 成功 HTTP | 封装入口 |
 |---|---|---|---|
 | `GET /admin/note-index/status` | Q: client_id*=string, vault_id*=string | 200 | [status](../src/fiber_bundle/note_search_admin.py) |
-| `POST /admin/note-index/update` | B: Scope | 200 | [update](../src/fiber_bundle/note_search_admin.py) |
+| `POST /admin/note-index/update` | B: Scope | 202（事件管理库）/200（旧显式库） | [update](../src/fiber_bundle/note_search_admin.py) |
 
 ### knowledge_graph/routes.py
 
@@ -1501,6 +1544,52 @@ GUI: 知识关联→整理笔记→快速整理/全量补充/深度重整→生�
 
 Release acceptance: real notes and Draft copies are used only for classification/preview; actual confirmation/MOC writes/archival are reserved to the user. Synthetic isolated fixtures test execution and crash recovery. No production organization task is submitted, confirmed or replayed during deployment.
 
+#### Unavailable ordinary notes and explicit recovery (schema35)
+
+Task continuity (2026-10-29): `maintenance_admission` checks the same-vault owner before confirmation/resume and before queued background organization analysis. Blocked tasks expose `blocking_task` and `waiting_task`; previews remain read-only. Background tasks resume their existing queue intent after release; interrupted manual tasks never auto-resume. Repeated confirmation is idempotent. `POST /admin/organization/maintenance/{id}/finish_preview` returns `close_preview.plan_sha256`, completed/archive/remaining counts; `finish` requires that digest. This explicit end retains completed files, relationships and history; it differs from `cancel` (undo). Unverified intents or exchanges require recovery first. Closed tasks cannot resume or undo.
+
+`maintenance_waiting` records `waiting_file`/`waiting_archive` per item before writes and skips only safe independent work. Public task fields include `waiting_sources`, `archive_mode` and the existing item membership/archive phases. Unknown exchanges remain a task-wide recovery barrier. Metadata preparation is at most 100 pending ordinary notes per unit, once per explicit run; pause/restart keeps this checkpoint. Runtime omissions belong only to confirmed ordinary sources. Default partial scope defers outstanding moves; explicit `defer_links` retains unverified inbound references. Changed current text requires a new preview; original extraction caches never replace user edits. Compensation captures and seals only files/operations touched in the current unit, while undo still verifies all retained evidence. Legacy journals retain their full verification contract.
+
+`POST /admin/organization/cloud-file` additionally accepts `action=recheck` with the current metadata `expected` token and add permission. It requires the current file locally available and queues only this path in the existing incremental ledger, bringing its retry forward without inventing modification events or rescanning the vault. `cloud_downloads` is an additive private organization-ledger table: uncertain native download requests are deduplicated; inspection does not replay them. GUI preparation is an explicit sequential pass of at most 10 files/25 seconds (plus one in-flight native call capped at 6 seconds), then reports readiness. It never starts a folder poll. Continuing requires all requested files ready and still revalidates current task permissions/content; changing the view cancels further requests and continuation.
+
+New `POST /admin/organization/maintenance` accepts `unavailable_action`: `moc_only` (default)
+mounts readable notes but defers quick-mode moves when coverage is incomplete; `defer_links`
+explicitly allows archiving and records unverified inbound sources. The choice is sealed in the
+preview. Existing previews keep their original contract. Public tasks expose `coverage`,
+`unavailable_action`, `deferred_archives`, item `deferred_target`, and `links_pending`.
+
+`partial_notes.py` carries explicit omissions through membership, MOC adoption and immutable file
+plans (`read_omissions` optional; old schemas/digests still accepted). Unreadable members keep
+existing managed links and human MOC bytes remain intact. Newly failing sources, unreadable target
+MOCs, identity conflicts and changed permissions still stop affected writes. Progress polling never
+traverses or hydrates the vault; bounded current inventories are checked during confirmed writes.
+
+`maintenance_deferred_links.py` attaches source identities and old→new paths to archive journals.
+`POST /admin/organization/maintenance/{id}/links/preview` takes client_id/vault_id and reads recovered
+current content, returning operation_id/plan_sha256, remaining paths, path mapping and before/after
+text. `POST .../links/confirm` requires the same scope, operation_id and exact plan_sha256. Repairs
+use existing exclusive exchange/reconciliation and identity/publication updates. Previews expire
+after 15 minutes before execution; repeated confirmation is idempotent. Later edits are preserved.
+A reused old path or ambiguous mapping requires manual review. The next preview exposes an interrupted
+repair for explicit continuation. Once a separately confirmed repair has started, parent-task undo
+cannot silently overwrite it. No new main schema, model calls or automatic repair.
+
+`POST /admin/organization/cloud-file` takes client_id/vault_id/path, action=inspect|download
+(default inspect), and the latest expected token for download. Effective scope is checked before stat.
+The pinned Swift helper inspects one regular Markdown file and returns available/not_requested/
+requested/downloading/conflict/error/unknown. A download timeout reports unknown outcome without retry.
+Existing helper commands remain metadata-only. `GET .../cloud-file/reveal` supplies an authenticated
+path and inode to the constrained Electron `revealCloudNote` IPC, which reveals without reading the
+body. No recovery runs on page load, disclosure expansion or polling. Native download uses Apple's
+[startDownloadingUbiquitousItem](https://developer.apple.com/documentation/foundation/filemanager/startdownloadingubiquitousitem(at:)).
+
+GUI: choose the unavailable-note policy in 整理笔记 before previewing. Default partial tasks show
+deferred archives; archive-enabled tasks have a separate pending-link preview/confirm flow. In
+查看暂不可用的资料, 检查此文件状态 / 下载此文件 / 在 Finder 中定位 act on the selected path only.
+All controls are bilingual in Atlas and classic. Production release acceptance uses list/preview
+only; actual cloud recovery, MOC writes and archives remain user-operated.
+
+
 
 ## 分类证据与遗留缓存核对（2026-10-18）
 
@@ -1579,6 +1668,20 @@ GUI可见时活动任务2秒、空闲10秒串行轮询，只重绘状态区。�
 
 ### 整理进度、暂停及轻量管理读取
 
+整理执行器显式持有 `note_read_session`，复用正文解析和目录名称，最多 32 MiB 正文、10,000 篇笔记和 20,000 个目录项。同任务、身份、代次和预览摘要下可跨安全单元保留；暂停、失败、任务变化或空闲超过 60 秒即丢弃。每次读取仍核对文件身份、权限、签名及当前云端可用性，不缓存授权或云状态，实际写入保留原有 CAS 和前后复核。无关系或归档变化的项只核对来源和人工决策，不创建无用的文件撤销快照；任务诊断 `read_work` 记录实际读取及复用次数。
+
+`cloud_observation` 区分未下载、版本陈旧、元数据变化和冲突，提供有界的相对路径、阶段、时间和变化字段。每个执行单元最多对一次可重试的只读元数据异常清缓存后重读，不重试写入、调用模型或请求下载。主错误保持不变，撤销证据封存的次生异常单独放在 `recovery_error`。中断后的关系提交与文件回滚由已有日志核对；仅显式恢复继续，人工变更导致证据冲突时保留文件并停止。
+
+进度响应新增 `index_observation` 和 `last_progress_at`，由 `organization.progress_observation` 只读本地索引状态投影；不修改历史任务、启动索引或恢复整理。GUI 分开显示“整理已中断”和当前知识库索引状态，`coverage.historical` 表示预览时的覆盖缺口，不表示文件现在仍在下载。原任务 `index_state/error` 保留供诊断，之后恢复的索引须有晚于任务最后进展的构建时间证据。
+
+整理任务响应的 `execution_progress` 使用 `organization-progress/v1`：`phase` 区分分析、预览、应用、收尾、等待、完成、关闭和撤销；`completed/total` 是该阶段进度，`counts` 分列 analyzed、processed、mounted、archived、waiting、review、archive_pending。分析完成不代表已应用，已处理也不等于已归档。该字段从原账本只读投影，旧任务无须迁移；前端进度条与相邻文字共用这份计数。
+
+显式恢复动作因观察证据冲突被拒绝时，响应保留原 HTTP 状态，并附有界 `error_detail`（相对路径、phase、reason、changed_fields、retryable_read）；不覆盖历史任务错误或重放写入。已提交归档仅核对原操作证据并完成缺失收尾，未提交操作继续原持久日志与 CAS 边界。共享 MOC 的后续条目只有在原操作的唯一日志链及实际文件身份核验一致后才能推进依据。
+
+`moc_retained_member_limit` 保持原 HTTP 503；新捕获的容量错误附 `reason=retained_evidence_limit`、`phase=moc_retained_members`、相对 `path`、`moc_id`、`actual_bytes/limit_bytes`、最多 20 条 `missing_members` 路径及 `retryable_read=false`。HTTP、任务进度和经典/Atlas 界面保留这些白名单字段，不输出 block 或登记证明；历史无详情记录只说明已知容量原因，不推断文件路径和数量。
+
+目录观察缓存仅 ctime 变化时，`catalog_inventory` 在一次读取内最多核对一个目录、10,000 个名称，按既有授权/隐藏项/附件规则先过滤，再与缓存中的直属子项集合比较；目录前后签名须稳定。身份、权限、大小、mtime 等变化或新增/删除子项仍阻断，不把元数据时间差直接当作内容变化。核验不会更新持久缓存、请求下载或触发全库扫描；进度轮询不走此路径。
+
 `GET /admin/organization/progress` 只投影授权任务账本，不遍历笔记正文。`POST /admin/organization/maintenance/{identity}/pause` 在核对登录、CSRF、身份、知识库访问与写入权限后，持久保存同任务、同代次的暂停意图；执行器在安全步骤和恢复日志封存后暂停。空闲任务的即时暂停仍在原全局写入纪律下通过版本比较提交，不能覆盖并发确认或执行。暂停未被提交时返回独立的 `organization_control_busy`，客户端不自动重发写请求。
 
 进度、暂停以及会话恢复、身份清单、知识库清单和后台状态的已审查轻量读取采用独立 SQLite 授权返回租约：回滚日志模式用读事务阻止撤权提交穿越响应；WAL 模式保留短写入预留，保证相同边界。会话恢复不延长登录期限。索引遍历和云状态采集不持全局写锁，返回后核对实际业务版本、权限和完整指纹，变化则放弃候选；笔记写入前完整校验、事务和文件 CAS 保持。
@@ -1586,3 +1689,66 @@ GUI可见时活动任务2秒、空闲10秒串行轮询，只重绘状态区。�
 界面先显示已取得的任务进度，目录暂不可读时保留任务控制与已有内容，并有界退避重试；首次读取失败同样可恢复。未读取的目录数量不作为零或正常状态显示，已确认失效预览保持失效；仅清除已经恢复的对应读取错误。整理完成与索引更新阶段分别显示。暂停不会立即中断正在写入的安全步骤，恢复沿用原任务及已完成记录。
 
 备份恢复故障隔离：自动备份账本读取/恢复失败不再阻止管理后台启动；恢复完成前不执行备份队列，保留既有读取上限、账本、配置及失败信息，不自动删减历史。
+
+
+### 视频短链恢复接口（2026-10-23）
+
+既有管理员 POST `/admin/channels/{channel}/intake/batches/{batch}/links/{index}/retry` 新增可选布尔 `use_current_video_settings`（默认 false，与 `approve_new_model_attempt` 独立）。仅无完成阶段、无解析结果、无产物/发布/任何模型调用记录且任务目录不存在时可刷新；旧视频快照及失败诊断保留。已开始任务返回 `intake_video_refresh_not_safe`，不改写原快照。普通重试继续原有调用对账与新付费尝试确认。
+
+短链解析最多3次连接尝试，按 DNS 验证后的公网地址切换；连接及响应共享30秒截止预算，每次最长8秒；系统 DNS 解析受操作系统解析器约束。保留 TLS 主机名/证书校验、SSRF、重定向及取消保护；证书和非暂时 TLS 错误不自动重试。失败诊断仅存 stage/category/attempts/elapsed_ms 和代码位置，不保存远端错误正文、请求头或凭据。有限错误码 `intake_video_source_{timeout,dns_failed,tls_interrupted,connection_interrupted,certificate_invalid}`。该恢复不自动重试模型调用。
+
+视频DeepSeek Flash正文生成采用阶段专用32768输入/16384输出容量（已保存更大的容量不降低），为草稿工具写入后的推理/工具回传预留上下文，并在原Key账本原子预留；不修改保存的模型设置、其他任务或其他提供方。`video_skill_note_output_truncated`区分已完成提取但正文输出被截断的情况；所有付费旧调用保留，新尝试仍要求`approve_new_model_attempt=true`，复用已经通过完整性检查的转写/画面/配图。Atlas与经典记录页均展示阶段、实际模型，并支持仅未开始任务刷新配置。
+
+`processing_model_usage_exceeded`表示实际提供方用量超过预留容量，已发生用量仍完整结算；视频记录映射为`video_skill_note_context_exceeded`，明确尚未保存笔记，禁止自动重试或直接发布失败任务的草稿。
+
+
+视频草稿与缓存恢复（2026-10-24）：
+- 绑定V3视频的`pi_processing.result`允许完整JSON对象被额外序列化为一层JSON字符串；只解一层，不修补半截JSON。原schema、kind/source_sha256/evidence_ids/正文非空及执行成功校验保留，analysis_sha256仍绑定原草稿字节，不改写原件。
+- `POST /admin/channels/{identity}/intake/batches/{batch}/links/{index}/retry`的`video_note_mode`增加`captured_evidence`；旧`visual_evidence`仍保持仅画面路线的限制。新选项复用已完成字幕、ASR或画面证据，前9个提取阶段、所有画面运行和哈希、完整转写覆盖及时间轴必须通过检查，缺失/变更时停止，不调用模型兜底。正文逐段保留转写、画面要点、OCR和审计配图；仍走原人工审核或自动入库策略，Pi扩写不作为这条显式恢复路线的前置。
+- `video-provenance.json`记录`note_authoring=captured_evidence`和完整转写；已发生的Pi运行保留在`unused_prior_note_runs`和历史账本。`evidence_transcript_sha256`绑定复用转写。本次恢复排版无新增模型调用，不改变默认处理方式、模型、预算或自动整理策略。
+
+
+### 视频直接生成与有限恢复（2026-10-24）
+
+新V3任务冻结 `evidence_flow=2`、`note_authoring=captured_evidence`：先完整提取字幕/ASR、所有选择帧分析、裁图和时间线，再逐项校验来源、帧哈希、转写覆盖及配图后排版；不再以Pi扩写作为入库前置。无可用字幕自动ASR、全空ASR的画面主导准入和原人工/自动入库规则保持。`extra_summary`仍默认关闭；启用时在原文成功发布后独立处理，失败不能撤销原文。
+
+已有任务仍沿原冻结模式运行。重试接口新增 `video_note_mode: "direct"` 可明确续接提取并切换直接排版；旧 `visual_evidence` / `captured_evidence` 仍仅允许完整缓存恢复。旧Pi运行与费用保留在来源记录，不使用失败草稿。缺失或变更的证据停止处理，不用少帧、空内容或未完成草稿冒充成功。
+
+视频按单个任务累计输入与输出 tokens，默认总上限 **500,000**。`video_skill_settings.Settings.max_video_tokens` 配置新视频的默认上限；已有视频通过同一重试接口的 `max_video_tokens` 调整总上限（严格整数0–1,000,000,000，含历史消耗，不是新增额度）。GUI显示已用、剩余及未知用量的预留部分。剩余预算不足以下一次调用预留时返回 `video_skill_token_budget_exhausted` 并暂停，保留断点；可提高总上限后明确恢复。原 Key 总预算同时生效。
+
+`video_token_budget.py` 以稳定视频 job_id 关联既有视觉/Pi/后置摘要账本和 API ASR 账本，在原预留事务中检查累计额度。成功或失败调用如有有效 usage 则按输入+输出结算；推理tokens已包含于输出时不重复相加。进行中或未知usage保留完整预留；缺少可核对token预留的旧货币记录保守阻止继续，不能按零消耗处理。本地ASR、读取字幕、缓存复用和确定性排版不计API tokens。历史运行通过冻结快照中的run_id关联，旧调用/回执不改写；恢复、重启及重新授权不会清空本视频累计消耗。不迁移schema。
+
+旧 `max_new_model_calls`（0–1000）与 `video_call_allowance.py` 仅保留接口兼容，不再出现在GUI恢复控制中；不能与 `max_video_tokens` 同时提交。显式使用token总上限恢复时，旧次数限制移入历史，已有账单仍计入总tokens。修改默认设置或打开页面不恢复历史任务。
+
+`video_model_policy.py`将DeepSeek Flash图片阶段的单次输出容量独立提升到至少16384，旧运行仍匹配原配置摘要。`finish_reason=length`返回`video_skill_visual_output_truncated`，空正文为`video_skill_visual_response_empty`；严格JSON、图片完整性、来源和费用校验继续生效，不拿推理文本补正文、不自动重试。
+
+记录投影 `video_progress` 保留 `frames_total/frames_complete/frames_remaining/failed_frame/failure_code` 及兼容字段 `call_allowance`，增加 `token_budget{limit,input_tokens,output_tokens,actual_tokens,reserved_tokens,used_tokens,remaining_tokens,unconfirmed_calls}`。其中 `used_tokens=actual_tokens+reserved_tokens`。Atlas与经典页显示帧进度和单视频tokens总预算；回执明确预算暂停时尚未入库。读取旧诊断是有界只读，不触发重试。管理员在“消息入口→最近入库记录”填写总上限并明确恢复；不必重新转发视频。
+
+### 索引增量维护状态契约
+
+对已由 `vault_sync` 管理的知识库，`POST /admin/note-index/update` 返回 202 和 `state/vault_id/job_id/coalesced/model_calls=0`，提交到同一个持久队列；重复点击合并请求。该响应仅代表接收，不能作为完成凭证。未启用事件观察的旧显式库继续返回 200 与构建结果。CLI/业务同步调用同样复用增量写入器，在有界尝试内未完成则返回原 `note_index_update_required`。
+
+`GET /admin/note-index/status` 区分 `pending/building/ready/partial/waiting/failed/stale`，增加 `coverage_complete`。`sync` 包含待检查路径数 `pending_checks`、问题分组 `issue_groups`、前 20 个问题 `issues`（path/reason/next_check/attempts）、总数/截断标记和 `next_retry`；读取只用本机状态库与索引，不遍历 iCloud。文件云端状态不明、未下载、身份冲突各自隔离，健康笔记继续可检索；命中交付仍逐条检查当前源文件及权限。不完整覆盖不能解释为全库无结果。
+
+维护只更新本地派生索引及已核验的工作身份版本，不触发 MOC/归档。`vault_sync.commands` 负责请求合并和兼容同步入口，`visibility` 提供路径级可见性证明，`working_intent` 验证晚到登记，`progress/problems` 保留精确问题与退避，`index_storage` 仅在临时索引容量压力下回收 FTS 旧段。旧索引在新分片校验成功前保持不变；旧证明分批重新准入，主库 schema 不变。
+
+
+### 显式更新、索引版本边界与定向 MOC 恢复（2026-11-03）
+
+GUI 的“更新此知识库索引”对 managed Vault 提交 `reobserve=true`：持久请求先核对允许范围的目录元数据，再校验并登记 Book Draft 包，最后发布普通笔记索引与 `indexed_experts(id,version,path)` 版本证明。显式登记不触发新的模型整理。重复提交合并到原任务；中断后沿原意图继续。允许范围的文件事件与受控 MOC 写入同时排队直属父目录的非递归元数据核对，避免原子保存后目录签名滞后；隐藏或保护路径的事件先排除。全局状态显示核对文件、核对 Draft 包和更新索引；本页通过纯读完成观察刷新列表，不再次提交更新。旧 CLI 无观察器行为保持兼容。主 schema35 与索引 user_version1 不变，新增表只在派生索引中。
+
+受管理知识库的查询使用已发布索引与当前有效来源的交集。未索引的新文件、新包及编辑后尚未更新的版本局部跳过，未改变的旧索引资料仍可检索；当前有效 MOC 成员边界、权限和交付前源文件复核继续执行。没有专家版本证明的旧索引不从登记表推断 Draft 已索引，首次显式更新后才准入。包核对失败保留历史登记，但该包旧版本不能伪装成本次可用来源，健康同库资料仍可用。
+
+MOC 写回使用持久 `moc-write-scope/v1`，只读取目标、相关成员和人工链接解析所需正文，保留原文件 CAS、成员归属与人工区。人工短链接还核对允许目录名称集合，防止计划后出现同名候选。无关旧文件身份冲突单列，不自动收编替换文件；相关冲突仍阻断写入。旧日志保留原完整校验语义。对于历史日志和当前系统区都已标为“当前不可见”的旧普通成员，新日志可冻结原登记、所属、历史版本与精确占位行，仅在原路径明确缺失、无同身份搬移候选且权限仍有效时保留；文件重新出现、登记变化、权限/云状态异常或缺失的新成员仍停止。原关系与人工区不变，GUI单列历史成员待核对，不宣称文件已恢复。通用任务恢复先续接未完成业务，再单独收尾索引，不因历史 index_failed 提前跳过业务。 普通快速整理归档在已提交元数据后，仅凭同库、applying 状态与 metadata_committed 的自有操作编号完成 MOC 投影，成功后记录 completed；其他未完成操作继续阻断。
+
+已分析的失败任务可显示“复用缓存恢复挂载（不调用模型）”。执行时绑定当前来源、策略、模型配置、窗口与证据，逐一重建原缓存键；缺失或变化即停止，禁止模型兜底。沿用原任务和已完成条目，不重放消息，不清除历史失败诊断。
+
+历史缺失成员的新证明采用 `moc-retained-members/v2`：`blocks` 按 SHA-256 保存共享受管理区块，`members` 保存逐成员原证据和精确 `block_ref`。总 canonical 大小仍限 24 KiB，缺失成员仍限 20 个；区块摘要、引用、原 applied 日志、归属、登记、根身份、明确缺失及未搬移证明均核对。旧逐成员内联 block 格式继续严格读取，原 journal 字节不迁移。成员写入先用原 reconciler 收敛 pending 文件操作，再创建新成员修订；直接投影与成员入口共用同一实现，避免重复全历史扫描。新读取器兼容旧日志；8640 及更早读取器不识别 v2，产生 v2 日志后不能仅回退旧程序，回退须核对匹配的程序与数据，且不得丢弃后续结果。
+
+### MOC 列表与部分可读预览（2026-10-28）
+
+`GET /admin/knowledge-graph/notes` 默认保持数组响应；`include_coverage=true` 返回 `{items, coverage}`。`coverage` 为 `null`（旧显式库）或 `{complete, unavailable_count, unavailable:[{path,reason}]}`，路径列表最多100项。当前部分索引允许列出健康笔记，仍检查可见范围、观察器、版本证明；选中分析或图谱正文读取前后再次核对当前文件。手动编辑的笔记与普通笔记相同，不获得特殊豁免；不恢复旧提取正文。
+
+`organization.catalog_inventory` 将普通文件的暂不可读状态记录为预览覆盖缺口；已管理库复用本地目录账本，显式读取核对目录签名，不从旧正文补齐。目录范围未知、观察器未就绪、目标 MOC 不可读分别以 `organization_catalog_pending/organization_catalog_changed/organization_moc_unavailable` 阻止不可靠预览。覆盖缺口绑定到计划；归档需要完整引用范围，确认前返回 `organization_archive_scope_incomplete`，防止部分写入后才失败。恢复可读后重新预览纳入当前内容。接口返回409与受限的相对路径 `issues`；不是全局存储损坏。
+
+GUI 区分可读清单和暂不可用资料；任务进度读取本地账本，目录失败不会高频自动重扫。手动刷新或实际任务完成才重读目录，进度失败最多按30/60/120秒重试，之后等待用户刷新。新任务展开状态、模式与未提交输入在重绘中保留，执行确认不自动勾选。上述预览不写 MOC 或归档。

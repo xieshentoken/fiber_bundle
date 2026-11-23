@@ -13,6 +13,7 @@ from fiber_bundle import admin_batches, auth, database, operations, system_setti
 from fiber_bundle.config import Config
 from fiber_bundle.http_guard import Settings
 from fiber_bundle.payloads import Approval, DefaultQuery, Login, NewClient, Permissions
+from fiber_bundle.session_policy import cookie_ttl
 
 
 class BatchChoice(BaseModel):
@@ -59,7 +60,7 @@ def router(config: Config, settings: Settings) -> APIRouter:
             response.set_cookie(
                 auth.COOKIE,
                 token,
-                max_age=session_ttl,
+                max_age=cookie_ttl(session_ttl),
                 httponly=True,
                 samesite="strict",
                 path="/",
@@ -69,9 +70,19 @@ def router(config: Config, settings: Settings) -> APIRouter:
             db.close()
 
     @routes.get("/session")
-    def session(request: Request) -> dict[str, Any]:
+    def session(request: Request, response: Response) -> dict[str, Any]:
         with access(request) as db:
-            csrf, expires = auth.resume_session(db, request.cookies.get(auth.COOKIE, ""))
+            token = request.cookies.get(auth.COOKIE, "")
+            csrf, expires = auth.resume_session(db, token)
+            if expires == 0:
+                response.set_cookie(
+                    auth.COOKIE,
+                    token,
+                    max_age=cookie_ttl(0),
+                    httponly=True,
+                    samesite="strict",
+                    path="/",
+                )
             return {"csrf": csrf, "expires_at": expires}
 
     @routes.post("/logout")

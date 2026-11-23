@@ -9,7 +9,14 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from . import database, model_budgets, video_asr_transport, video_skill
+from . import (
+    database,
+    model_budgets,
+    video_asr_transport,
+    video_call_allowance,
+    video_skill,
+    video_token_budget,
+)
 from .config import Config, InvalidInput, contained, make_directory
 from .inputs import canonical
 from .model_configuration.policy import RegisteredPolicy, resolve
@@ -45,6 +52,11 @@ def attempt(
             database.connect(config.state_root) as db,
             database.transaction(db),
         ):
+            video_call_allowance.require_remaining(db, frozen.get("call_allowance"))
+            token_budget = video_token_budget.binding(
+                frozen, settings.get("asr_api_reserve_tokens", 16384)
+            )
+            video_token_budget.require_remaining(db, token_budget, token_budget["reserved_tokens"])
             reservation = model_budgets.reserve(
                 db, policy.secret_file, settings.get("asr_api_reserve_tokens", 16384), 0
             )
@@ -65,6 +77,8 @@ def attempt(
                             "purpose": "video_asr",
                             "job_id": frozen["job_id"],
                             "chunk": key,
+                            "video_call_allowance": frozen.get("call_allowance"),
+                            "video_token_budget": token_budget,
                         }
                     ),
                     reservation,

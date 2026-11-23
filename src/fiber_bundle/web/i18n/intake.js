@@ -1,5 +1,137 @@
 // UI message catalog; parameters preserve source data.
 export default {
+  "intake.cached_publish": [
+    "使用已有缓存继续入库（不调用模型）",
+    "Continue saving cached results (no model calls)",
+  ],
+  "intake.archive_wait": ["等待归档收尾", "Waiting for archive reconciliation"],
+  "intake.fibermall": ["FiberMall 技术博客", "FiberMall technical blog"],
+  "intake.article_images.downloading": [
+    "正在下载配图 {complete}/{total}",
+    "Downloading article images {complete}/{total}",
+  ],
+  "intake.article_images.waiting": [
+    "配图 {complete}/{total}，等待补抓",
+    "Article images {complete}/{total}, ready to resume",
+  ],
+  "intake.article_images.interrupted": [
+    "配图下载中断 {complete}/{total}",
+    "Article image downloads interrupted at {complete}/{total}",
+  ],
+  "intake.article_images.complete": [
+    "配图校验通过 {complete}/{total}",
+    "Article images verified {complete}/{total}",
+  ],
+  "intake.article_images.resume": ["补抓缺失配图", "Fetch missing images"],
+  "intake.article_images.rate_limited": [
+    "图片服务限制了请求频率",
+    "The image server rate-limited the requests",
+  ],
+  "intake.article_images.http_unavailable": [
+    "图片服务暂不可用",
+    "The image server is temporarily unavailable",
+  ],
+  "intake.article_images.http_error": [
+    "图片服务拒绝了请求或图片已不可用",
+    "The image server rejected the request or the image is unavailable",
+  ],
+  "intake.article_images.incomplete": [
+    "图片响应未传输完整",
+    "The image response was incomplete",
+  ],
+  "intake.article_images.size": [
+    "图片大小超出允许范围",
+    "The image size is outside the allowed range",
+  ],
+  "intake.article_images.total_size": [
+    "配图总容量超出限制",
+    "The combined image size exceeds the limit",
+  ],
+  "intake.article_images.format": [
+    "图片内容未通过完整性或格式校验",
+    "The image failed integrity or format validation",
+  ],
+  "intake.article_images.dns": [
+    "无法解析图片服务器地址",
+    "Could not resolve the image server address",
+  ],
+  "intake.article_images.certificate": [
+    "图片服务器证书校验失败",
+    "The image server certificate failed validation",
+  ],
+  "intake.article_images.connection": [
+    "与图片服务器的连接失败或中断",
+    "The connection to the image server failed or was interrupted",
+  ],
+  "intake.article_images.tls": [
+    "无法建立图片服务器的安全连接",
+    "Could not establish a secure connection to the image server",
+  ],
+  "intake.article_images.timeout": [
+    "图片下载超时",
+    "The image download timed out",
+  ],
+  "intake.article_images.source": [
+    "图片来源未通过安全校验",
+    "The image source failed security validation",
+  ],
+  "intake.article_images.budget": [
+    "图片下载额度不足",
+    "The image download quota is exhausted",
+  ],
+  "intake.article_images.failure": [
+    "请在入库诊断详情核对图片下载",
+    "Check image downloads in the intake diagnostics",
+  ],
+  "video_budget.default": [
+    "单个视频默认 Token 总上限",
+    "Default total token limit per video",
+  ],
+  "video_budget.help": [
+    "默认50万 tokens，累计输入与输出；失败和恢复不清零，原 API Key 预算同时生效。仅影响新任务，已有视频可在恢复时调整总上限。",
+    "Default: 500,000 tokens, input plus output. Failed calls and retries retain usage, and the API Key budget also applies. Applies to new videos; existing videos can adjust the total limit when resuming.",
+  ],
+  "video_budget.exhausted": [
+    "本视频剩余 Token 预算不足以下一次调用预留，已暂停；已有结果保留。",
+    "The remaining video token budget cannot reserve the next call. Processing is paused; completed results are retained.",
+  ],
+  "video_recovery.truncated": [
+    "转写和画面已完成；笔记生成达到输出上限，需明确恢复。",
+    "Transcript and frames are complete; note authoring reached the output limit. Resume explicitly.",
+  ],
+  "video_recovery.0": [
+    "使用当前视频设置恢复（仅尚未开始提取的任务）",
+    "Resume with current video settings (before extraction starts only)",
+  ],
+  "video_recovery.1": [
+    "模型配置不代表已验证图片输入能力；恢复默认沿用任务快照。",
+    "Image input capability is unverified. Resume keeps the original settings by default.",
+  ],
+  "video_recovery.2": [
+    "视频短链连接超时，可明确重试；尚未提取视频或保存笔记。",
+    "The video short-link connection timed out. Retry explicitly; no video or note has been extracted.",
+  ],
+  "video_recovery.3": [
+    "视频短链域名解析失败，可明确重试。",
+    "Video short-link DNS resolution failed. Retry explicitly.",
+  ],
+  "video_recovery.4": [
+    "视频短链安全连接中断，可明确重试。",
+    "The video short-link TLS connection was interrupted. Retry explicitly.",
+  ],
+  "video_recovery.5": [
+    "视频短链连接中断，可明确重试。",
+    "The video short-link connection was interrupted. Retry explicitly.",
+  ],
+  "video_recovery.6": [
+    "视频短链证书校验失败，请检查系统时间及网络证书。",
+    "Video short-link certificate validation failed. Check the system clock and network certificates.",
+  ],
+  "video_recovery.7": [
+    "任务已开始提取，请沿用原快照恢复；旧产物和调用记录保留。",
+    "Extraction has started. Resume using the original settings; existing artifacts and call records are retained.",
+  ],
+
   "automatic_settings.82fda7d198": [
     "处理与审核策略",
     "Processing and review policy",

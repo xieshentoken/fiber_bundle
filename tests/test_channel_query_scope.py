@@ -303,3 +303,34 @@ def test_two_saving_entries_keep_separate_targets_and_shared_query_cannot_enable
             assert saved["settings"]["target_vault_id"] == vid
     with pytest.raises(InvalidInput, match="role_unavailable"):
         policy.change(config, entry["id"], "intake", 0, enabled=True)
+
+
+def test_health_isolates_unavailable_scope_without_granting_union_reads(config, multi, monkeypatch):
+    from fiber_bundle import vaults
+    from fiber_bundle.channels import health
+    from fiber_bundle.config import IntegrityError
+
+    entry, _, other, _ = multi
+    current = bind(config, entry)
+    checked = vaults.checked_vault
+
+    def unavailable_primary(c, vault):
+        if vault["id"] == current["value"]["vault_id"]:
+            raise IntegrityError("cloud_item_pending_stale_or_conflicted")
+        return checked(c, vault)
+
+    monkeypatch.setattr(vaults, "checked_vault", unavailable_primary)
+    with database.connect(config.state_root) as main:
+        result = health.present(config, main, current)
+        rows = result["query_scope"]["vaults"]
+        assert not rows[0]["available"] and rows[0]["reason"] == "channel_cloud_not_ready"
+        assert rows[1]["available"] and rows[1]["reason"] is None
+        assert rows[1]["vault_id"] == other
+        with pytest.raises(IntegrityError):
+            query_scope.checked(config, main, current)
+        assert (
+            query_scope.checked(
+                config, main, query_scope.bind(current, query_scope.snapshot(current, "供应商"))
+            )[0]["id"]
+            == other
+        )

@@ -6,7 +6,15 @@ export const groups = [
   { id: "", pages: ["home", "ask", "worklist"] },
   {
     id: "knowledge",
-    pages: ["vaults", "suppliers", "imports", "inventory", "graph", "creation"],
+    pages: [
+      "vaults",
+      "suppliers",
+      "imports",
+      "inventory",
+      "graph",
+      "note-cloud",
+      "creation",
+    ],
   },
   { id: "connect", pages: ["clients", "channels"] },
   {
@@ -23,6 +31,7 @@ export const icons = {
   imports: "imports",
   inventory: "inventory",
   graph: "graph",
+  "note-cloud": "graph",
   creation: "creation",
   clients: "clients",
   channels: "channels",
@@ -55,6 +64,8 @@ export const navText = strings({
     imports: "资料导入",
     inventory: "资料与版本",
     graph: "关联与 MOC",
+    "note-cloud": "笔记云图",
+    "sum_note-cloud": "从当前可用索引查看笔记、显式链接与已保存的 MOC 关系。",
     creation: "文档制作",
     clients: "Agent 与客户端",
     channels: "消息入口",
@@ -97,10 +108,14 @@ export const navText = strings({
     worklist: "Inbox",
     vaults: "Vaults",
     suppliers: "Suppliers",
-    sum_suppliers: "Source-backed suppliers, products and offers; missing historical originals are labelled.",
+    sum_suppliers:
+      "Source-backed suppliers, products and offers; missing historical originals are labelled.",
     imports: "Import",
     inventory: "Sources & versions",
     graph: "Links & MOC",
+    "note-cloud": "Note cloud",
+    "sum_note-cloud":
+      "Explore notes, explicit links and saved MOC relationships from the available index.",
     creation: "Documents",
     clients: "Agents & clients",
     channels: "Message channels",
@@ -146,7 +161,9 @@ export const pageSummary = (page) => navText("sum_" + page);
 
 // "#/worklist/batches?id=…" → { page, sub, params }
 export function parseRoute(hash) {
-  const match = /^#\/([a-z]+)(?:\/([a-z-]+))?(?:\?(.*))?$/.exec(hash || "");
+  const match = /^#\/([a-z][a-z-]*)(?:\/([a-z-]+))?(?:\?(.*))?$/.exec(
+    hash || "",
+  );
   if (!match) return { page: "home", sub: "", params: {} };
   let [, page, sub = "", query = ""] = match;
   if (aliases[page]) [page, sub] = aliases[page];

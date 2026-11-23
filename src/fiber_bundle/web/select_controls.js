@@ -184,7 +184,9 @@ export function enhanceSelects(
       list.scrollTop = scrollTop;
     }
     function sync() {
-      wrapper.hidden = select.hidden;
+      // The root observer watches hidden. Reassigning an unchanged reflected
+      // property queues another mutation and can starve the browser event loop.
+      if (wrapper.hidden !== select.hidden) wrapper.hidden = select.hidden;
       if (!error.hidden && select.validity.valid) error.hidden = true;
       const selected = select.options[select.selectedIndex];
       const value = selected?.textContent ?? String(uiText("请选择"));

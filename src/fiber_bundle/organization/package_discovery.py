@@ -28,11 +28,30 @@ def status(config: Any, client: str, vault: str) -> Any:
     }
 
 
-def request(config: Any, db: Any, client: str, vault: str) -> Any:
+def request(
+    config: Any,
+    db: Any,
+    client: str,
+    vault: str,
+    *,
+    notify: bool = True,
+    request_id: str | None = None,
+) -> Any:
     packages.context(config, db, client, vault, write=True)
     value = status(config, client, vault)
-    if value["state"] != "queued":
-        value = {**value, "state": "queued", "requested_at": time.time()}
+    if value["state"] != "queued" or (
+        request_id is not None and value.get("request_id") != request_id
+    ):
+        value = {
+            **value,
+            "state": "queued",
+            "requested_at": time.time(),
+            "suppress_automatic": not notify,
+        }
+        if request_id is None:
+            value.pop("request_id", None)
+        else:
+            value["request_id"] = request_id
         store.put(config, "package_scans", key(client, vault), vault, value)
     return value
 
@@ -94,7 +113,7 @@ def fingerprint(root: Any, allowed: Any, relative: str, names: Any) -> str:
     return digest(canonical([allowed.wire(), evidence]).encode())
 
 
-def scan(config: Any, client: str, vault: str) -> Any:
+def scan(config: Any, client: str, vault: str, *, notify: bool = True) -> Any:
     """One pass; unchanged packages reuse a full prior integrity inspection, never a model."""
     from ..agent_connections.visibility import scope
 
@@ -137,7 +156,17 @@ def scan(config: Any, client: str, vault: str) -> Any:
                     )
                     if current_book != book:
                         raise IntegrityError("expert_package_book_changed")
-                    registered = packages.commit(config, db, client, vault, value)
+                    current_scan = status(config, client, vault)
+                    # An index request can arrive while this older scan is inspecting.
+                    # Re-read its intent under the same writer lease as admission so an
+                    # otherwise automatic scan cannot create a paid classification trigger.
+                    allow_notify = notify and not (
+                        current_scan["state"] == "queued"
+                        and current_scan.get("suppress_automatic") is True
+                    )
+                    registered = packages.commit(
+                        config, db, client, vault, value, notify=allow_notify
+                    )
                 rows.append(
                     {
                         **registered,
@@ -166,9 +195,16 @@ def scan(config: Any, client: str, vault: str) -> Any:
         "checked_at": time.time(),
         "model_called": False,
     }
+    if prior.get("request_id") is not None:
+        result["request_id"] = prior["request_id"]
     with database.locked(config), database.connect(config.state_root) as db:
         packages.context(config, db, client, vault, write=True)
-        store.put(config, "package_scans", key(client, vault), vault, result)
+        current = status(config, client, vault)
+        if current["state"] != "queued" or (
+            current.get("request_id"),
+            current.get("requested_at"),
+        ) == (prior.get("request_id"), prior.get("requested_at")):
+            store.put(config, "package_scans", key(client, vault), vault, result)
     return result
 
 
@@ -189,17 +225,27 @@ def tick(config: Any) -> None:
         if prior["state"] != "queued" and now - prior.get("checked_at", 0) < INTERVAL:
             continue
         try:
-            scan(config, client, vault)
+            scan(config, client, vault, notify=not prior.get("suppress_automatic", False))
         except (auth.Denied, StorageError, OSError, ValueError) as error:
             # Persist a bounded diagnostic, not a perpetual spinner. Current grants gate UI reads.
             with database.locked(config):
-                store.put(
-                    config,
-                    "package_scans",
-                    identity,
-                    vault,
-                    {**prior, "state": "failed", "checked_at": now, "error": str(error)[:180]},
-                )
+                current = status(config, client, vault)
+                if current["state"] != "queued" or (
+                    current.get("request_id"),
+                    current.get("requested_at"),
+                ) == (prior.get("request_id"), prior.get("requested_at")):
+                    store.put(
+                        config,
+                        "package_scans",
+                        identity,
+                        vault,
+                        {
+                            **prior,
+                            "state": "failed",
+                            "checked_at": now,
+                            "error": str(error)[:180],
+                        },
+                    )
         return  # One vault per tick; no long all-vault writer transaction.
 
 

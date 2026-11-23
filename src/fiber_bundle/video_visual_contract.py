@@ -10,9 +10,10 @@ SKIP_REASONS = ("duplicate", "transition", "talking_head", "no_unique_visual")
 
 
 class VisualContractError(InvalidInput):
-    def __init__(self, field: str):
+    def __init__(self, field: str, code: str = "video_skill_visual_response_invalid"):
         self.field = field
-        super().__init__("video_skill_visual_response_invalid")
+        self.code = code
+        super().__init__(code)
 
 
 def prompt(*, visual_primary: bool) -> str:
@@ -50,6 +51,17 @@ def prompt(*, visual_primary: bool) -> str:
 
 
 def json_reply(value: Any) -> dict[str, Any]:
+    # Do not mistake exhausted reasoning capacity for malformed JSON, and never
+    # turn partial output or reasoning text into a successful frame result.
+    try:
+        choice = value["choices"][0]
+        if choice.get("finish_reason") == "length":
+            raise VisualContractError("finish_reason", "video_skill_visual_output_truncated")
+        content = choice["message"]["content"]
+        if content is None or isinstance(content, str) and not content.strip():
+            raise VisualContractError("content", "video_skill_visual_response_empty")
+    except (KeyError, IndexError, TypeError, AttributeError) as error:
+        raise VisualContractError("response_json") from error
     try:
         raw = value["choices"][0]["message"]["content"]
         if not isinstance(raw, str):

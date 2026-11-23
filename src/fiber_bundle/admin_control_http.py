@@ -23,6 +23,7 @@ from .desktop_routes import snapshot as backend_snapshot
 from .organization import execution_control, maintenance, overview, packages, store
 from .organization.maintenance_routes import Action
 from .organization.routes import Scope
+from .session_policy import cookie_ttl
 
 
 async def respond(
@@ -88,9 +89,15 @@ async def respond(
                             "blocked",
                         }:
                             job = execution_control.pause(config, job)
-                        value = maintenance.public(job, config=config)
+                        value = maintenance.public(
+                            job, config=config, db=db, validate_preview=False
+                        )
                     elif scope["path"] == "/admin/backend":
                         value = backend_snapshot(config, lifecycle)
+                    elif scope["path"] == "/admin/note-index/activity":
+                        from .note_index_activity import snapshot
+
+                        value = snapshot(config, db)
                     elif scope["path"] == "/admin/vaults":
                         value = vaults.list_vaults(db)
                     elif scope["path"] == "/admin/clients":
@@ -112,7 +119,17 @@ async def respond(
                     auth.admin(db, request.cookies.get(auth.COOKIE, ""))
                     timing["stage"] = "control_delivery"
                     delivering = True
-                    anyio.from_thread.run(JSONResponse(value), scope, receive, send)
+                    response = JSONResponse(value)
+                    if scope["path"] == "/admin/session" and value["expires_at"] == 0:
+                        response.set_cookie(
+                            auth.COOKIE,
+                            request.cookies.get(auth.COOKIE, ""),
+                            max_age=cookie_ttl(0),
+                            httponly=True,
+                            samesite="strict",
+                            path="/",
+                        )
+                    anyio.from_thread.run(response, scope, receive, send)
                 finally:
                     db.rollback()
         except auth.Denied as exc:

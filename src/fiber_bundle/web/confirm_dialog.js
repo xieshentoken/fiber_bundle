@@ -1,6 +1,6 @@
 import { setText, translate, uiText } from "./i18n/index.js";
-// Confirmation before an operation with consequences. Discarding unsaved edits keeps the
-// synchronous native guard in unsaved_changes.js; this dialog never submits anything itself.
+// Confirmation before an operation with consequences, including scoped draft discard.
+// Other navigation keeps its existing native draft guard; dialogs never submit by themselves.
 // No imports: operation_feedback.js reads isConfirming() without a module cycle.
 let sequence = 0;
 function el(tag, text, className) {
@@ -42,12 +42,14 @@ export function confirmAction({
   confirmLabel,
   cancelLabel = "取消",
   tone = "default",
+  signal,
 }) {
   const items = Array.isArray(body) ? body : [body];
   // Runtimes without <dialog> (unit-test fakes) use the equivalent native prompt.
+  if (signal?.aborted) return Promise.resolve(false);
   if (typeof window.HTMLDialogElement !== "function")
     return Promise.resolve(window.confirm(translate(plain(title, items))));
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const id = `confirm-dialog-${++sequence}`,
       previous = document.activeElement,
       dialog = el("dialog", null, "confirm-dialog"),
@@ -74,14 +76,27 @@ export function confirmAction({
     dialog.addEventListener(
       "close",
       () => {
+        signal?.removeEventListener("abort", abort);
         dialog.remove();
         if (previous?.isConnected) previous.focus({ preventScroll: true });
         resolve(accepted);
       },
       { once: true },
     );
+    const abort = () => {
+      accepted = false;
+      dialog.close();
+    };
+    signal?.addEventListener("abort", abort, { once: true });
     document.body.append(dialog);
-    dialog.showModal();
+    try {
+      dialog.showModal();
+    } catch (error) {
+      signal?.removeEventListener("abort", abort);
+      dialog.remove();
+      reject(error);
+      return;
+    }
     // Destructive actions start on the safe choice.
     (tone === "danger" ? cancel : accept).focus();
   });

@@ -43,11 +43,11 @@ def checked_vault(
         if relative != f"{CREATE_ROOT}/created-{identity}" or not row["requested_by_client_id"]:
             raise IntegrityError("invalid generated vault path")
     path = config.vault_path(relative)
-    from .cloud_files import require_available
+    from .cloud_files import require_directory
     from .vault_scope import for_vault
 
-    scope = for_vault(path, row)
-    require_available(path, tree=not scope.exclude and scope.include == ("",))
+    for_vault(path, row)
+    require_directory(path)
     state = config.state_root
     if state == path or state in path.parents or path in state.parents:
         raise IntegrityError("state overlaps vault")

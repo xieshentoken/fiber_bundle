@@ -1,9 +1,13 @@
 import { requestErrors } from "../request_errors.js";
 // UI message catalog; parameters preserve source data.
 export default {
+  "unsaved_changes.refresh": [
+    "本页有未保存的内容，刷新可能会清除这些更改。确定刷新？",
+    "This page has unsaved changes that a refresh may clear. Refresh anyway?",
+  ],
   "organization.catalog.wait": [
-    "进度已更新；目录读取暂不可用，稍后自动重试。",
-    "Progress updated; catalog temporarily unavailable. Retrying shortly.",
+    "任务进度可继续更新；目录读取暂不可用，请手动刷新重试。",
+    "Task progress can still update. The catalog is unavailable; refresh manually to retry.",
   ],
   "suppliers.nav": ["供应商信息", "Suppliers"],
   ...Object.fromEntries(
@@ -622,6 +626,10 @@ export default {
   "settings.4394830f2b": [
     "{p0} 秒（启动配置）",
     "{p0} seconds (startup setting)",
+  ],
+  "settings.permanent": [
+    "当前会话：永久（退出登录或修改管理密码后失效）",
+    "Current session: permanent (ends on sign-out or password change)",
   ],
   "settings.45a632cfb6": [
     "当前会话到期：{p0}",

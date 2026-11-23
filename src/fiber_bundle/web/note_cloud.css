@@ -1,0 +1,386 @@
+/* This page owns its canvas, controls and detail panel in both application shells. */
+.note-cloud {
+  --nc-paper: #f8f7f3;
+  --nc-panel: #fffefb;
+  --nc-ink: #35382f;
+  --nc-muted: #777a70;
+  --nc-border: #e2e0d6;
+  --nc-accent: #686450;
+  color: var(--nc-ink);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-bottom: 24px;
+}
+.note-cloud * {
+  box-sizing: border-box;
+}
+.note-cloud p {
+  margin: 0;
+}
+.note-cloud button,
+.note-cloud input,
+.note-cloud select {
+  font: inherit;
+  color: var(--nc-ink);
+  background: var(--nc-panel);
+  border: 1px solid var(--nc-border);
+  border-radius: 7px;
+  min-height: 36px;
+  padding: 7px 11px;
+  box-shadow: none;
+}
+.note-cloud button {
+  cursor: pointer;
+}
+.note-cloud button:hover:not(:disabled) {
+  background: #efeee5;
+}
+.note-cloud button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.note-cloud :is(button, input, select, summary, .nc-canvas):focus-visible {
+  outline: 2px solid #8a8063;
+  outline-offset: 3px;
+}
+.nc-scope {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.nc-scope label {
+  display: grid;
+  gap: 5px;
+  color: var(--nc-muted);
+  font-size: 12px;
+}
+.nc-scope select {
+  max-width: min(330px, 80vw);
+  min-width: 170px;
+}
+.note-cloud .graph-scope-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px 12px;
+  font-size: 12px;
+  color: var(--nc-muted);
+}
+.note-cloud .nc-defaults {
+  font-size: 11px;
+  color: var(--nc-muted);
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+}
+.nc-defaults summary {
+  cursor: pointer;
+  width: fit-content;
+  padding: 8px 0;
+  line-height: 20px;
+}
+.note-cloud .nc-defaults[open] {
+  flex-basis: 100%;
+  border: 1px solid var(--nc-border);
+  border-radius: 7px;
+  padding: 10px 12px;
+}
+.nc-defaults[open] summary {
+  margin-bottom: 10px;
+}
+.nc-coverage:empty {
+  display: none;
+}
+.note-cloud .graph-scope-controls p {
+  flex-basis: auto;
+}
+.note-cloud .graph-scope-controls p:empty {
+  display: none;
+}
+.note-cloud .graph-scope-controls p:nth-child(2) {
+  flex-basis: 100%;
+}
+.note-cloud .graph-scope-controls button {
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+.nc-intro {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--nc-muted);
+  max-width: 78ch;
+}
+.nc-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  padding-top: 5px;
+}
+.nc-search {
+  display: flex;
+  gap: 6px;
+  flex: 1 1 320px;
+  margin: 0 auto 0 0;
+  max-width: 580px;
+}
+.nc-search input {
+  width: 100%;
+  min-width: 0;
+}
+.nc-search button {
+  flex-shrink: 0;
+}
+.nc-status {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.nc-coverage {
+  display: grid;
+  gap: 3px;
+  color: var(--nc-muted);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.nc-explorer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 260px;
+  align-items: start;
+  gap: 14px;
+  min-width: 0;
+}
+.nc-stage {
+  position: relative;
+  border: 1px solid var(--nc-border);
+  border-radius: 12px;
+  background: var(--nc-paper);
+  min-width: 0;
+  overflow: hidden;
+}
+.nc-canvas {
+  height: clamp(480px, 66vh, 800px);
+  min-width: 0;
+  position: relative;
+}
+.nc-canvas canvas {
+  border-radius: 11px;
+}
+.nc-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 4;
+  max-width: min(340px, calc(100% - 16px));
+  padding: 10px 13px;
+  background: var(--nc-panel);
+  color: var(--nc-ink);
+  border: 1px solid var(--nc-border);
+  box-shadow: 0 5px 20px #35382f15;
+  border-radius: 7px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.nc-tooltip[hidden] {
+  display: none;
+}
+.nc-detail {
+  padding: 20px 16px;
+  border: 1px solid var(--nc-border);
+  border-radius: 12px;
+  background: var(--nc-panel);
+  min-width: 0;
+  max-height: min(780px, 76vh);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.nc-detail h2 {
+  font-family: Georgia, "Noto Serif SC", serif;
+  font-size: 21px;
+  font-weight: 400;
+  line-height: 1.4;
+  margin: 8px 0 13px;
+  overflow-wrap: anywhere;
+}
+.nc-detail h3 {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 23px 0 10px;
+}
+.nc-detail .nc-path {
+  font-size: 11px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  margin-bottom: 12px;
+}
+.nc-eyebrow {
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--nc-muted);
+}
+.nc-muted {
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--nc-muted);
+}
+.nc-neighbors {
+  display: grid;
+  gap: 5px;
+}
+.nc-neighbor {
+  border-top: 1px solid var(--nc-border);
+  padding-top: 7px;
+  display: grid;
+  gap: 3px;
+}
+.note-cloud .nc-note-button {
+  border: 0;
+  background: none;
+  text-align: left;
+  padding: 5px 0;
+  min-height: 30px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  border-radius: 3px;
+}
+.note-cloud .nc-note-button:hover {
+  color: var(--nc-accent);
+  background: none;
+  text-decoration: underline;
+}
+.note-cloud .nc-note-button[aria-current] {
+  font-weight: 600;
+  text-decoration: underline;
+}
+.nc-relation-kind {
+  font-size: 10px;
+  color: var(--nc-muted);
+}
+.nc-entity-facts,
+.nc-edge-facts,
+.nc-membership {
+  display: grid;
+  gap: 6px;
+}
+.nc-entity-facts {
+  margin-bottom: 12px;
+}
+.nc-sync-state {
+  font-size: 10px;
+  line-height: 1.6;
+  color: var(--nc-muted);
+}
+.nc-target-warning {
+  color: #8b7252;
+  font-size: 11px;
+  line-height: 1.7;
+}
+:root[data-mode="dark"] .nc-target-warning {
+  color: #cbb58b;
+}
+.nc-legend,
+.nc-hint {
+  font-size: 11px;
+  color: var(--nc-muted);
+  line-height: 1.6;
+}
+.nc-legend::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  display: inline-block;
+  vertical-align: middle;
+  background: #a39bb7;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+.nc-list {
+  border-top: 1px solid var(--nc-border);
+  padding-top: 14px;
+  font-size: 13px;
+}
+.nc-list summary {
+  cursor: pointer;
+  color: var(--nc-muted);
+}
+.nc-list-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: 4px 20px;
+  padding-top: 15px;
+}
+.nc-paging {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 16px;
+  font-size: 12px;
+}
+.nc-results {
+  display: grid;
+  gap: 2px;
+  max-height: 250px;
+  overflow: auto;
+  font-size: 12px;
+}
+.nc-results:empty {
+  display: none;
+}
+.nc-feedback {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--nc-muted);
+  overflow-wrap: anywhere;
+}
+.nc-empty {
+  padding: 50px 25px;
+  max-width: 65ch;
+  font-size: 14px;
+  line-height: 1.8;
+  color: var(--nc-muted);
+}
+@media (max-width: 1100px) {
+  .nc-explorer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .nc-detail {
+    max-height: 360px;
+  }
+  .nc-canvas {
+    height: 56vh;
+    min-height: 370px;
+  }
+}
+@media (max-width: 550px) {
+  .nc-scope label {
+    width: 100%;
+  }
+  .nc-scope select {
+    width: 100%;
+    max-width: none;
+  }
+  .nc-search {
+    flex-basis: 100%;
+  }
+  .nc-canvas {
+    min-height: 320px;
+  }
+  .nc-detail {
+    padding: 15px;
+  }
+}
+:root[data-mode="dark"] .note-cloud {
+  --nc-paper: #242620;
+  --nc-panel: #2a2c26;
+  --nc-ink: #e2e2d8;
+  --nc-muted: #a5a79a;
+  --nc-border: #45483d;
+  --nc-accent: #d0c69d;
+  --note-cloud-edge: #484c40;
+  --note-cloud-active-edge: #bcc3a8;
+  --note-cloud-muted: #3b3e34;
+}

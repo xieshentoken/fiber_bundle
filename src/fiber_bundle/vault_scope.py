@@ -13,9 +13,20 @@ from .config import IntegrityError, InvalidInput
 from .inputs import canonical
 
 POLICY = ".knowledge-organizer-policy.json"
-PROTECTED = Path.home() / (
-    "Library/Mobile Documents/iCloud~md~obsidian/Documents/L2/01-Projects/GF_supply_chain"
-)
+# Full metadata checks include attachments, matching the native cloud tree budget.
+METADATA_ENTRY_LIMIT = 20000
+
+
+def relative_path(root: Path, path: Path) -> str:
+    """Lexical name for a traversal child, without allocating every ancestor Path.
+
+    This is not authorization: callers still filter scope before stat/read and
+    retain their fresh symlink and cloud checks.
+    """
+    base, parts = root.parts, path.parts
+    if parts[: len(base)] != base:
+        raise ValueError("path is outside root")
+    return "/".join(parts[len(base) :]) or "."
 
 
 def prefix(value: str) -> str:
@@ -82,13 +93,7 @@ def effective(root: Path, value: object) -> Scope:
     """Read ancestor policies top-down; a denied root is rejected before its lstat."""
     base = parse(value)
     denied = list(base.exclude)
-    if root.name == "L2":
-        denied.append("01-Projects/GF_supply_chain")
     evidence = []
-    if root == PROTECTED or PROTECTED in root.parents:
-        raise InvalidInput("vault_scope_protected")
-    if root in PROTECTED.parents:
-        denied.append(PROTECTED.relative_to(root).as_posix())
     for parent in [*reversed(root.parents), root]:
         # Reject every path component before inspecting policy metadata beneath it.
         try:
@@ -180,6 +185,27 @@ def entries(
         yield from scan()
 
 
+def metadata_entries(
+    root: Path,
+    scope: Scope,
+    *,
+    file_filter: Callable[[Path], bool] | None = None,
+) -> Iterator[tuple[Path, os.stat_result]]:
+    """Fresh full-file metadata for identity repair and link planning; never read bodies."""
+    try:
+        yield from entries(
+            root,
+            scope,
+            maximum=METADATA_ENTRY_LIMIT,
+            file_filter=file_filter,
+            batch=True,
+        )
+    except IntegrityError as exc:
+        if str(exc) == "vault index entry limit exceeded":
+            raise IntegrityError("layout_metadata_inventory_limit") from exc
+        raise
+
+
 def _entries(
     root: Path,
     scope: Scope,
@@ -198,22 +224,20 @@ def _entries(
         if level > depth:
             raise IntegrityError("vault index depth limit exceeded")
         names = []
-        with os.scandir(parent) as scanned:
-            for child in scanned:
-                path = parent / child.name
-                relative = path.relative_to(root).as_posix()
-                if not scope.reachable(relative) or (
-                    child.name.startswith(".")
-                    and (
-                        not hidden
-                        or child.name not in {".fiber-publication.json", ".fiber-analysis.json"}
-                    )
-                ):
-                    continue
-                count += 1
-                if count > maximum:
-                    raise IntegrityError("vault index entry limit exceeded")
-                names.append(path)
+        from .note_read_session import names as directory_names
+
+        for name in directory_names(parent, maximum):
+            path = parent / name
+            relative = relative_path(root, path)
+            if not scope.reachable(relative) or (
+                name.startswith(".")
+                and (not hidden or name not in {".fiber-publication.json", ".fiber-analysis.json"})
+            ):
+                continue
+            count += 1
+            if count > maximum:
+                raise IntegrityError("vault index entry limit exceeded")
+            names.append(path)
 
         def observed() -> Iterator[tuple[Path, os.stat_result]]:
             for path in sorted(names):

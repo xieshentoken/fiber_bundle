@@ -2,6 +2,13 @@
 import { h, clear } from "./dom.js";
 import { strings } from "./i18n.js";
 import {
+  noteIndexOutcome,
+  indexDependencyText,
+  indexDependencyTitle,
+  indexProblem,
+  indexIsRunning,
+} from "../note_index_errors.js";
+import {
   button,
   card,
   failure,
@@ -24,18 +31,34 @@ const t = strings({
     stale: "笔记已变化，需要更新",
     ready: "索引已是最新",
     building: "正在更新索引…",
-    pending: "等待手动更新",
+    pending: "已排队，等待后台更新",
+    waiting: "等待恢复后重试",
+    blocked: "等待归档核验",
+    partialState: "部分可用",
+    checks: "待检查文件",
+    next: "下次自动重试",
+    issues: "查看等待或需核对的笔记",
+    readFailed: "本次状态读取失败，以下保留上次结果。",
     failed: "上次更新失败",
     interrupted: "上次更新已中断",
     state: "当前状态",
     notes: "已索引笔记",
-    built: "上次完成时间",
+    built: "上次发布索引时间",
+    checked: "上次成功读取状态",
     location: "核对笔记位置",
     help: "若笔记移动、改名或缺失，请先到“整理与迁移 → 批量核对外部改动”核对，保留原登记后再更新。",
     done: "索引更新完成。",
     uncertain: "更新结果尚未确认。请刷新状态核对，不会自动重试。",
     observed: "后台正在更新，请稍后刷新状态核对。",
     detached: "此知识库未接入，不能更新索引。",
+    observation: "外部编辑观察",
+    observing: "正在监听文件变化",
+    offline: "观察器未就绪，显示上次结果",
+    queuedNotes: "待更新路径",
+    attentionNotes: "需核对笔记",
+    automatic: "已启用增量更新。Obsidian 保存后由后台合并处理，无需反复刷新。",
+    partial:
+      "部分笔记等待同步或核对，其余笔记可继续检索；未完成范围不会当作无结果。",
   },
   en: {
     title: "Note index",
@@ -49,12 +72,20 @@ const t = strings({
     stale: "Notes changed; update needed",
     ready: "Index is current",
     building: "Updating index…",
-    pending: "Awaiting manual update",
+    pending: "Queued for background update",
+    waiting: "Waiting to retry",
+    blocked: "Waiting for archive verification",
+    partialState: "Partially available",
+    checks: "Pending file checks",
+    next: "Next automatic retry",
+    issues: "Notes waiting for sync or review",
+    readFailed: "Status read failed; showing the last result below.",
     failed: "Last update failed",
     interrupted: "Last update interrupted",
     state: "Status",
     notes: "Indexed notes",
-    built: "Last completed",
+    built: "Last index published",
+    checked: "Last successful status read",
     location: "Reconcile note locations",
     help: "For moved, renamed or missing notes, reconcile external changes in Organize & migrate first, keeping the original registrations.",
     done: "Index updated.",
@@ -62,6 +93,15 @@ const t = strings({
       "Update outcome is unconfirmed. Refresh status to check; no automatic retry.",
     observed: "The backend is still updating. Refresh status again shortly.",
     detached: "This vault is disconnected; indexing is unavailable.",
+    observation: "External edits",
+    observing: "Listening for file changes",
+    offline: "Observer unavailable; showing last result",
+    queuedNotes: "Pending paths",
+    attentionNotes: "Notes needing review",
+    automatic:
+      "Incremental updates are enabled. Saves in Obsidian are coalesced by the backend; repeated refreshes are unnecessary.",
+    partial:
+      "Some notes are waiting for sync or review. Other notes remain searchable; incomplete coverage is not reported as no results.",
   },
 });
 
@@ -98,11 +138,12 @@ export function create(ctx, vault) {
     requestPending = false,
     reading = false;
   let value = null,
+    lastReadAt = 0,
     timer = null,
     observeUntil = 0,
     postMessage = null;
   const valid = (mine) => alive && mine === revision;
-  const running = () => requestPending || value?.update?.state === "building";
+  const running = () => requestPending || indexIsRunning(value);
   function controls() {
     update.disabled = !who.value || !value || reading || running();
     who.disabled = requestPending;
@@ -110,11 +151,16 @@ export function create(ctx, vault) {
     update.textContent = requestPending ? t("building") : t("update");
   }
   function render() {
-    const state = running() ? "building" : value?.state;
+    const state = requestPending ? "pending" : value?.state;
     clear(
       status,
       facts([
-        [t("state"), t(state || "absent")],
+        [
+          t("state"),
+          state === "blocked"
+            ? indexDependencyTitle(value?.sync?.dependency)
+            : t(state === "partial" ? "partialState" : state || "absent"),
+        ],
         [
           t("notes"),
           Number.isInteger(value?.notes) ? String(value.notes) : "—",
@@ -125,9 +171,56 @@ export function create(ctx, vault) {
             ? new Date(value.built_at * 1000).toLocaleString()
             : "—",
         ],
+        [
+          t("checked"),
+          lastReadAt ? new Date(lastReadAt).toLocaleString() : "—",
+        ],
       ]),
     );
     const last = value?.update?.state;
+    if (value?.sync)
+      status.append(
+        h(
+          "div",
+          notice(t("automatic")),
+          facts([
+            [
+              t("observation"),
+              t(value.sync.observer_available ? "observing" : "offline"),
+            ],
+            [t("queuedNotes"), String(value.sync.pending)],
+            [t("attentionNotes"), String(value.sync.needs_attention)],
+            [t("checks"), String(value.sync.pending_checks ?? "—")],
+            [
+              t("next"),
+              value.sync.next_retry
+                ? new Date(value.sync.next_retry * 1000).toLocaleString()
+                : "—",
+            ],
+          ]),
+          value.sync.needs_attention ? notice(t("partial"), "warning") : null,
+          value.sync.error
+            ? notice(indexProblem(value.sync.error), "warning")
+            : null,
+          value.sync.dependency
+            ? notice(indexDependencyText(value.sync.dependency), "warning")
+            : null,
+          value.sync.issues?.length
+            ? h(
+                "details",
+                h("summary", t("issues")),
+                ...value.sync.issues.map((item) =>
+                  h(
+                    "p.a-help",
+                    h("strong", item.path),
+                    " · ",
+                    indexProblem(item.reason),
+                  ),
+                ),
+              )
+            : null,
+        ),
+      );
     clear(
       message,
       postMessage,
@@ -156,15 +249,28 @@ export function create(ctx, vault) {
       const next = await ctx.api.noteIndexStatus(client, vault.id);
       if (!valid(mine)) return;
       value = next;
+      lastReadAt = Date.now();
+      if (value.state === "ready") postMessage = null;
       if (running() && !observeUntil) observeUntil = Date.now() + 180000;
       render();
     } catch (error) {
       if (valid(mine)) {
-        value = null;
-        clear(
-          status,
-          failure(error, () => void read()),
-        );
+        if ([401, 403, 404].includes(error.status)) {
+          value = null;
+          lastReadAt = 0;
+        }
+        if (value) {
+          render();
+          clear(
+            message,
+            notice(t("readFailed"), "warning"),
+            failure(error, () => void read()),
+          );
+        } else
+          clear(
+            status,
+            failure(error, () => void read()),
+          );
       }
     } finally {
       if (valid(mine)) {
@@ -184,8 +290,12 @@ export function create(ctx, vault) {
     render();
     schedule(mine);
     try {
-      await ctx.api.updateNoteIndex(scope);
-      if (valid(mine)) postMessage = notice(t("done"), "success");
+      const result = await ctx.api.updateNoteIndex(scope);
+      if (valid(mine))
+        postMessage = notice(
+          noteIndexOutcome(result),
+          result.state === "ready" ? "success" : "info",
+        );
     } catch (error) {
       if (valid(mine))
         postMessage = h(
@@ -208,6 +318,7 @@ export function create(ctx, vault) {
     clearTimeout(timer);
     reading = false;
     value = null;
+    lastReadAt = 0;
     postMessage = null;
     observeUntil = 0;
     clear(status, loading());
@@ -217,11 +328,12 @@ export function create(ctx, vault) {
   });
   async function refresh() {
     const mine = ++revision;
+    const previousClient = who.value;
     clearTimeout(timer);
-    value = null;
     reading = false;
     controls();
-    clear(status, loading());
+    if (value) render();
+    else clear(status, loading());
     if (
       vault.status !== "active" ||
       (vault.attachment_state ?? "attached") !== "attached"
@@ -241,6 +353,12 @@ export function create(ctx, vault) {
       who.replaceChildren(
         ...eligible.map((c) => h("option", { value: c.id }, c.name)),
       );
+      if (eligible.some((client) => client.id === previousClient))
+        who.value = previousClient;
+      else {
+        value = null;
+        lastReadAt = 0;
+      }
       if (!eligible.length) {
         clear(status, notice(t("needs"), "warning"));
         controls();
@@ -248,7 +366,20 @@ export function create(ctx, vault) {
       }
       await read();
     } catch (error) {
-      if (valid(mine)) clear(status, failure(error, refresh));
+      if (valid(mine)) {
+        if (value && ![401, 403, 404].includes(error.status)) {
+          render();
+          clear(
+            message,
+            notice(t("readFailed"), "warning"),
+            failure(error, refresh),
+          );
+        } else {
+          value = null;
+          lastReadAt = 0;
+          clear(status, failure(error, refresh));
+        }
+      }
     }
   }
   controls();

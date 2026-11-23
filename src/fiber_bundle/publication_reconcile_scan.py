@@ -35,7 +35,7 @@ def scan(config: Config, db: sqlite3.Connection, client: str, vault: str) -> dic
         locations.append(row)
 
     metadata = {}
-    for path, info in vault_scope.entries(root, scope):
+    for path, info in vault_scope.metadata_entries(root, scope):
         relative = path.relative_to(root).as_posix()
         if stat.S_ISREG(info.st_mode) and relative.endswith(".md") and scope.allows(relative):
             metadata[relative] = info

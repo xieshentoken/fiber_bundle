@@ -2,7 +2,7 @@
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, Query, Request, Response
 
 from . import auth, database, note_search_build, note_search_cache, note_search_jobs
 from .config import Config
@@ -17,6 +17,13 @@ class Scope(Payload):
 
 def router(config: Config) -> APIRouter:
     routes = APIRouter(prefix="/admin/note-index")
+
+    @routes.get("/activity")
+    def activity(request: Request) -> dict[str, Any]:
+        from .note_index_activity import snapshot
+
+        with access(config, request, admin=True) as (db, _):
+            return snapshot(config, db)
 
     @routes.get("/summary")
     def summary(
@@ -39,9 +46,15 @@ def router(config: Config) -> APIRouter:
             }
 
     @routes.post("/update")
-    def update(data: Scope, request: Request) -> dict[str, Any]:
+    def update(data: Scope, request: Request, response: Response) -> dict[str, Any]:
         with database.locked(config), access(config, request, admin=True) as (db, _):
             auth.grant(db, data.client_id, data.vault_id, "query")
+        from .vault_sync import commands, store
+
+        if store.library(config, data.vault_id) is not None:
+            result = commands.submit(config, data.client_id, data.vault_id, reobserve=True)
+            response.status_code = 202
+            return result
         result = note_search_build.build(config, data.client_id, data.vault_id)
         with database.locked(config), access(config, request, admin=True) as (db, _):
             vault = auth.grant(db, data.client_id, data.vault_id, "query")

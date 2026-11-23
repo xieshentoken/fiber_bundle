@@ -54,9 +54,13 @@ def test_literal_results_identical_to_snapshot(http, config, indexed_scope, quer
 
 
 @pytest.mark.parametrize("change", ["edit", "new", "delete", "move"])
-def test_external_change_requires_explicit_rebuild(http, config, indexed_scope, change):
+def test_external_change_queries_current_sources_without_rebuild(
+    http, config, indexed_scope, change
+):
     cid, headers, vid, root = indexed_scope
     note_search_build.build(config, cid, vid)
+    index = note_search_cache.location(config, vid)
+    unchanged_index = index.read_bytes()
     p = root / "one.md"
     if change == "edit":
         p.write_text("# 新记录\nreplacement XY-78\n")
@@ -67,8 +71,15 @@ def test_external_change_requires_explicit_rebuild(http, config, indexed_scope, 
     else:
         p.rename(root / "moved.md")
     response = retrieve(http, headers, "AB-12", [vid])
-    assert response.status_code == 409 and response.json()["error"] == "note_index_update_required"
-    assert "snippet" not in response.text
+    assert response.status_code == 200, response.text
+    expected = {"moved.md"} if change == "move" else {"one.md"} if change == "new" else set()
+    assert {x["note_path"] for x in response.json()["results"]} == expected
+    replacement = retrieve(http, headers, "XY-78", [vid])
+    assert replacement.status_code == 200
+    expected_new = {"one.md"} if change == "edit" else {"new.md"} if change == "new" else set()
+    assert {x["note_path"] for x in replacement.json()["results"]} == expected_new
+    assert response.json()["index_mode"] == "current_read_only_snapshot"
+    assert index.read_bytes() == unchanged_index
     assert note_search_build.build(config, cid, vid)["state"] == "ready"
     assert retrieve(http, headers, "AB-12", [vid]).status_code == 200
 
@@ -101,7 +112,9 @@ def test_failed_rebuild_preserves_old_generation_and_owned_staging_only(
             note_search_build.build(config, cid, vid)
     assert hashlib.sha256(path.read_bytes()).hexdigest() == before
     assert list(path.parent.glob("*.sqlite3")) == [path]
-    assert retrieve(http, headers, "青松", [vid]).status_code == 409
+    current = retrieve(http, headers, "青松", [vid])
+    assert current.status_code == 200 and len(current.json()["results"]) == 2
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == before
     (root / "new.md").unlink()
     note_search_build.build(config, cid, vid)
     assert retrieve(http, headers, "青松", [vid]).status_code == 200
@@ -166,6 +179,13 @@ def test_library_beyond_old_32_mib_is_streamed_and_searchable(http, config, inde
             response = retrieve(http, headers, f"unique-chapter-{chapter:02d}", [vid])
             assert response.status_code == 200, response.text
             assert response.json()["results"][0]["note_path"] == f"chapter-{chapter:02d}.md"
+    old_index = note_search_cache.location(config, vid).read_bytes()
+    (root / "current.md").write_text("# current source\ncurrent-source-78 evidence\n")
+    current = retrieve(http, headers, "current-source-78", [vid])
+    assert current.status_code == 200, current.text
+    assert current.json()["results"][0]["note_path"] == "current.md"
+    assert current.json()["index_mode"] == "current_read_only_snapshot"
+    assert note_search_cache.location(config, vid).read_bytes() == old_index
 
 
 def test_status_is_current_scoped_and_restored_generation_is_stale(
@@ -385,7 +405,8 @@ def test_slow_fingerprint_releases_writer_and_rejects_revocation(
     http, config, indexed_scope, monkeypatch, boundary
 ):
     import threading
-    from fiber_bundle import database, auth
+
+    from fiber_bundle import auth, database
     from fiber_bundle import note_search_cache as cache
 
     cid, _, vid, root = indexed_scope

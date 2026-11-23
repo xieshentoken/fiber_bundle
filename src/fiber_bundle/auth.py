@@ -11,6 +11,7 @@ from uuid import uuid4
 from fiber_bundle import database
 from fiber_bundle.config import Config, IntegrityError, InvalidInput
 from fiber_bundle.inputs import text
+from fiber_bundle.session_policy import valid_ttl
 
 COOKIE = "fiber_session"
 
@@ -47,6 +48,8 @@ def set_password(config: Config, password: str) -> None:
 
 
 def login(connection: sqlite3.Connection, password: str, ttl: int) -> tuple[str, str, float]:
+    if not valid_ttl(ttl):
+        raise InvalidInput("system_session_ttl_invalid")
     try:
         password.encode("utf-8")
     except UnicodeEncodeError as exc:
@@ -60,9 +63,11 @@ def login(connection: sqlite3.Connection, password: str, ttl: int) -> tuple[str,
     if not hmac.compare_digest(derived, row["password_hash"]):
         raise Denied(401)
     token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(32)
-    expires = time.time() + ttl
+    expires = time.time() + ttl if ttl else 0.0
     with database.transaction(connection):
-        connection.execute("DELETE FROM admin_sessions WHERE expires_at<=?", (time.time(),))
+        connection.execute(
+            "DELETE FROM admin_sessions WHERE expires_at>0 AND expires_at<=?", (time.time(),)
+        )
         connection.execute(
             "INSERT INTO admin_sessions VALUES(?,?,?,?)",
             (digest(token), digest(csrf), expires, row["version"]),
@@ -73,7 +78,8 @@ def login(connection: sqlite3.Connection, password: str, ttl: int) -> tuple[str,
 def admin(connection: sqlite3.Connection, token: str, csrf: str | None = None) -> sqlite3.Row:
     row = connection.execute(
         "SELECT s.* FROM admin_sessions s JOIN admin_auth a ON "
-        "a.version=s.credential_version WHERE a.id=1 AND s.token_digest=? AND s.expires_at>?",
+        "a.version=s.credential_version WHERE a.id=1 AND s.token_digest=? "
+        "AND (s.expires_at=0 OR s.expires_at>?)",
         (digest(token), time.time()),
     ).fetchone()
     if row is None:
@@ -154,6 +160,9 @@ def grant(
         raise Denied(404)
     if not isinstance(row, sqlite3.Row):
         raise IntegrityError("invalid database row")
+    from .display_observation import remember_authorization
+
+    remember_authorization(connection, client_id, vault_id, action, row)
     return row
 
 

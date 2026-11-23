@@ -24,7 +24,7 @@ def apply(
 ) -> Any:
     packages.context(config, db, client, vault, write=True)
     note_moc_sync.recover_all(config, db, client, vault)
-    entities, mocs, _ = jobs.snapshot(config, db, client, vault)
+    entities, mocs, _ = jobs.snapshot(config, db, client, vault, partial=True)
     entity = next((e for e in entities if e["id"] == entity_id), None)
     selected = list(dict.fromkeys(moc_ids))
     targets = [m for mid in selected for m in mocs if m["id"] == mid]

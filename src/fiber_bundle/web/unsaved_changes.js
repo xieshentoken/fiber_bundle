@@ -63,9 +63,9 @@ export function createDraftGuard(workspace, { extraChanges, signedIn }) {
   });
   for (const event of ["input", "change"])
     workspace.addEventListener(event, (event) => editDraft(event.target));
-  function dirty() {
+  function dirty(purpose = "leave") {
     const panel = workspace.querySelector(":scope > section:not([hidden])");
-    return hasUnsavedChanges(panel) || extraChanges(panel);
+    return hasUnsavedChanges(panel) || extraChanges(panel, purpose);
   }
   window.addEventListener("beforeunload", (event) => {
     if (signedIn() && dirty()) {
@@ -74,6 +74,14 @@ export function createDraftGuard(workspace, { extraChanges, signedIn }) {
     }
   });
   return {
+    confirmRefresh() {
+      return (
+        !dirty("refresh") ||
+        window.confirm(
+          translate("本页有未保存的内容，刷新可能会清除这些更改。确定刷新？"),
+        )
+      );
+    },
     confirmLeave() {
       const allowed =
         !dirty() ||

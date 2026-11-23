@@ -1,0 +1,50 @@
+.inbox-review {
+  margin-block: 12px;
+  padding: 12px;
+  border: 1px solid var(--field-line);
+  border-radius: var(--radius-control);
+}
+.inbox-review > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.inbox-review pre {
+  max-height: 24rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 10px;
+  background: var(--surface-raised);
+}
+.inbox-review-line {
+  display: flex;
+  gap: 12px;
+}
+.inbox-review-line code {
+  min-width: 0;
+  white-space: pre-wrap;
+}
+.inbox-review-number {
+  flex: 0 0 3em;
+  text-align: right;
+  color: var(--muted);
+  user-select: none;
+}
+.inbox-review-choice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-block: 10px;
+}
+.inbox-review-choice input {
+  flex: none;
+  margin-top: 4px;
+}
+.inbox-review-diff {
+  border-inline-start: 3px solid var(--field-line);
+  padding-inline-start: 10px;
+  margin-block: 12px;
+}
+.inbox-review button {
+  margin: 6px 8px 6px 0;
+}

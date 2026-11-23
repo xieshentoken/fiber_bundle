@@ -5,6 +5,7 @@ from typing import Any
 
 from . import database
 from .config import InvalidInput
+from .session_policy import valid_ttl
 
 
 class Conflict(InvalidInput):
@@ -25,7 +26,7 @@ def inspect(db: sqlite3.Connection, default_ttl: int) -> dict[str, Any]:
 def save(
     db: sqlite3.Connection, default_ttl: int, session_ttl: int, expected_revision: int
 ) -> dict[str, Any]:
-    if type(session_ttl) is not int or not 1 <= session_ttl <= 86400:
+    if not valid_ttl(session_ttl):
         raise InvalidInput("system_session_ttl_invalid")
     with database.transaction(db):
         previous = inspect(db, default_ttl)

@@ -1,5 +1,8 @@
 """UI resources stay explicitly hosted and packaged; data routes keep their guards."""
 
+import posixpath
+import re
+
 import pytest
 
 from fiber_bundle.web_routes import STATIC_ASSETS, WEB_ROOT
@@ -9,7 +12,18 @@ from fiber_bundle.web_routes import STATIC_ASSETS, WEB_ROOT
     "name",
     [
         "home.css",
+        "note_cloud.js",
+        "note_cloud_explorer.js",
+        "note_cloud_model.js",
+        "note_cloud_presentation.js",
+        "note_cloud_copy.js",
+        "note_cloud_renderer.bundle.js",
+        "note_cloud.css",
+        "atlas/view_note_cloud.js",
         "organization_members.js",
+        "organization_execution_status.js",
+        "organization_candidate_coverage.js",
+        "organization_task_record.js",
         "home.js",
         "home_api.js",
         "home_data.js",
@@ -62,6 +76,7 @@ from fiber_bundle.web_routes import STATIC_ASSETS, WEB_ROOT
         "operation_feedback.js",
         "source_selection.js",
         "articles.js",
+        "article_image_status.js",
         "knowledge_graph_selection.js",
         "knowledge_graph_setup.js",
         "knowledge_graph_loading.js",
@@ -101,3 +116,22 @@ def test_organization_refresh_module_is_served(http):
     result = http.get("/static/organization_refresh_request.js")
     assert result.status_code == 200
     assert "export function scopedRead" in result.text
+
+
+def test_organization_import_graph_is_served(http):
+    pending, seen = ["organization.js"], set()
+    while pending:
+        name = pending.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        response = http.get("/static/" + name)
+        assert response.status_code == 200, name
+        assert response.headers["content-type"].startswith("text/javascript")
+        for dependency in re.findall(
+            r'''(?:\bfrom\s*|\bimport\s*\(?\s*)["'](\.[^"']+)["']''', response.text
+        ):
+            target = posixpath.normpath(posixpath.join(posixpath.dirname(name), dependency))
+            assert not target.startswith("../"), target
+            pending.append(target)
+    assert "organization_workspace.js" in seen

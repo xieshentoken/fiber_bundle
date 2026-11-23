@@ -7,6 +7,7 @@ from typing import Any
 from .. import file_exchange, publication_file_io, vault_directories
 from ..config import IntegrityError
 from ..objects import digest
+from ..storage_read_scope import audited
 
 
 def observe(root: Path, path: str) -> Any:
@@ -15,6 +16,11 @@ def observe(root: Path, path: str) -> Any:
         return {"sha256": digest(raw), "file_key": key}
     except FileNotFoundError:
         return None
+
+
+@audited
+def observe_many(root: Path, paths: Any) -> dict[str, Any]:
+    return {path: observe(root, path) for path in paths}
 
 
 def rename(root: Path, scope: Any, source: str, target: str) -> None:
@@ -31,6 +37,7 @@ def rename(root: Path, scope: Any, source: str, target: str) -> None:
             file_exchange.rename(src, Path(source).name, dst, Path(target).name, exchange=False)
 
 
+@audited
 def check(root: Path, scope: Any, journal: Any) -> None:
     for path, evidence in journal["files"].items():
         if evidence["before"] == evidence["after"]:

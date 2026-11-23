@@ -46,6 +46,37 @@ def current(config: Config, db: sqlite3.Connection, task: sqlite3.Row) -> dict[s
     return response
 
 
+def active_check(
+    config: Config,
+    db: sqlite3.Connection,
+    task: sqlite3.Row,
+    *,
+    call_id: str,
+    configuration_sha256: str,
+) -> bool:
+    """Check cancellation, ownership and authority without retrieving note bodies.
+
+    Content changes are checked by ``current`` before sending to the provider and
+    after receiving its answer, before persistence and at delivery. During a call
+    such changes do not stop computation; they can never authorize its result.
+    """
+    if task["state"] != "running":
+        return False
+    if (
+        task["config_digest"] != configuration_sha256
+        or not db.execute(
+            "SELECT 1 FROM local_query_calls WHERE id=? AND task_id=? AND config_digest=? "
+            "AND state='reserved'",
+            (call_id, task["id"], configuration_sha256),
+        ).fetchone()
+    ):
+        raise InvalidInput("local_claim_invalid")
+    answer_tasks.authorize(config, db, task, task)
+    if json.loads(task["roots_json"]) != _roots(config, db, task):
+        raise IntegrityError("local_vault_identity_changed")
+    return True
+
+
 def _roots(config: Config, db: sqlite3.Connection, task: sqlite3.Row) -> list[dict[str, Any]]:
     result = []
     for vid in answer_scope.stored(task, json.loads(task["request_json"])):
@@ -117,6 +148,8 @@ def submit(
                 raise InvalidInput("local_submission_conflict")
             return status(config, db, client_id, previous["id"])
         vault_id, version_id = answer_tasks.scope(config, db, client_id, data)
+        if isinstance(data, answer_tasks.ScopedNoteAnswerInput):
+            request["vault_ids"] = answer_scope.resolve(config, db, client_id, data.vault_ids)
         task_id = task_id or str(uuid4())
         receipt = data.receipt_id if isinstance(data, answer_tasks.AnswerInput) else None
         now = time.time()
@@ -124,7 +157,7 @@ def submit(
             "INSERT INTO local_query_tasks "
             "(id,client_id,submission_id,vault_id,version_id,binding_kind,receipt_id,input_kind,"
             "request_json,snapshot_json,roots_json,config_digest,state,created_at,updated_at) "
-            "VALUES (?,?,?,?,?,?,?,?,'{}','{}','[]',?,'queued',?,?)",
+            "VALUES (?,?,?,?,?,?,?,?,?,'{}','[]',?,'queued',?,?)",
             (
                 task_id,
                 client_id,
@@ -134,23 +167,23 @@ def submit(
                 "source" if receipt is not None else "notes",
                 receipt,
                 "receipt" if receipt is not None else "notes",
+                json.dumps(request),
                 policy.digest,
                 now,
                 now,
             ),
         )
         task = get(db, client_id, task_id)
-        request, snapshot = answer_tasks.prepare_binding(config, db, task, data)
+        roots = _roots(config, db, task)
+        bound_request, snapshot = answer_tasks.prepare_binding(config, db, task, data)
+        if bound_request != request or roots != _roots(config, db, task):
+            raise IntegrityError("local_vault_identity_changed")
+        # Reuse the binding's exact evidence snapshot from this transaction.
+        # Claim rechecks it before a provider request can be created.
         db.execute(
-            "UPDATE local_query_tasks SET request_json=?,snapshot_json=? WHERE id=?",
-            (json.dumps(request), json.dumps(snapshot), task_id),
+            "UPDATE local_query_tasks SET snapshot_json=?,roots_json=? WHERE id=?",
+            (json.dumps(snapshot), json.dumps(roots), task_id),
         )
-        task = get(db, client_id, task_id)
-        db.execute(
-            "UPDATE local_query_tasks SET roots_json=? WHERE id=?",
-            (json.dumps(_roots(config, db, task)), task_id),
-        )
-        current(config, db, get(db, client_id, task_id))
         return status(config, db, client_id, task_id)
 
 

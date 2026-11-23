@@ -1,0 +1,18 @@
+.graph-scope-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-block: 12px;
+}
+.graph-scope-controls p {
+  flex: 1 0 100%;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.graph-scope-controls p:empty {
+  display: none;
+}
+.graph-scope-controls[aria-busy="true"] [role="status"]:last-child {
+  font-weight: 600;
+}

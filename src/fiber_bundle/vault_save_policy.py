@@ -25,44 +25,6 @@ def pending(db: sqlite3.Connection, identity: str) -> dict[str, Any] | None:
     return dict(row) if row else None
 
 
-def _scope_binding(
-    expected: Any,
-    current: dict[str, object],
-    root: Path,
-    *,
-    catalog_exclude: tuple[str, ...] = (),
-) -> bool:
-    """Accept only the built-in protection added after a legacy policy was saved.
-
-    A relocated root may carry that same protection explicitly in its catalog.
-    No settings are rewritten and no permission is widened. User policy changes,
-    grant changes and directory identity changes still invalidate the binding.
-    """
-    if expected == current:
-        return True
-    if not isinstance(expected, dict) or set(expected) != set(current):
-        return False
-    if any(expected[k] != current[k] for k in ("include", "policy_sha256")):
-        return False
-    before, after = expected["exclude"], current["exclude"]
-    if not isinstance(before, list) or not isinstance(after, list):
-        return False
-    if not all(isinstance(p, str) for v in (before, after) for p in v):
-        return False
-    protection = "01-Projects/GF_supply_chain"
-    if (
-        protection in catalog_exclude
-        and protection in before
-        and protection not in after
-        and set(before) == set(after) | {protection}
-    ):
-        return True
-    implicit = {"01-Projects/GF_supply_chain"} if root.name == "L2" else set()
-    if root in vault_scope.PROTECTED.parents:
-        implicit.add(vault_scope.PROTECTED.relative_to(root).as_posix())
-    return bool(implicit) and set(after) == set(before) | implicit
-
-
 def get(config: Config, db: sqlite3.Connection, identity: str) -> dict[str, Any]:
     root, scope, vault = vault_directories.vault_root(config, db, identity)
     row = db.execute("SELECT * FROM vault_save_policies WHERE vault_id=?", (identity,)).fetchone()
@@ -70,18 +32,14 @@ def get(config: Config, db: sqlite3.Connection, identity: str) -> dict[str, Any]
     try:
         current = value is None or (
             value["root_key"] == vault_directories.key(root)
-            and _scope_binding(value["effective_scope"], scope.wire(), root)
+            and value["effective_scope"] == scope.wire()
             and all(
                 vault_directories.key(vault_directories.parent_path(root, scope, path)) == key
                 for path, key in value["directories"].items()
             )
             and all(
-                _scope_binding(
-                    fingerprint,
-                    vault_scope.effective(root / parent, {"include": [""], "exclude": []}).wire(),
-                    root / parent,
-                    catalog_exclude=scope.exclude if parent == "" else (),
-                )
+                fingerprint
+                == vault_scope.effective(root / parent, {"include": [""], "exclude": []}).wire()
                 for parent, fingerprint in value["parent_scopes"].items()
             )
         )

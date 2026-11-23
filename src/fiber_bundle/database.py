@@ -47,7 +47,7 @@ from fiber_bundle.publication_schema import SCHEMA_V5
 from fiber_bundle.query_job_schema import SCHEMA_V16
 from fiber_bundle.source_schema import SCHEMA_V20
 
-SCHEMA_VERSION = 35
+SCHEMA_VERSION = 36
 _wait_limit: ContextVar[float | None] = ContextVar("storage_wait_limit", default=None)
 _held: ContextVar[frozenset[tuple[int, str]]] = ContextVar("storage_held", default=frozenset())
 
@@ -146,6 +146,7 @@ def locked(config: Config) -> Iterator[None]:
 def connect(
     root: Path, *, create: bool = False, migration: bool = False, readonly: bool = False
 ) -> sqlite3.Connection:
+    from . import database_connection_identity as identity
     from .restore_guard import permit
 
     permit(root)
@@ -154,11 +155,13 @@ def connect(
         contained(root, "metadata.sqlite3" + suffix)
     if readonly and (create or migration):
         raise ValueError("read-only connections cannot create or migrate")
+    expected_identity = identity.before(path)
     connection = sqlite3.connect(
         path.as_uri() + ("?mode=ro" if readonly else "?mode=rwc" if create else "?mode=rw"),
         uri=True,
         isolation_level=None,
         timeout=min(5, _wait_limit.get() or 5),
+        factory=identity.Connection,
     )
     connection.row_factory = sqlite3.Row
     try:
@@ -172,6 +175,7 @@ def connect(
             and not (migration and version in range(1, SCHEMA_VERSION))
         ):
             raise IntegrityError("unsupported database schema; explicit migration required")
+        identity.bind(connection, path, expected_identity)
     except BaseException:
         connection.close()
         raise
@@ -285,6 +289,9 @@ def initialize(config: Config) -> None:
                     from .model_configuration.ledger_schema import upgrade as ledger_upgrade
 
                     ledger_upgrade(connection)
+                    from .session_policy_schema import upgrade as session_policy_upgrade
+
+                    session_policy_upgrade(connection)
                     if connection.execute("PRAGMA foreign_key_check").fetchall():
                         raise IntegrityError("initialization foreign key check failed")
                     connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
@@ -425,6 +432,10 @@ def migrate(config: Config) -> Path | None:
                     from .model_configuration.ledger_schema import upgrade as ledger_upgrade
 
                     ledger_upgrade(connection)
+                if previous < 36:
+                    from .session_policy_schema import upgrade as session_policy_upgrade
+
+                    session_policy_upgrade(connection)
                 if connection.execute("PRAGMA foreign_key_check").fetchall():
                     raise IntegrityError("migration foreign key check failed")
                 connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")

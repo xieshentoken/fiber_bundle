@@ -91,6 +91,10 @@ def _text(result: Mapping[str, object], key: str, *, required: bool = False) -> 
 
 
 def _extract_html(html: str, url: str, image_limit: int | None) -> dict[str, object]:
+    from . import article_fibermall
+
+    if urlsplit(url).hostname in article_fibermall.HOSTS:
+        return article_fibermall.extract(html, url, image_limit)
     if (urlsplit(url).hostname or "") in {"x.com", "www.x.com", "twitter.com", "www.twitter.com"}:
         parser = upstream.DocumentParser()
         parser.feed(html)
@@ -185,6 +189,19 @@ def parse_article(
     )
 
 
+def validate_image(image: ImageBytes, index: int) -> tuple[str, str]:
+    if not 128 <= len(image.data) <= MAX_IMAGE_BYTES:
+        raise ArticleError(f"image byte limit exceeded at index {index}")
+    try:
+        mime, extension = upstream.sniff_image(image.data, image.content_type)
+    except upstream.CaptureError as exc:
+        raise ArticleError(f"invalid image at index {index}") from exc
+    declared = image.content_type.partition(";")[0].strip().lower()
+    if declared.startswith("image/") and declared != mime:
+        raise ArticleError(f"image MIME mismatch at index {index}")
+    return mime, extension
+
+
 def complete_article(article: Article, images: Mapping[int, ImageBytes]) -> ArticleDraft:
     """Resolve every image in place to deterministic, local relative paths.
 
@@ -198,15 +215,9 @@ def complete_article(article: Article, images: Mapping[int, ImageBytes]) -> Arti
     for reference in article.images:
         image = images[reference.index]
         total += len(image.data)
-        if not 128 <= len(image.data) <= MAX_IMAGE_BYTES or total > MAX_TOTAL_IMAGE_BYTES:
+        if total > MAX_TOTAL_IMAGE_BYTES:
             raise ArticleError(f"image byte limit exceeded at index {reference.index}")
-        try:
-            mime, extension = upstream.sniff_image(image.data, image.content_type)
-        except upstream.CaptureError as exc:
-            raise ArticleError(f"invalid image at index {reference.index}") from exc
-        declared = image.content_type.partition(";")[0].strip().lower()
-        if declared.startswith("image/") and declared != mime:
-            raise ArticleError(f"image MIME mismatch at index {reference.index}")
+        mime, extension = validate_image(image, reference.index)
         digest = hashlib.sha256(image.data).hexdigest()
         resolved[reference.index] = DraftImage(
             reference.index,

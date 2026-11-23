@@ -26,6 +26,7 @@ class Settings(Payload):
     query_vaults: (
         Annotated[list[query_scope.QueryVault], Field(min_length=1, max_length=20)] | None
     ) = None
+    query_note_scope: Literal["vault_notes", "moc_members"] | None = None
     expert_enabled: bool = False
     expert_media: Literal["unknown", "text", "images", "full"] = "unknown"
     expert_limit: Annotated[int, Field(strict=True, ge=0, le=100)] = 0
@@ -97,6 +98,16 @@ def require_runtime_manifest(config: Config, manifest: object) -> None:
 
 def save(config: Config, main: Any, data: Save) -> dict[str, Any]:
     value = data.settings.model_dump()
+    if value["query_note_scope"] is None:
+        value.pop("query_note_scope")
+        if data.id:
+            with store.readonly(config) as prior_db:
+                assert prior_db is not None
+                previous = store.get(prior_db, data.id)["value"].get("query_note_scope")
+            if previous is not None:
+                value["query_note_scope"] = previous
+        elif value["platform"] == "weixin" and not value["add"]:
+            value["query_note_scope"] = "moc_members"
     if "query_vaults" not in data.settings.model_fields_set:
         value.pop("query_vaults")
         if data.id:
@@ -107,6 +118,11 @@ def save(config: Config, main: Any, data: Save) -> dict[str, Any]:
                 value["query_vaults"] = prior_scope
     if value.get("query_vaults") is None:
         value.pop("query_vaults", None)
+    if value.get("query_note_scope") == "moc_members" and value["answer_mode"] not in {
+        "evidence",
+        "model",
+    }:
+        raise InvalidInput("channel_moc_query_mode_unavailable")
     selected_vaults = query_scope.entries(value)
     if "query_vaults" in value:
         value["vault_id"] = selected_vaults[0]["vault_id"]

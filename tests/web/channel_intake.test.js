@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createChannelApi } from "../../src/fiber_bundle/web/channel_api.js";
-import { intakeLabel } from "../../src/fiber_bundle/web/channel_intake_records.js";
+globalThis.localStorage = { getItem: () => null, setItem: () => {} };
+const { createChannelApi } =
+  await import("../../src/fiber_bundle/web/channel_api.js");
+const { intakeLabel } =
+  await import("../../src/fiber_bundle/web/channel_intake_records.js");
 
 test("intake actions preserve CAS and encode original/review resource identities", async () => {
   const calls = [],
@@ -78,4 +81,143 @@ test("new Pi attempt approval is explicit and absent from ordinary retry", async
     expected_revision: 4,
     approve_new_model_attempt: true,
   });
+});
+
+test("WeChat image recovery reports partial progress and retries only the original link", async () => {
+  const { articleImageStatus } =
+    await import("../../src/fiber_bundle/web/article_image_status.js");
+  const { setLang } = await import("../../src/fiber_bundle/web/atlas/i18n.js");
+  const progress = {
+    state: "pending",
+    complete: 9,
+    total: 10,
+    failure_code: "intake_article_image_timeout",
+  };
+  const link = { state: "needs_review", article_image_progress: progress };
+  const status = articleImageStatus(link);
+  assert.equal(String(status.text), "配图 9/10，等待补抓 · 图片下载超时");
+  assert.equal(String(status.retryLabel), "补抓缺失配图");
+  assert.equal(status.blockRetry, false);
+  const calls = [];
+  const api = createChannelApi(async (...args) => calls.push(args));
+  await api.channelIntakeRetry("entry/a", "batch/b", 2, 7);
+  assert.deepEqual(calls[0].slice(0, 3), [
+    "/admin/channels/entry%2Fa/intake/batches/batch%2Fb/links/2/retry",
+    "POST",
+    { expected_revision: 7 },
+  ]);
+  setLang("en");
+  try {
+    assert.match(String(status.text), /9\/10.*timed out/);
+    assert.equal(String(status.retryLabel), "Fetch missing images");
+  } finally {
+    setLang("zh");
+  }
+  const active = articleImageStatus({
+    state: "extracting",
+    article_image_progress: { ...progress, state: "downloading" },
+  });
+  assert.equal(String(active.text), "正在下载配图 9/10");
+  assert.equal(active.blockRetry, true);
+  assert.equal(active.retryLabel, null);
+
+  const unsafe = articleImageStatus({
+    ...link,
+    article_image_progress: {
+      ...progress,
+      can_resume: false,
+      failure_code: "intake_article_image_certificate_invalid",
+    },
+  });
+  assert.match(String(unsafe.text), /中断 9\/10.*证书校验失败/);
+  assert.equal(unsafe.blockRetry, true);
+  assert.equal(unsafe.retryLabel, null);
+  const connectionFailure = articleImageStatus({
+    ...link,
+    article_image_progress: {
+      ...progress,
+      can_resume: false,
+      failure_code: "intake_article_image_connection_failed",
+    },
+  });
+  assert.equal(connectionFailure.blockRetry, false);
+  assert.equal(String(connectionFailure.retryLabel), "补抓缺失配图");
+  assert.equal(articleImageStatus({ state: "needs_review" }), null);
+  assert.equal(articleImageStatus({ ...link, state: "published" }), null);
+  const published = articleImageStatus({
+    ...link,
+    state: "published",
+    article_image_progress: { state: "complete", complete: 10, total: 10 },
+  });
+  assert.equal(String(published.text), "配图校验通过 10/10");
+  assert.equal(published.showAsPrimary, false);
+  assert.equal(published.blockRetry, true);
+});
+
+test("refreshing unstarted video settings is explicit and independent of paid retry", async () => {
+  const calls = [];
+  const api = createChannelApi(async (...args) => {
+    calls.push(args);
+    return {};
+  });
+  await api.channelIntakeRetry("entry", "batch", 0, 6);
+  await api.channelIntakeRetry("entry", "batch", 0, 6, false, true);
+  assert.deepEqual(calls[0][2], { expected_revision: 6 });
+  assert.deepEqual(calls[1][2], {
+    expected_revision: 6,
+    use_current_video_settings: true,
+  });
+  assert.match(
+    intakeLabel("intake_video_source_tls_interrupted"),
+    /安全连接中断/,
+  );
+});
+
+test("Atlas video stages and connection failures have specific bilingual labels", async () => {
+  const labels =
+    await import("../../src/fiber_bundle/web/atlas/channel_labels.js");
+  assert.match(labels.intakeLabel("resolve_source"), /视频短链接/);
+  assert.match(labels.intakeLabel("visual_analysis"), /分析选择帧/);
+  assert.match(
+    labels.intakeLabel("intake_video_source_tls_interrupted"),
+    /安全连接中断/,
+  );
+  assert.equal(labels.intakeLabel("published"), "已保存入库");
+});
+
+test("video token budget and progress survive API transport in either locale", async () => {
+  const { videoProgressLines } =
+    await import("../../src/fiber_bundle/web/video_intake_status.js");
+  const { setLang } = await import("../../src/fiber_bundle/web/atlas/i18n.js");
+  const calls = [];
+  const api = createChannelApi(async (...args) => calls.push(args));
+  await api.channelIntakeRetry("channel", "batch", 0, 4, true, false, {
+    max_video_tokens: 500000,
+  });
+  assert.equal(calls[0][2].max_video_tokens, 500000);
+  assert.equal(calls[0][2].max_new_model_calls, undefined);
+  const link = {
+    video_progress: {
+      frames_complete: 18,
+      frames_total: 104,
+      frames_remaining: 86,
+      failed_frame: "F0019",
+      token_budget: {
+        limit: 500000,
+        used_tokens: 12000,
+        remaining_tokens: 488000,
+        reserved_tokens: 2000,
+      },
+    },
+  };
+  setLang("en");
+  assert.match(
+    videoProgressLines(link).join(" "),
+    /18\/104.*F0019.*86 frames.*12,000 \/ 500,000.*488,000.*2,000/s,
+  );
+  setLang("zh");
+  assert.match(
+    videoProgressLines(link).join(" "),
+    /18\/104.*剩余 86 帧.*12,000 \/ 500,000.*488,000.*2,000/s,
+  );
 });

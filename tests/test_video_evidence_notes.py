@@ -23,7 +23,18 @@ def link_for(config, entry, batch):
     return row, json.loads(row["value"])["links"][0]
 
 
-def prepared(config, entry, policy, monkeypatch, tmp_path, media, direct=True):
+def prepared(
+    config,
+    entry,
+    policy,
+    monkeypatch,
+    tmp_path,
+    media,
+    direct=True,
+    *,
+    subtitles=False,
+    empty_asr=True,
+):
     batch, steps = install_v3(
         config,
         entry,
@@ -31,9 +42,10 @@ def prepared(config, entry, policy, monkeypatch, tmp_path, media, direct=True):
         monkeypatch,
         tmp_path,
         media,
-        subtitles=False,
-        empty_asr=True,
+        subtitles=subtitles,
+        empty_asr=empty_asr,
         direct=direct,
+        legacy_pi=True,
     )
 
     def failed(c, p, rid, prompt):
@@ -164,3 +176,83 @@ def test_source_markup_is_displayed_as_text_without_injected_images_or_html():
 def test_recovery_mode_is_an_explicit_validated_option(mode):
     with pytest.raises(ValidationError):
         intake_contract.Retry(expected_revision=1, video_note_mode=mode)
+
+
+@pytest.mark.parametrize("subtitles", [False, True])
+@pytest.mark.parametrize("direct", [False, True])
+def test_cached_transcript_and_images_save_without_new_calls(
+    config, entry, policy, monkeypatch, tmp_path, media, subtitles, direct
+):
+    batch, steps, row, old, calls, reservations = prepared(
+        config,
+        entry,
+        policy,
+        monkeypatch,
+        tmp_path,
+        media,
+        direct,
+        subtitles=subtitles,
+        empty_asr=False,
+    )
+    intake_extraction.retry(
+        config, entry[0]["id"], batch, 0, row["revision"], video_note_mode="captured_evidence"
+    )
+    start = len(steps)
+    assert intake_extraction.advance(config, entry[0]["id"])
+    _, link = link_for(config, entry, batch)
+    assert link["state"] == "review_required", link
+    frozen = link["video_processing"]
+    assert frozen["vision_runs"] == old["video_processing"]["vision_runs"]
+    assert frozen["note_runs"] == old["video_processing"]["note_runs"]
+    assert steps[start:] == ["audit_job"]
+    job = config.state_root / "video-skill-jobs" / frozen["job_id"]
+    files = export(job, frozen)
+    assert "转写原文" in files["note.md"].decode()
+    assert "Synthetic" in files["note.md"].decode()
+    provenance = json.loads(files["video-provenance.json"])
+    assert provenance["note_authoring"] == "captured_evidence"
+    assert "Synthetic" in provenance["transcript"]
+    assert provenance["unused_prior_note_runs"] == frozen["note_runs"]
+    for _ in range(6):
+        automatic_ingestion.tick(config)
+    _, saved = link_for(config, entry, batch)
+    assert ((saved.get("publication") or {}).get("state") == "published") is direct
+    with database.connect(config.state_root) as db:
+        assert [tuple(r) for r in db.execute("SELECT * FROM model_calls")] == calls
+        assert [
+            tuple(r) for r in db.execute("SELECT * FROM model_budget_reservations")
+        ] == reservations
+
+
+@pytest.mark.parametrize("damage", ["missing_transcript", "changed_transcript", "coverage"])
+def test_cached_transcript_damage_never_calls_model_or_publishes(
+    config, entry, policy, monkeypatch, tmp_path, media, damage
+):
+    batch, _, row, old, calls, _ = prepared(
+        config,
+        entry,
+        policy,
+        monkeypatch,
+        tmp_path,
+        media,
+        empty_asr=False,
+    )
+    job = config.state_root / "video-skill-jobs" / old["video_processing"]["job_id"]
+    path = job / "transcript/asr_normalized.srt"
+    if damage == "missing_transcript":
+        path.unlink()
+    elif damage == "changed_transcript":
+        path.write_bytes(path.read_bytes().replace(b"Synthetic", b"Tampered"))
+    else:
+        path = job / "evidence/coverage.json"
+        value = json.loads(path.read_text())
+        value["transcript_coverage_ratio"] = 0
+        path.write_text(json.dumps(value))
+    intake_extraction.retry(
+        config, entry[0]["id"], batch, 0, row["revision"], video_note_mode="captured_evidence"
+    )
+    assert intake_extraction.advance(config, entry[0]["id"])
+    _, failed = link_for(config, entry, batch)
+    assert failed["state"] == "needs_review" and not failed.get("publication")
+    with database.connect(config.state_root) as db:
+        assert [tuple(r) for r in db.execute("SELECT * FROM model_calls")] == calls

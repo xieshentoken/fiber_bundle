@@ -272,6 +272,7 @@ export function createGraphCanvas(api, scope) {
     refreshIfVisible: () => load(),
     clear() {
       listMode();
+      $("graph-map-search-text").value = "";
       $("graph-node-list").replaceChildren();
       $("graph-search-results").replaceChildren();
     },

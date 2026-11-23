@@ -1,5 +1,9 @@
 import { requestErrors } from "../request_errors.js";
 import { translate } from "../i18n/index.js";
+import {
+  organizationDiagnostic,
+  readObservationDiagnostic,
+} from "../organization_diagnostics.js";
 // Toasts, busy buttons and error wording. Presentation never decides policy.
 import { h, icon } from "./dom.js";
 import { lang, strings } from "./i18n.js";
@@ -44,8 +48,27 @@ const englishStatus = {
   503: "Backend storage is unavailable. Check the local backend.",
 };
 export function errorText(error) {
+  if (error?.code === "moc_retained_member_limit") {
+    const problem = organizationDiagnostic({
+      error: error.code,
+      error_detail: readObservationDiagnostic(error.diagnostic) || {},
+    });
+    return {
+      title: String(problem.text),
+      detail: [problem.path, problem.phase, ...problem.facts]
+        .filter(Boolean)
+        .join(" · "),
+    };
+  }
   const message = error?.message || String(error || "");
-  if (lang() === "zh") return { title: message || "操作未完成。", detail: "" };
+  const diagnostic = [
+    "maintenance_membership_plan_changed",
+    "maintenance_membership_baseline_changed",
+  ].includes(error?.code)
+    ? error.code
+    : "";
+  if (lang() === "zh")
+    return { title: message || "操作未完成。", detail: diagnostic };
   const title =
     englishCodes[error?.code] ||
     englishStatus[error?.status] ||
@@ -57,7 +80,7 @@ export function errorText(error) {
         ? error?.code || ""
         : translated
       : "";
-  return { title, detail };
+  return { title, detail: diagnostic || detail };
 }
 
 let region;

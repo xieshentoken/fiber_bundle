@@ -31,7 +31,16 @@ def read(config: Config, vault_id: str) -> dict[str, Any] | None:
         or value.get("schema") != "note-index-update/v1"
         or value.get("vault_id") != vault_id
         or value.get("state")
-        not in {"pending", "building", "ready", "failed", "interrupted", "stale"}
+        not in {
+            "pending",
+            "building",
+            "ready",
+            "partial",
+            "waiting",
+            "failed",
+            "interrupted",
+            "stale",
+        }
     ):
         raise IntegrityError("note index update record")
     identifier(value["id"])
@@ -44,6 +53,7 @@ def read(config: Config, vault_id: str) -> dict[str, Any] | None:
             "index_update_failed",
             "restored_explicit_update_required",
             "source_changed",
+            "placement_reconciliation_required",
         }
         or type(value["updated_at"]) not in {int, float}
         or not math.isfinite(value["updated_at"])
@@ -71,6 +81,7 @@ def record(
     result: dict[str, object] | None = None,
     expected_id: str | None = None,
 ) -> str:
+    """CAS a request's state; pending with expected_id keeps an active request's identity."""
     previous = read(config, vault_id)
     if expected_id is not None and (previous is None or previous["id"] != expected_id):
         return previous["id"] if previous else expected_id
@@ -78,7 +89,9 @@ def record(
         "schema": "note-index-update/v1",
         "vault_id": vault_id,
         "id": previous["id"]
-        if state != "pending" and previous and previous["state"] in {"pending", "building"}
+        if (state != "pending" or expected_id is not None)
+        and previous
+        and previous["state"] in {"pending", "building", "waiting"}
         else str(uuid4()),
         "state": state,
         "reason": reason,

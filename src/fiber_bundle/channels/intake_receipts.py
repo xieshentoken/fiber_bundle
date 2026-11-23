@@ -1,6 +1,7 @@
 """Optional bounded Feishu acknowledgement; unknown sends are never retried."""
 
 import json
+import sqlite3
 import time
 from typing import Any
 
@@ -12,28 +13,49 @@ from .intake_processing import guard_locked, record
 from .services import policy as service_policy
 
 
+def _candidates(
+    side: sqlite3.Connection, identity: str, revision: int, after: float, *, hint: bool = False
+) -> list[sqlite3.Row]:
+    fields, limit = ("1", 1) if hint else ("*", 20)
+    return side.execute(
+        f"SELECT {fields} FROM channel_intake_records WHERE channel_id=? AND revision=? "
+        "AND created>=? AND coalesce(json_extract(value,'$.receipt_state'),'') "
+        "NOT IN ('sending','unknown') AND (state='stored' OR (state='needs_review' "
+        "AND json_type(value,'$.failure')='object')) "
+        "AND (json_extract(value,'$.receipt_state') IS NULL OR "
+        "(json_extract(value,'$.receipt_tracking.version')=2 AND "
+        "coalesce(json_extract(value,'$.receipt_tracking.next_check'),0)<=? AND "
+        "coalesce(json_extract(value,'$.receipt_tracking.done'),0)=0)) "
+        "ORDER BY coalesce(json_extract(value,'$.receipt_tracking.next_check'),0),created "
+        "LIMIT ?",
+        (identity, revision, after, time.time(), limit),
+    ).fetchall()
+
+
 def take(
     config: Config, identity: str
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]] | None:
     channel, policy = repository.channel(config, identity)
     if not policy["settings"]["receipt"]:
         return None
+    with store.readonly(config) as side:
+        if side is None or (
+            store.schema_ready(side)
+            and not _candidates(
+                side,
+                identity,
+                policy["revision"],
+                service_policy.cutoff(config, identity),
+                hint=True,
+            )
+        ):
+            return None
     with database.locked(config), store.opened(config) as side:
         # An ambiguous send freezes only its own batch, never unrelated receipts.
         # The storage lease and committed "sending" claim still prevent duplicates.
-        rows = side.execute(
-            "SELECT * FROM channel_intake_records WHERE channel_id=? AND revision=? "
-            "AND created>=? AND coalesce(json_extract(value,'$.receipt_state'),'') "
-            "NOT IN ('sending','unknown') AND (state='stored' OR (state='needs_review' "
-            "AND json_type(value,'$.failure')='object')) "
-            "AND (json_extract(value,'$.receipt_state') IS NULL OR "
-            "(json_extract(value,'$.receipt_tracking.version')=2 AND "
-            "coalesce(json_extract(value,'$.receipt_tracking.next_check'),0)<=? AND "
-            "coalesce(json_extract(value,'$.receipt_tracking.done'),0)=0)) "
-            "ORDER BY coalesce(json_extract(value,'$.receipt_tracking.next_check'),0),created "
-            "LIMIT 20",
-            (identity, policy["revision"], service_policy.cutoff(config, identity), time.time()),
-        ).fetchall()
+        rows = _candidates(
+            side, identity, policy["revision"], service_policy.cutoff(config, identity)
+        )
         from .intake_outcomes import outcome
 
         for row in rows:

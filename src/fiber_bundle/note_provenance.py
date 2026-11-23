@@ -14,6 +14,8 @@ def describe(
     vault: sqlite3.Row,
     inventory: note_inventory.Inventory,
     note: note_index.Note,
+    *,
+    intake_locations: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     pub = (
         inventory.publications.get(note.publication_id) if note.publication_id is not None else None
@@ -103,15 +105,19 @@ def describe(
         originals = publication_originals.visible(db, client_id, version, vault_hint=vault["id"])
     from .publication_locations import get as layout_get
 
-    intake = db.execute(
-        "SELECT l.publication_id FROM publication_locations l WHERE l.vault_id=? "
-        "AND l.kind='intake' AND (l.entry_note_path=? OR EXISTS(SELECT 1 "
-        "FROM json_each(l.value,'$.published_hashes') WHERE key=?)) "
-        "AND l.state='published'",
-        (vault["id"], note.relative_path, note.relative_path),
-    ).fetchone()
+    if intake_locations is None:
+        intake = db.execute(
+            "SELECT l.publication_id FROM publication_locations l WHERE l.vault_id=? "
+            "AND l.kind='intake' AND (l.entry_note_path=? OR EXISTS(SELECT 1 "
+            "FROM json_each(l.value,'$.published_hashes') WHERE key=?)) "
+            "AND l.state='published'",
+            (vault["id"], note.relative_path, note.relative_path),
+        ).fetchone()
+        location = layout_get(db, "intake", intake[0]) if intake else None
+    else:
+        location = intake_locations.get(note.relative_path)
+        intake = (location["publication_id"],) if location else None
     if intake:
-        location = layout_get(db, "intake", intake[0])
         assert location is not None
         source = location["plan"].get("intake_source")
         if source:

@@ -67,10 +67,11 @@ export function disclosure(label, ...nodes) {
 
 // Capture only view state; never persist confirmation or mutate feature drafts.
 export function retainView(root, render) {
-  const opened = new Set(
-    [...root.querySelectorAll("details[data-view-key][open]")].map(
-      (n) => n.dataset.viewKey,
-    ),
+  const opened = new Map(
+    [...root.querySelectorAll("details[data-view-key]")].map((n) => [
+      n.dataset.viewKey,
+      n.open,
+    ]),
   );
   const focused = root.contains(document.activeElement)
     ? document.activeElement
@@ -80,7 +81,8 @@ export function retainView(root, render) {
     y = window.scrollY;
   render();
   for (const details of root.querySelectorAll("details[data-view-key]"))
-    details.open = opened.has(details.dataset.viewKey);
+    if (opened.has(details.dataset.viewKey))
+      details.open = opened.get(details.dataset.viewKey);
   if (key)
     [...root.querySelectorAll("[data-focus-key]")]
       .find((n) => n.dataset.focusKey === key)
